@@ -2465,3 +2465,1097 @@ function upsertCadastroAndUser_(ss, data) {
     console.error('Error in upsertCadastroAndUser_:', e);
   }
 }
+
+/** ============================= FUNÇÕES DE BILLING E PAGAMENTOS ============================= */
+
+const GRACE_DAYS = 3;
+const RENEWAL_INTERVAL_DAYS = 30;
+const AUTO_BLOCK_OVER_GRACE = true;
+
+function addDays_(date, days) {
+  var d = new Date(date.getTime());
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function clampToMidnight_(d) {
+  var x = new Date(d);
+  x.setHours(0,0,0,0);
+  return x;
+}
+
+function isActiveStatus_(s) {
+  s = String(s || '').toLowerCase();
+  return s === 'approved' || s === 'authorized' || s === 'accredited' ||
+         s === 'recurring_charges' || s === 'active';
+}
+
+function clientBilling_(ss, data){
+  var email = String(data.email || '').trim().toLowerCase();
+  if (!email) return jsonOut_({ ok:false, error:'missing_email' });
+
+  var sh = ensureUsuariosSheet_(ss);
+  var idx = findUserRowByEmail_(sh, email);
+  if (idx === -1) return jsonOut_({ ok:false, error:'not_found' });
+  ensureBillingColumns_(sh);
+  var row = idx + 2;
+  var map = headerIndexMap_(sh);
+
+  var plan = String(sh.getRange(row, map.plan+1).getValue() || '');
+  if (!plan) {
+    var site = String(sh.getRange(row, map.siteSlug+1).getValue() || '').trim().toUpperCase();
+    var planFromCad = getPlanForUser_(ss, email, site);
+    if (planFromCad) { 
+      plan = planFromCad; 
+      sh.getRange(row, map.plan+1).setValue(plan); 
+    }
+  }
+
+  var status   = String(sh.getRange(row, map.billing_status+1).getValue() || '') || '';
+  var next     = sh.getRange(row, map.billing_next+1).getValue();
+  var amount   = Number(sh.getRange(row, map.billing_amount+1).getValue() || 0) || 0;
+  var currency = String(sh.getRange(row, map.billing_currency+1).getValue() || '') || 'BRL';
+  var provider = String(sh.getRange(row, map.billing_provider+1).getValue() || '') || 'mercadopago';
+  var siteSlug = String(sh.getRange(row, map.siteSlug+1).getValue() || '').trim().toUpperCase();
+
+  var statusLower = String(status).toLowerCase();
+  var isActive = isActiveStatus_(statusLower);
+
+  if (!isActive) {
+    var s = siteSlug ? getStatusForSite_(siteSlug) : { ok:false };
+    if (s && s.ok && s.status) {
+      statusLower = String(s.status).toLowerCase();
+      isActive = isActiveStatus_(statusLower);
+    }
+  }
+
+  if (!isActive) {
+    var lastApprovedByMail = getLastApprovedPaymentDateForEmail_(ss, email);
+    if (lastApprovedByMail) {
+      statusLower = 'approved';
+      isActive = true;
+      if (!next) {
+        var dNext = addDays_(clampToMidnight_(lastApprovedByMail), RENEWAL_INTERVAL_DAYS);
+        sh.getRange(row, map.billing_next+1).setValue(dNext);
+        next = dNext;
+      }
+    }
+  }
+
+  if (statusLower && statusLower !== String(status).toLowerCase()) {
+    sh.getRange(row, map.billing_status+1).setValue(statusLower);
+  }
+
+  if (!next) {
+    var d = new Date(Date.now() + 1000*60*60*24*30);
+    sh.getRange(row, map.billing_next+1).setValue(d);
+    next = d;
+  }
+
+  if (amount === 0) {
+    amount = String(plan).toLowerCase().indexOf('vip') !== -1 ? 99.9 : 39.9;
+    sh.getRange(row, map.billing_amount+1).setValue(amount);
+  }
+
+  sh.getRange(row, map.billing_currency+1).setValue(currency);
+  sh.getRange(row, map.billing_provider+1).setValue(provider);
+
+  return jsonOut_({
+    ok:true,
+    plan: (String(plan).toLowerCase().indexOf('vip')!==-1 ? 'vip':'essential'),
+    status: statusLower || 'pending',
+    provider,
+    next_renewal: next ? new Date(next).toISOString() : null,
+    last_payment: amount > 0 ? { date: new Date().toISOString(), amount: amount } : null,
+    amount, currency
+  });
+}
+
+function getStatusForSite_(slug) {
+  try {
+    const ss = openSS_();
+    const shCad = ss.getSheetByName("cadastros");
+    if (!shCad) return { ok: false, error: "missing_sheet_cadastros" };
+
+    const data = shCad.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idxSite = headers.indexOf("siteSlug");
+    const idxEmail = headers.indexOf("email");
+    const idxManual = headers.indexOf("manual_block");
+    const idxActive = headers.indexOf("active");
+    const idxPreapproval = headers.indexOf("preapproval_id");
+
+    if (idxSite === -1) return { ok: false, error: "missing_siteSlug_header" };
+
+    const row = data.find(r => normalizeSlug_(String(r[idxSite] || "")) === slug);
+    if (!row) return { ok: false, error: "site_not_found" };
+
+    const email = String(row[idxEmail] || "");
+    const manualBlock = String(row[idxManual] || "").toLowerCase() === "true";
+    const active = String(row[idxActive] || "").toLowerCase() === "true";
+    const preapprovalId = String(row[idxPreapproval] || "");
+
+    return {
+      ok: true,
+      active: active,
+      manualBlock: manualBlock,
+      status: "active",
+      preapproval_id: preapprovalId,
+      email: email,
+      updatedAt: new Date().toISOString()
+    };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+function getLastApprovedPaymentDateForEmail_(ss, email) {
+  var sh = ss.getSheetByName("dados"); 
+  if (!sh) return null;
+  var last = sh.getLastRow(); 
+  if (last < 2) return null;
+
+  var h = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+  var iTs   = h.indexOf("timestamp");
+  var iMail = h.indexOf("payer_email");
+  var iStat = h.indexOf("status");
+  if (iTs === -1 || iMail === -1 || iStat === -1) return null;
+
+  var rows = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+  var latest = null;
+  for (var r = rows.length - 1; r >= 0; r--) {
+    var e = String(rows[r][iMail] || "").trim().toLowerCase();
+    if (!e || e !== email) continue;
+    var st = String(rows[r][iStat] || "").toLowerCase();
+    if (!isActiveStatus_(st)) continue;
+    var ts = rows[r][iTs] ? new Date(rows[r][iTs]) : null;
+    if (ts && (!latest || ts.getTime() > latest.getTime())) latest = ts;
+  }
+  return latest;
+}
+
+function teamEmail_() {
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('TEAM_EMAIL') || 'matheusmartinss@icloud.com';
+}
+
+function dashUrl_() {
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('DASH_URL') || 'https://eleveaagencia.netlify.app/dashboard';
+}
+
+function sendWelcomeEmailWithPassword_(toEmail, site, tempPassword, dashUrl) {
+  if (!toEmail) return;
+  var subj = "[Elevea] Acesso ao seu painel";
+  var body =
+    "<p>Olá!</p>" +
+    "<p>Seu painel do site <b>"+(site||'(sem slug)')+"</b> está pronto.</p>" +
+    "<p><b>Endereço do painel:</b> <a href=\""+dashUrl+"\">"+dashUrl+"</a></p>" +
+    "<p><b>Login:</b> "+toEmail+"<br>" +
+    "<b>Senha provisória:</b> "+tempPassword+"</p>" +
+    "<p>Recomendamos alterar a senha no primeiro acesso.</p>";
+  MailApp.sendEmail({ to: toEmail, subject: subj, htmlBody: body, cc: teamEmail_() });
+}
+
+function sendWelcomeEmailWithReset_(toEmail, site, dashUrl, token) {
+  if (!toEmail) return;
+  var resetLink = dashUrl.replace(/\/+$/,"") + "/reset?email="+encodeURIComponent(toEmail)+"&token="+encodeURIComponent(token||'');
+  var subj = "[Elevea] Acesso ao seu painel";
+  var body =
+    "<p>Olá!</p>" +
+    "<p>Seu painel do site <b>"+(site||'(sem slug)')+"</b> está pronto.</p>" +
+    "<p><b>Endereço do painel:</b> <a href=\""+dashUrl+"\">"+dashUrl+"</a></p>" +
+    "<p>Para definir sua senha, clique: <a href=\""+resetLink+"\">Criar/Redefinir senha</a>.</p>";
+  MailApp.sendEmail({ to: toEmail, subject: subj, htmlBody: body, cc: teamEmail_() });
+}
+
+function sendBillingEmailWarn_(toEmail, siteSlug, nextDate, daysOverdue) {
+  if (!toEmail) return;
+  var subj = "[Elevea] Renovação pendente do seu site";
+  var body =
+    "<p>Olá!</p>" +
+    "<p>Detectamos que a renovação da sua assinatura do site <b>"+(siteSlug||"(sem slug)")+"</b> está pendente.</p>" +
+    "<p>Data prevista: <b>"+(nextDate ? Utilities.formatDate(nextDate, Session.getScriptTimeZone(), "dd/MM/yyyy") : "(não definida)")+"</b>.</p>" +
+    "<p>Você tem uma margem de <b>"+GRACE_DAYS+" dias</b>. Após isso, a assinatura é cancelada automaticamente.</p>" +
+    "<p>Se precisar de ajuda, responda este e-mail.</p>";
+  MailApp.sendEmail({ to: toEmail, cc: teamEmail_(), subject: subj, htmlBody: body });
+}
+
+function sendBillingEmailCancelled_(toEmail, siteSlug, nextDate, daysOverdue) {
+  if (!toEmail) return;
+  var subj = "[Elevea] Assinatura cancelada por falta de renovação";
+  var body =
+    "<p>Olá!</p>" +
+    "<p>Sua assinatura do site <b>"+(siteSlug||"(sem slug)")+"</b> foi <b>cancelada</b> por não constarmos o pagamento após a margem de "+GRACE_DAYS+" dias.</p>" +
+    "<p>Data prevista da renovação: <b>"+(nextDate ? Utilities.formatDate(nextDate, Session.getScriptTimeZone(), "dd/MM/yyyy") : "(não definida)")+"</b>.</p>" +
+    "<p>Podemos reativar rapidamente assim que regularizar. Fale conosco respondendo este e-mail.</p>";
+  MailApp.sendEmail({ to: toEmail, cc: teamEmail_(), subject: subj, htmlBody: body });
+}
+
+/** ============================= FUNÇÕES DE FEEDBACKS ============================= */
+
+function ensureFeedbacksSheet_() {
+  var ss = openSS_();
+  var sh = ss.getSheetByName("feedbacks");
+  if (!sh) sh = ss.insertSheet("feedbacks");
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(["id","timestamp","siteSlug","name","rating","comment","email","phone","approved"]);
+  }
+  return sh;
+}
+
+function getVipPinForSite_(site) {
+  site = normalizeSlug_(site);
+  var shKV = ensureSettingsKVSheet_();
+  var last = shKV.getLastRow();
+  if (last < 2) return "";
+  var vals = shKV.getRange(2,1,last-1,3).getValues();
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (String(vals[i][0]||"").trim().toUpperCase() === site) {
+      try {
+        var obj = JSON.parse(String(vals[i][2] || "{}"));
+        return String((obj.security && obj.security.vip_pin) || "");
+      } catch(_) { return ""; }
+    }
+  }
+  return "";
+}
+
+function feedbackSetApproval_(ss, data) {
+  var site = normalizeSlug_(String(data.site || data.siteSlug || ""));
+  var id   = String(data.id || "");
+  var approved = String(data.approved).toLowerCase() === "true";
+  if (!site || !id) return jsonOut_({ ok:false, error:"missing_params" });
+
+  var pin = String(data.pin || data.vipPin || "").trim();
+  var saved = getVipPinForSite_(site);
+  if (saved && pin !== saved) return jsonOut_({ ok:false, error:"unauthorized" });
+
+  var sh = ensureFeedbacksSheet_();
+  var last = sh.getLastRow(); if (last < 2) return jsonOut_({ ok:false, error:"empty" });
+
+  var vals = sh.getRange(2,1,last-1,9).getValues();
+  for (var i=0;i<vals.length;i++){
+    if (String(vals[i][0]||"") === id && String(vals[i][2]||"").trim().toUpperCase() === site) {
+      sh.getRange(i+2, 9).setValue(approved ? "TRUE" : "");
+      return jsonOut_({ ok:true });
+    }
+  }
+  return jsonOut_({ ok:false, error:"not_found" });
+}
+
+function listFeedbacks_(slug, page, pageSize, options) {
+  try {
+    const ss = openSS_();
+    const shFeedbacks = ss.getSheetByName("feedbacks");
+    if (!shFeedbacks) return { ok: false, error: "missing_sheet_feedbacks" };
+
+    const data = shFeedbacks.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idxSite = headers.indexOf("siteSlug");
+    const idxName = headers.indexOf("name");
+    const idxRating = headers.indexOf("rating");
+    const idxComment = headers.indexOf("comment");
+    const idxApproved = headers.indexOf("approved");
+    const idxTs = headers.indexOf("created_at");
+
+    if (idxSite === -1) return { ok: false, error: "missing_siteSlug_header" };
+
+    let siteFeedbacks = data.slice(1)
+      .filter(row => normalizeSlug_(String(row[idxSite] || "")) === slug);
+
+    if (options && options.public) {
+      siteFeedbacks = siteFeedbacks.filter(row => 
+        String(row[idxApproved] || "").toLowerCase() === "true"
+      );
+    }
+
+    siteFeedbacks = siteFeedbacks.map(row => ({
+      name: String(row[idxName] || ""),
+      rating: parseInt(row[idxRating] || "0"),
+      comment: String(row[idxComment] || ""),
+      approved: String(row[idxApproved] || "").toLowerCase() === "true",
+      ts: String(row[idxTs] || new Date().toISOString())
+    }))
+    .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const items = siteFeedbacks.slice(start, end);
+
+    return {
+      ok: true,
+      items: items,
+      total: siteFeedbacks.length,
+      page: page,
+      pageSize: pageSize
+    };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+function listFeedbacksPublic_(site, page, pageSize) {
+  try {
+    site = normalizeSlug_(site);
+    page = Math.max(1, parseInt(page, 10) || 1);
+    pageSize = Math.max(1, Math.min(200, parseInt(pageSize, 10) || 20));
+
+    var sh = ensureFeedbacksSheet_();
+    var last = sh.getLastRow(); 
+    if (last < 2) return { ok:true, page:1, pageSize:pageSize, total:0, items:[] };
+
+    var vals = sh.getRange(2,1,last-1,9).getValues().filter(function(r){
+      return String(r[2]||"").trim().toUpperCase() === site && String(r[8]||"").toUpperCase() === "TRUE";
+    });
+
+    var total = vals.length;
+    var start = Math.min((page-1) * pageSize, Math.max(0, total - 1));
+    var slice = vals.slice(start, start + pageSize).map(function(r){
+      return {
+        id: String(r[0]||""),
+        ts: r[1] ? new Date(r[1]).toISOString() : "",
+        name: String(r[3]||""),
+        rating: Number(r[4]||0) || 0,
+        comment: String(r[5]||""),
+        approved: true
+      };
+    });
+
+    return { ok:true, page:page, pageSize:pageSize, total: total, items: slice };
+  } catch (e) { 
+    return { ok:false, error:String(e) }; 
+  }
+}
+
+function listFeedbacksSecure_(ss, data) {
+  try {
+    var site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    if (!site) return jsonOut_({ ok:false, error:'missing_site' });
+    var page = Math.max(1, parseInt(data.page,10) || 1);
+    var pageSize = Math.max(1, Math.min(200, parseInt(data.pageSize,10) || 20));
+
+    var props = PropertiesService.getScriptProperties();
+    var ADMIN = props.getProperty('ADMIN_DASH_TOKEN') || props.getProperty('ADMIN_TOKEN') || '';
+    var pinOk = false;
+    if (ADMIN && String(data.adminToken||'') === ADMIN) {
+      pinOk = true;
+    } else {
+      var pin = String(data.pin || data.vipPin || '');
+      var saved = getVipPinForSite_(site);
+      if (saved && pin && pin === saved) pinOk = true;
+    }
+
+    if (pinOk) {
+      var all = listFeedbacks_(site, page, pageSize);
+      return jsonOut_(all);
+    } else {
+      var pub = listFeedbacksPublic_(site, page, pageSize);
+      return jsonOut_(pub);
+    }
+  } catch (e) {
+    return jsonOut_({ ok:false, error:String(e) });
+  }
+}
+
+/** ============================= FUNÇÕES DE LEADS ============================= */
+
+function ensureLeadsSheet_() {
+  var ss = openSS_();
+  var sh = ss.getSheetByName("leads");
+  if (!sh) sh = ss.insertSheet("leads");
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(["timestamp","siteSlug","name","email","phone","source"]);
+  }
+  return sh;
+}
+
+function listLeads_(site, page, pageSize) {
+  try {
+    site = normalizeSlug_(site);
+    page = Math.max(1, parseInt(page, 10) || 1);
+    pageSize = Math.max(1, Math.min(200, parseInt(pageSize, 10) || 20));
+
+    var sh = ensureLeadsSheet_();
+    var last = sh.getLastRow(); 
+    if (last < 2) return { ok:true, page:1, pageSize:pageSize, total:0, items:[] };
+
+    var vals = sh.getRange(2,1,last-1,6).getValues().filter(function(r){
+      return String(r[1]||"").trim().toUpperCase() === site;
+    });
+
+    var total = vals.length;
+    var start = Math.min((page-1) * pageSize, Math.max(0, total - 1));
+    var slice = vals.slice(start, start + pageSize).map(function(r){
+      return {
+        ts: r[0] ? new Date(r[0]).toISOString() : "",
+        name: String(r[2]||""),
+        email: String(r[3]||""),
+        phone: String(r[4]||""),
+        source: String(r[5]||""),
+      };
+    });
+
+    return { ok:true, page:page, pageSize:pageSize, total: total, items: slice };
+  } catch (e) { 
+    return { ok:false, error:String(e) }; 
+  }
+}
+
+/** ============================= FUNÇÕES DE TRAFFIC ============================= */
+
+function ensureTrafficSheet_() {
+  var ss = openSS_();
+  var sh = ss.getSheetByName("traffic");
+  if (!sh) sh = ss.insertSheet("traffic");
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(["timestamp","siteSlug","path","ip","userAgent"]);
+  }
+  return sh;
+}
+
+function recordHit_(ss, data) {
+  try {
+    var site = normalizeSlug_(String(data.site || ""));
+    if (!site) return jsonOut_({ ok:false, error:"missing_site" });
+
+    var path = String(data.path || "/").trim();
+    if (path === "") path = "/";
+    if (path[0] !== "/") path = "/" + path;
+
+    var ip = String(data.ip || "");
+    var ua = String(data.userAgent || "");
+
+    var sh = ensureTrafficSheet_();
+    sh.appendRow([ new Date(), site, path, ip, ua ]);
+    return jsonOut_({ ok:true });
+  } catch (e) {
+    return jsonOut_({ ok:false, error:String(e) });
+  }
+}
+
+function getTraffic_(slug, range) {
+  try {
+    const ss = openSS_();
+    const shTraffic = ss.getSheetByName("traffic");
+    if (!shTraffic) return { ok: false, error: "missing_sheet_traffic" };
+
+    const data = shTraffic.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idxSite = headers.indexOf("siteSlug");
+    const idxDay = headers.indexOf("day");
+    const idxHits = headers.indexOf("hits");
+
+    if (idxSite === -1) return { ok: false, error: "missing_siteSlug_header" };
+
+    const siteTraffic = data.slice(1)
+      .filter(row => normalizeSlug_(String(row[idxSite] || "")) === slug)
+      .map(row => ({
+        day: String(row[idxDay] || ""),
+        hits: parseInt(row[idxHits] || "0")
+      }))
+      .sort((a, b) => new Date(a.day) - new Date(b.day));
+
+    return {
+      ok: true,
+      daily: siteTraffic,
+      total: siteTraffic.reduce((sum, item) => sum + item.hits, 0)
+    };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/** ============================= FUNÇÕES DE NOTIFICAÇÕES ============================= */
+
+function notifySiteToggle_(siteSlug, enable) {
+  try {
+    var msg = enable ? 
+      "Site " + siteSlug + " foi reativado automaticamente" :
+      "Site " + siteSlug + " foi desabilitado automaticamente";
+    console.log(msg);
+  } catch (e) {
+    console.error("Error in notifySiteToggle_:", e);
+  }
+}
+
+/** ============================= FUNÇÕES DE CONFIGURAÇÕES MASTER ============================= */
+
+function criarContasMaster() {
+  try {
+    console.log('🚀 Iniciando criação das contas master...');
+
+    const props = PropertiesService.getScriptProperties();
+    const ADMIN_TOKEN = props.getProperty('ADMIN_DASH_TOKEN') || props.getProperty('ADMIN_TOKEN') || '';
+
+    if (!ADMIN_TOKEN) {
+      console.error('❌ ADMIN_DASH_TOKEN não encontrado!');
+      console.log('Configure o ADMIN_DASH_TOKEN nas Script Properties primeiro.');
+      return { error: 'ADMIN_DASH_TOKEN não encontrado' };
+    }
+
+    console.log('✅ ADMIN_TOKEN encontrado');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    console.log('👤 Criando cliente master...');
+    const clienteResult = criarUsuarioDireto_(ss, {
+      email: 'cliente@elevea.com',
+      role: 'client',
+      siteSlug: 'DEMO-SITE',
+      password: 'cliente123'
+    });
+    console.log('Cliente criado:', clienteResult);
+
+    console.log('👨‍💼 Criando admin master...');
+    const adminResult = criarUsuarioDireto_(ss, {
+      email: 'admin@elevea.com',
+      role: 'admin',
+      siteSlug: 'ADMIN',
+      password: 'admin123'
+    });
+    console.log('Admin criado:', adminResult);
+
+    console.log('🎉 Contas master criadas com sucesso!');
+    console.log('📧 Cliente: cliente@elevea.com / cliente123');
+    console.log('📧 Admin: admin@elevea.com / admin123');
+
+    return {
+      success: true,
+      message: 'Contas master criadas!',
+      cliente: clienteResult,
+      admin: adminResult
+    };
+
+  } catch (error) {
+    console.error('❌ Erro:', error);
+    return { error: error.toString() };
+  }
+}
+
+function criarUsuarioDireto_(ss, userData) {
+  try {
+    const { email, role, siteSlug, password } = userData;
+
+    let sh = ss.getSheetByName('usuarios');
+    if (!sh) {
+      sh = ss.insertSheet('usuarios');
+      sh.appendRow(['email','siteSlug','role','password_hash','salt','last_login','reset_token','reset_expires','plan','billing_status','billing_next','billing_amount','billing_currency','billing_provider']);
+    }
+
+    const data = sh.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const emailCol = headers.indexOf('email');
+
+    if (emailCol !== -1) {
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][emailCol] || '').trim().toLowerCase() === email.toLowerCase()) {
+          console.log(`Usuário ${email} já existe, atualizando...`);
+          const row = i + 1;
+          const salt = makeSalt_();
+          const hash = sha256Hex_(salt + password);
+
+          sh.getRange(row, 2).setValue(siteSlug);
+          sh.getRange(row, 3).setValue(role);
+          sh.getRange(row, 4).setValue(hash);
+          sh.getRange(row, 5).setValue(salt);
+
+          return { ok: true, email, role, siteSlug, updated: true };
+        }
+      }
+    }
+
+    const salt = makeSalt_();
+    const hash = sha256Hex_(salt + password);
+
+    sh.appendRow([
+      email, siteSlug, role, hash, salt, '', '', '', '', '', '', '', '', ''
+    ]);
+
+    return { ok: true, email, role, siteSlug, created: true };
+
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    return { ok: false, error: error.toString() };
+  }
+}
+
+function verificarContas() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName('usuarios');
+
+    if (!sh) {
+      console.log('❌ Aba usuarios não encontrada');
+      return;
+    }
+
+    const data = sh.getDataRange().getValues();
+    console.log('📋 Usuários cadastrados:');
+
+    data.forEach((row, index) => {
+      if (index === 0) return;
+      const email = row[0];
+      const siteSlug = row[1];
+      const role = row[2];
+      console.log(`${index}. ${email} (${role}) - Site: ${siteSlug}`);
+    });
+
+  } catch (error) {
+    console.error('Erro ao verificar contas:', error);
+  }
+}
+
+/** ============================= FUNÇÕES DE ESTRUTURA DE SITE (MELHORADAS) ============================= */
+
+function sectionsUpsertDefs_(ss, data) {
+  try {
+    var site = normalizeSlug_(String(data.site || data.siteSlug || ""));
+    if (!site) return jsonOut_({ ok:false, error: "missing_site" });
+
+    var defs = data.defs;
+    if (!Array.isArray(defs) || defs.length === 0) {
+      return jsonOut_({ ok:false, error: "missing_or_empty_defs" });
+    }
+
+    defs = defs
+      .map(function(d){
+        var id = String((d && d.id) || "").trim();
+        if (!id) return null;
+        var out = { id: id };
+        if (d.name !== undefined) out.name = String(d.name);
+        if (d.fields && typeof d.fields === "object") out.fields = d.fields;
+        if (d.slots  && typeof d.slots  === "object") out.slots  = d.slots;
+        return out;
+      })
+      .filter(Boolean);
+    if (!defs.length) return jsonOut_({ ok:false, error: "empty_defs_after_sanitize" });
+
+    var props  = PropertiesService.getScriptProperties();
+    var ADMIN  = (props.getProperty('ADMIN_DASH_TOKEN') || props.getProperty('ADMIN_TOKEN') || '').trim();
+    var okAuth = false;
+
+    if (ADMIN && String(data.adminToken || "").trim() === ADMIN) okAuth = true;
+    if (!okAuth) {
+      var pin = String(data.pin || data.vipPin || "").trim();
+      var savedPin = getVipPinForSite_(site);
+      if (savedPin && pin && pin === savedPin) okAuth = true;
+    }
+    if (!okAuth) return jsonOut_({ ok:false, error: "unauthorized" });
+
+    var sh = ensureSettingsKVSheet_();
+    var last = sh.getLastRow();
+    var cur = {};
+    if (last >= 2) {
+      var vals = sh.getRange(2,1,last-1,3).getValues();
+      for (var i = vals.length - 1; i >= 0; i--) {
+        if (String(vals[i][0]||"").trim().toUpperCase() === site) {
+          try { cur = JSON.parse(String(vals[i][2] || "{}")); } catch(_) { cur = {}; }
+          break;
+        }
+      }
+    }
+
+    cur = cur || {};
+    cur.sections = cur.sections || {};
+    var dataOld = cur.sections.data || {};
+    cur.sections.defs = defs;
+    cur.sections.data = dataOld;
+
+    sh.appendRow([ site, new Date(), JSON.stringify(cur) ]);
+    return jsonOut_({ ok:true, siteSlug: site, defs_count: defs.length });
+  } catch (e) {
+    return jsonOut_({ ok:false, error:String(e) });
+  }
+}
+
+function bootstrapDefaultSections_(site) {
+  site = normalizeSlug_(site);
+  var ss = openSS_();
+  var sh = ss.getSheetByName("settings");
+  if (!sh) return { bootstrapped: 0 };
+
+  var last = sh.getLastRow();
+  if (last < 2) return { bootstrapped: 0 };
+
+  var vals = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+  var latest = null;
+  for (var i = vals.length - 1; i >= 0; i--) {
+    var siteLower = String(vals[i][0]||"").trim().toUpperCase();
+    if (siteLower === site) {
+      latest = vals[i];
+      break;
+    }
+  }
+  if (!latest) return { bootstrapped: 0 };
+
+  var h = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  var headers = {};
+  for (var j=0; j<h.length; j++) {
+    headers[String(h[j]||"")] = j;
+  }
+
+  function getVal(name) { return (headers[name] !== undefined) ? String(latest[headers[name]]||"") : ""; }
+
+  var o = {
+    businessName: getVal("businessName"),
+    businessCategory: getVal("businessCategory"),
+    businessDescription: getVal("businessDescription"),
+    businessType: getVal("businessType"),
+    email: getVal("email"),
+    whatsapp: getVal("whatsapp"),
+    endereco: {
+      rua: getVal("address"),
+      cidade: getVal("city"),
+      estado: getVal("state"),
+      cep: getVal("cep")
+    }
+  };
+
+  function or(v,def){ return v && String(v).trim() ? String(v).trim() : def; }
+  function fullAddress(end) {
+    if (!end || typeof end !== "object") return "";
+    var parts = [
+      or(end.rua,""),
+      or(end.cidade,""),
+      or(end.estado,""),
+      or(end.cep,"")
+    ].filter(Boolean);
+    return parts.join(", ");
+  }
+  function gmapsLink(end) {
+    var addr = fullAddress(end);
+    return addr ? "https://maps.google.com/?q=" + encodeURIComponent(addr) : "";
+  }
+
+  var ids = ["hero","sobre","contato","servicos","portfolio","depoimentos"];
+  var data = {};
+
+  ids.forEach(function(id){
+    if (id === "hero") {
+      data[id] = {
+        fields:{
+          title: or(o.businessName,"Sua Empresa"),
+          subtitle: or(o.businessDescription,"Oferecemos as melhores soluções"),
+          cta_text: "Entre em contato",
+          cta_link: "#contato",
+          background_image: "",
+          show_cta: true
+        },
+        slots:{}
+      };
+    }
+    if (id === "sobre") {
+      data[id] = {
+        fields:{
+          title: "Sobre nós",
+          description: or(o.businessDescription,"Empresa líder no mercado"),
+          image: "",
+          years_experience: "5",
+          mission: "Nossa missão é oferecer excelência",
+          vision: "Ser referência no setor",
+          values: "Qualidade, Integridade, Inovação"
+        },
+        slots:{}
+      };
+    }
+    if (id === "servicos") {
+      data[id] = { fields:{ title:"Nossos Serviços", description:"Confira nossos principais serviços" }, slots:{} };
+    }
+    if (id === "portfolio") {
+      data[id] = { fields:{ title:"Portfólio", description:"Veja alguns de nossos trabalhos" }, slots:{} };
+    }
+    if (id === "depoimentos") {
+      data[id] = { fields:{ }, slots:{} };
+    }
+    if (id === "contato") {
+      data[id] = {
+        fields:{
+          email: or(o.email,""),
+          whatsapp: or(o.whatsapp,""),
+          address: fullAddress(o.endereco),
+          maps_url: gmapsLink(o.endereco),
+          instagram: "",
+          facebook: "",
+          tiktok: ""
+        },
+        slots:{}
+      };
+    }
+    if (!data[id]) data[id] = { fields:{}, slots:{} };
+  });
+
+  mergeSettingsKV_(site, { sections: { data: data } });
+
+  return { bootstrapped: Object.keys(data).length };
+}
+
+/** ============================= FUNÇÕES UTILITÁRIAS FINAIS ============================= */
+
+function emailAvailableForOnboarding_(ss, email, site) {
+  site = normalizeSlug_(site);
+  email = String(email||"").trim().toLowerCase();
+
+  var shS = ss.getSheetByName("settings");
+  if (shS) {
+    var lastS = shS.getLastRow();
+    if (lastS >= 2) {
+      var hS = shS.getRange(1,1,1,shS.getLastColumn()).getValues()[0].map(String);
+      var iSite = hS.indexOf("siteSlug");
+      var iMail = hS.indexOf("email");
+      if (iSite !== -1 && iMail !== -1) {
+        var vals = shS.getRange(2,1,lastS-1,shS.getLastColumn()).getValues();
+        for (var r = 0; r < vals.length; r++) {
+          var s = String(vals[r][iSite]||"").trim().toUpperCase();
+          var e = String(vals[r][iMail]||"").trim().toLowerCase();
+          if (e && e === email && s && s !== site) return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+function hasApprovedEventForIds_(ss, mpid, pre) {
+  var sh = ss.getSheetByName("dados"); if (!sh) return false;
+  var last = sh.getLastRow(); if (last < 2) return false;
+
+  var h = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+  var iMp   = h.indexOf("mp_id");
+  var iPre  = h.indexOf("preapproval_id");
+  var iStat = h.indexOf("status");
+  if (iMp === -1 || iPre === -1 || iStat === -1) return false;
+
+  var rows = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+  for (var r = rows.length - 1; r >= 0; r--) {
+    var row = rows[r];
+    var mOk = mpid && String(row[iMp]||"") === mpid;
+    var pOk = pre  && String(row[iPre]||"") === pre;
+    if (mOk || pOk) {
+      var st = String(row[iStat]||"").toLowerCase();
+      if (isActiveStatus_(st)) return true;
+    }
+  }
+  return false;
+}
+
+function emailMatchesEvent_(ss, email, mpid, pre) {
+  var sh = ss.getSheetByName("dados"); if (!sh) return false;
+  var last = sh.getLastRow(); if (last < 2) return false;
+
+  var h = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+  var iMp   = h.indexOf("mp_id");
+  var iPre  = h.indexOf("preapproval_id");
+  var iMail = h.indexOf("payer_email");
+  if (iMp === -1 || iPre === -1 || iMail === -1) return false;
+
+  var rows = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+  for (var r = rows.length - 1; r >= 0; r--) {
+    var row = rows[r];
+    var mOk = mpid && String(row[iMp]||"") === mpid;
+    var pOk = pre  && String(row[iPre]||"") === pre;
+    if (mOk || pOk) {
+      var e = String(row[iMail]||"").trim().toLowerCase();
+      return e && e === String(email||"").trim().toLowerCase();
+    }
+  }
+  return false;
+}
+
+function hasRecentApprovedEventForEmail_(ss, email, maxDays) {
+  var sh = ss.getSheetByName("dados"); if (!sh) return false;
+  var last = sh.getLastRow(); if (last < 2) return false;
+
+  var h = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+  var iTs   = h.indexOf("timestamp");
+  var iMail = h.indexOf("payer_email");
+  var iStat = h.indexOf("status");
+  if (iTs === -1 || iMail === -1 || iStat === -1) return false;
+
+  var since = Date.now() - ((parseInt(maxDays,10)||0) * 24 * 60 * 60 * 1000);
+  var rows = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+  for (var r = rows.length - 1; r >= 0; r--) {
+    var row = rows[r];
+    var e = String(row[iMail]||"").trim().toLowerCase();
+    if (!e || e !== String(email||"").trim().toLowerCase()) continue;
+
+    var st = String(row[iStat]||"").toLowerCase();
+    if (!isActiveStatus_(st)) continue;
+
+    var ts = row[iTs] ? new Date(row[iTs]).getTime() : 0;
+    if (!since || (ts && ts >= since)) return true;
+  }
+  return false;
+}
+
+/** ============================= FUNÇÕES DE ESTRUTURA DE SITE ESPECÍFICAS ============================= */
+
+function get_site_structure(site) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    if (!structureSheet) {
+      return { ok: false, error: "Planilha site_structure não encontrada" };
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+
+    if (siteIdx === -1 || structureIdx === -1) {
+      return { ok: false, error: "Headers obrigatórios não encontrados" };
+    }
+
+    const data = structureSheet.getRange(2, 1, structureSheet.getLastRow() - 1, structureSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const structureJson = String(data[i][structureIdx] || "");
+        if (structureJson) {
+          try {
+            const structure = JSON.parse(structureJson);
+            return {
+              ok: true,
+              structure: structure
+            };
+          } catch (e) {
+            return { ok: false, error: "Erro ao parsear estrutura JSON: " + e.message };
+          }
+        }
+      }
+    }
+
+    return { ok: false, error: "Estrutura não encontrada para o site" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao buscar estrutura: " + e.message };
+  }
+}
+
+function save_site_structure(site, structure) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    if (!structureSheet) {
+      structureSheet = ss.insertSheet("site_structure");
+      structureSheet.getRange(1, 1, 1, 4).setValues([["siteSlug", "structure", "lastUpdated", "businessType"]]);
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+    const businessIdx = headers.indexOf("businessType");
+
+    const structureJson = JSON.stringify(structure);
+    const now = new Date().toISOString();
+    const businessType = structure.businessType || "service";
+
+    const data = structureSheet.getRange(2, 1, Math.max(1, structureSheet.getLastRow() - 1), structureSheet.getLastColumn()).getValues();
+    let rowToUpdate = -1;
+
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        rowToUpdate = i + 2;
+        break;
+      }
+    }
+
+    if (rowToUpdate !== -1) {
+      structureSheet.getRange(rowToUpdate, structureIdx + 1).setValue(structureJson);
+      structureSheet.getRange(rowToUpdate, updatedIdx + 1).setValue(now);
+      structureSheet.getRange(rowToUpdate, businessIdx + 1).setValue(businessType);
+    } else {
+      const newRow = new Array(structureSheet.getLastColumn()).fill("");
+      newRow[siteIdx] = site;
+      newRow[structureIdx] = structureJson;
+      newRow[updatedIdx] = now;
+      newRow[businessIdx] = businessType;
+      
+      structureSheet.appendRow(newRow);
+    }
+
+    return { ok: true, message: "Estrutura salva com sucesso" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao salvar estrutura: " + e.message };
+  }
+}
+
+function validate_vip_pin(site, pin) {
+  try {
+    if (!pin) {
+      return { ok: false, valid: false, error: "PIN não fornecido" };
+    }
+
+    const ss = openSS_();
+    const usuariosSheet = ss.getSheetByName("usuarios");
+    
+    if (!usuariosSheet) {
+      return { ok: false, valid: false, error: "Planilha usuarios não encontrada" };
+    }
+
+    const headers = usuariosSheet.getRange(1, 1, 1, usuariosSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("site");
+    const pinIdx = headers.indexOf("vip_pin");
+    const planoIdx = headers.indexOf("plano");
+
+    if (siteIdx === -1) {
+      return { ok: false, valid: false, error: "Coluna site não encontrada" };
+    }
+
+    const data = usuariosSheet.getRange(2, 1, usuariosSheet.getLastRow() - 1, usuariosSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const storedPin = String(data[i][pinIdx] || "").trim();
+        const plano = String(data[i][planoIdx] || "").toLowerCase();
+        
+        const isVip = plano.includes("vip") || plano === "premium";
+        const pinValid = storedPin && storedPin === pin;
+        
+        return {
+          ok: true,
+          valid: isVip && pinValid,
+          isVip: isVip,
+          pinMatch: pinValid
+        };
+      }
+    }
+
+    return { ok: false, valid: false, error: "Site não encontrado" };
+    
+  } catch (e) {
+    return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
+  }
+}
+
+function detectBusinessType(businessName, businessDescription, businessCategory) {
+  if (businessCategory) return businessCategory;
+
+  var combined = (businessName + " " + businessDescription).toLowerCase();
+  
+  if (combined.match(/(medic|doutor|doutora|clinic|psicolog|fisioter|odonto|dent|saude|health)/)) {
+    return "health";
+  }
+  if (combined.match(/(restaur|lanche|pizza|burger|food|comida|coz|gastr)/)) {
+    return "food";
+  }
+  if (combined.match(/(oficina|mecanic|auto|carro|veiculo|motor)/)) {
+    return "automotive";
+  }
+  if (combined.match(/(joia|anel|colar|relogio|ouro|prata|alianca)/)) {
+    return "jewelry";
+  }
+  if (combined.match(/(constru|reforma|obra|pedreiro|engenh|arquitet)/)) {
+    return "construction";
+  }
+  if (combined.match(/(tech|software|site|app|sistem|program|desenvol)/)) {
+    return "technology";
+  }
+  
+  return "general";
+}
