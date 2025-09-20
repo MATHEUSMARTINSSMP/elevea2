@@ -17,34 +17,71 @@ const PALETAS = [
   { name: "Laranja Energia", colors: ["#7c2d12", "#f97316", "#fb923c"] },
 ];
 
-/* ================= Tipos ================= */
+/* ===== Tipos ===== */
 type StatusResp = {
   ok: boolean;
   siteSlug: string;
-  plan?: string;
   status?: string;
+  plan?: string;
   nextCharge?: string | null;
   lastPayment?: { date: string; amount: number } | null;
 };
-type ClientSettings = {
-  heroTitle?: string;
-  aboutText?: string;
-  services?: Array<{ title: string; description?: string }>;
-  colors?: string[];
-};
-type ImageSlot = { key: string; label: string; url?: string };
+
 type Feedback = {
   id: string;
-  timestamp: string;
   name?: string;
-  rating?: number;
-  comment?: string;
+  message: string;
+  timestamp: string;
+  approved?: boolean;
   email?: string;
   phone?: string;
-  approved?: boolean;
 };
 
-/* ================= Helpers ================= */
+type ClientSettings = {
+  showBrand?: boolean;
+  showPhone?: boolean;
+  showWhatsApp?: boolean;
+  whatsAppNumber?: string;
+  footerText?: string;
+  theme?: { primary: string; background: string; accent: string };
+  customCSS?: string;
+  vipPin?: string;
+};
+
+type ImageSlot = { key: string; label: string; url?: string };
+
+/* ===== fetch com timeout real (AbortController) ===== */
+async function getJSON<T = any>(url: string, ms: number): Promise<T> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctl.signal, credentials: "include" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctl.signal,
+      credentials: "include",
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* ===== helpers ===== */
 const norm = (s?: string) => String(s ?? "").trim().toLowerCase();
 const looksVip = (p?: string) => !!p && (norm(p) === "vip" || norm(p).includes("vip"));
 const isActiveStatus = (s?: string) =>
@@ -61,43 +98,6 @@ const fmtDateTime = (s?: string | null) => {
     d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
   );
 };
-
-/* ===== fetch com timeout real (AbortController) ===== */
-async function getJSON<T = any>(url: string, ms: number): Promise<T> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), ms);
-  try {
-    const r = await fetch(url, { credentials: "include", signal: ctl.signal });
-    const text = await r.text();
-    let data: any = {};
-    try { data = text ? JSON.parse(text) : {}; } catch {}
-    if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
-    return data as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), ms);
-  try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(body),
-      signal: ctl.signal,
-    });
-    const text = await r.text();
-    let data: any = {};
-    try { data = text ? JSON.parse(text) : {}; } catch {}
-    if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
-    return data as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /* ================= Página ================= */
 export default function ClientDashboard() {
@@ -144,86 +144,54 @@ export default function ClientDashboard() {
     if (user?.role === "admin") window.location.replace("/admin/dashboard");
   }, [user?.role]);
 
-  /* 1) OTIMIZADO: Cache inteligente + carregamento paralelo */
+  /* 1) Carrega plano principal */
   useEffect(() => {
     if (!canQuery) return;
 
-    // Cache com TTL de 2 minutos
-    const getCached = () => {
-      try {
-        const cached = localStorage.getItem(`dashboard:${user!.siteSlug}`);
-        if (!cached) return null;
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp > 120000) return null; // 2min TTL
-        return data;
-      } catch { return null; }
-    };
-
-    // Carrega cache primeiro se disponível
+    // abre com último plano conhecido (se existir)
     if (!onceRef.current) {
       onceRef.current = true;
-      const cached = getCached();
-      if (cached) {
-        setPlan(cached.plan);
-        setStatus(cached.status);
-      }
+      try {
+        const last = sessionStorage.getItem(cacheKey);
+        if (last) setPlan(last);
+      } catch {}
     }
 
     let alive = true;
     (async () => {
       setCheckingPlan(true);
       setPlanErr(null);
-
       try {
-        // PARALELO: Plano + Status juntos
-        const [planRes, statusRes] = await Promise.allSettled([
-          getJSON<{
-            ok: boolean; vip: boolean; plan: string; status?: string;
-            nextCharge?: string | null; lastPayment?: { date: string; amount: number } | null;
-          }>(
-            `/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}&email=${encodeURIComponent(user!.email)}`,
-            PLAN_TIMEOUT_MS
-          ),
-          getJSON<StatusResp>(
-            `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
-            PLAN_TIMEOUT_MS
-          )
-        ]);
+        const r = await getJSON<{
+          ok: boolean;
+          vip: boolean;
+          plan: string;
+          status?: string;
+          nextCharge?: string | null;
+          lastPayment?: { date: string; amount: number } | null;
+        }>(
+          `/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}&email=${encodeURIComponent(
+            user!.email
+          )}`,
+          PLAN_TIMEOUT_MS
+        );
 
         if (!alive) return;
+        const resolvedPlan = r.vip ? "vip" : (r.plan || "");
+        setPlan(resolvedPlan);
+        try { sessionStorage.setItem(cacheKey, resolvedPlan); } catch {}
 
-        // Processa resultado do plano
-        const planData = planRes.status === 'fulfilled' ? planRes.value : null;
-        const statusData = statusRes.status === 'fulfilled' ? statusRes.value : null;
-
-        if (planData) {
-          const resolvedPlan = planData.vip ? "vip" : (planData.plan || "");
-          setPlan(resolvedPlan);
-
-          // Combina dados de ambas as fontes
-          const combinedStatus = {
-            ok: true,
-            siteSlug: user!.siteSlug!,
-            status: planData.status,
-            nextCharge: planData.nextCharge,
-            lastPayment: planData.lastPayment,
-            plan: resolvedPlan,
-          };
-          setStatus(combinedStatus);
-
-          // Cache otimizado
-          try {
-            localStorage.setItem(`dashboard:${user!.siteSlug}`, JSON.stringify({
-              data: { plan: resolvedPlan, status: combinedStatus },
-              timestamp: Date.now()
-            }));
-          } catch {}
-        }
+        // hidrata status com o que já veio
+        setStatus({
+          ok: true,
+          siteSlug: user!.siteSlug!,
+          status: r.status,
+          nextCharge: r.nextCharge,
+          lastPayment: r.lastPayment,
+          plan: resolvedPlan,
+        });
       } catch (e: any) {
-        if (alive) {
-          console.error("Erro ao carregar plano:", e);
-          setPlanErr("Erro ao carregar. Tente novamente.");
-        }
+        setPlanErr("Não foi possível validar sua assinatura agora.");
       } finally {
         if (alive) setCheckingPlan(false);
       }
@@ -245,20 +213,20 @@ export default function ClientDashboard() {
     if (!canQuery) return;
     let alive = true;
 
-    // STATUS (completo)
+    // STATUS (atualiza se necessário)
     (async () => {
+      if (status?.nextCharge && status?.lastPayment) {
+        setLoadingStatus(false);
+        return; // já tem dados do plano
+      }
+      
       try {
         const s = await getJSON<StatusResp>(
           `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
           CARDS_TIMEOUT_MS
         );
         if (!alive) return;
-        setStatus(s);
-        // redundância para garantir VIP cedo
-        if (!looksVip(plan || undefined) && (looksVip(s.plan) || isActiveStatus(s.status))) {
-          setPlan("vip");
-          try { sessionStorage.setItem(cacheKey, "vip"); } catch {}
-        }
+        setStatus(prev => ({ ...prev, ...s }));
       } catch {}
       finally {
         if (alive) setLoadingStatus(false);
@@ -273,7 +241,8 @@ export default function ClientDashboard() {
           CARDS_TIMEOUT_MS
         ).catch(() => ({ ok: true, settings: {} as ClientSettings }));
         if (!alive) return;
-        setSettings((prev) => ({ ...prev, ...(st.settings || {}) }));
+        setSettings(st.settings || {});
+        setVipPin(st.settings?.vipPin || "");
       } catch {}
       finally {
         if (alive) setLoadingSettings(false);
@@ -288,28 +257,23 @@ export default function ClientDashboard() {
           CARDS_TIMEOUT_MS
         ).catch(() => ({ ok: true, items: [] as any[] }));
         if (!alive) return;
-        const urlByKey = new Map<string, string>(assets.items.map((i): [string, string] => [i.key, i.url]));
-        const ALIASES: Record<string, string[]> = {
-          media_1: ["media_1", "hero", "banner", "principal"],
-          media_2: ["media_2", "destaque_1", "gallery_1"],
-          media_3: ["media_3", "destaque_2", "gallery_2"],
-          media_4: ["media_4", "gallery_3"],
-          media_5: ["media_5", "gallery_4"],
-          media_6: ["media_6", "gallery_5"],
-        };
-        setSlots((prev) =>
-          prev.map((sl) => {
-            const hit = (ALIASES[sl.key] || [sl.key]).find((k) => urlByKey.get(k));
-            return { ...sl, url: hit ? (urlByKey.get(hit) as string) : sl.url };
-          })
-        );
+        const mapped = new Map<string, string>();
+        assets.items.forEach((a) => mapped.set(a.key, a.url));
+        setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
       } catch {}
       finally {
         if (alive) setLoadingAssets(false);
       }
     })();
 
-    // FEEDBACKS (Essential vê aprovados, VIP vê todos)
+    return () => { alive = false; };
+  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment]);
+
+  /* 3) FEEDBACKS - depende do estado VIP e PIN */
+  useEffect(() => {
+    if (!canQuery) return;
+    let alive = true;
+
     (async () => {
       try {
         let fb: { ok: boolean; items: Feedback[] };
@@ -321,24 +285,23 @@ export default function ClientDashboard() {
             CARDS_TIMEOUT_MS
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         } else {
-          // Essential: só feedbacks públicos/aprovados
+          // Sem PIN ou não-VIP: apenas feedbacks públicos/aprovados
           fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
             `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
             CARDS_TIMEOUT_MS
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         }
 
+        if (!alive) return;
         setFeedbacks(fb.items || []);
-      } catch (e) {
-        console.error("Erro ao carregar feedbacks:", e);
-        setFeedbacks([]);
-      } finally {
-        setLoadingFeedbacks(false);
+      } catch {}
+      finally {
+        if (alive) setLoadingFeedbacks(false);
       }
     })();
 
     return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, user?.email, vipEnabled, vipPin]);
+  }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
 
   /* Ações */
   async function saveSettings(partial: Partial<ClientSettings>) {
@@ -418,25 +381,9 @@ export default function ClientDashboard() {
                 />
               </>
             ) : checkingPlan ? (
-              <span className="rounded-xl bg-slate-200 text-slate-700 px-3 py-2 text-xs">Verificando…</span>
+              <span className="rounded-xl bg-yellow-500/15 text-yellow-700 border border-yellow-300 px-3 py-1 text-xs font-medium">Verificando…</span>
             ) : (
-              <div className="flex items-center gap-2">
-                <a
-                  href={UPGRADE_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium hover:bg-emerald-400 text-black"
-                >
-                  Desbloquear VIP
-                </a>
-                <button
-                  onClick={retryPlan}
-                  className="rounded-xl bg-slate-900 text-white px-3 py-2 text-xs hover:opacity-90"
-                  title="Se você é VIP e não apareceu, tente novamente"
-                >
-                  Tentar novamente
-                </button>
-              </div>
+              <span className="rounded-xl bg-slate-500/15 text-slate-700 border border-slate-300 px-3 py-1 text-xs font-medium">Plano Essential</span>
             )}
             <button onClick={logout} className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm hover:opacity-90">
               Sair
@@ -444,11 +391,17 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        {planErr ? (
-          <div className="rounded-2xl bg-yellow-900/30 border border-yellow-700/50 text-yellow-100 px-4 py-3">
-            {planErr}
+        {/* ERRO DE PLANO */}
+        {planErr && (
+          <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">{planErr}</span>
+              <button onClick={retryPlan} className="rounded-lg bg-red-500 text-white px-3 py-1 text-xs hover:bg-red-600">
+                Tentar novamente
+              </button>
+            </div>
           </div>
-        ) : null}
+        )}
 
         {/* RESUMO */}
         <section className="grid md:grid-cols-4 gap-4">
@@ -461,209 +414,173 @@ export default function ClientDashboard() {
           }/>
         </section>
 
-        {/* GATE VIP */}
-        <VipGate
-          enabled={vipEnabled}
-          checking={checkingPlan}
-          teaser="No VIP você pode trocar imagens, textos e cores do seu site em tempo real."
-        >
-          {/* Mídias */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Banco de Mídias</h3>
-              <div className="text-xs text-white/60">
-                Dica: envie arquivos na pasta do Drive: <em>Elevea Sites / SITE-{user?.siteSlug} / logo, fotos</em>.
-              </div>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {slots.map((slot) => (
-                <ImageCard
-                  key={slot.key}
-                  slot={slot}
-                  loading={loadingAssets}
-                  onSelectFile={async (f) => {
-                    try { await handleUpload(slot, f); }
-                    catch (e: any) { alert(e?.message || "Falha no upload"); }
-                  }}
-                />
-              ))}
-            </div>
-          </section>
-
-          {/* Textos */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-4">
-            <h3 className="font-semibold">Textos &amp; Títulos</h3>
-            <div className="grid gap-2 max-w-2xl">
-              <label className="text-sm text-white/70">Título do topo (Hero)</label>
-              <input
-                disabled={loadingSettings}
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-white placeholder-white/40 disabled:opacity-60"
-                placeholder="Ex.: Sua empresa, seu próximo nível"
-                value={settings.heroTitle || ""}
-                onChange={(e) => setSettings((s) => ({ ...s, heroTitle: e.target.value }))}
-              />
-            </div>
-            <div className="grid gap-2 max-w-2xl">
-              <label className="text-sm text-white/70">Texto da seção "Sobre"</label>
-              <textarea
-                disabled={loadingSettings}
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-white placeholder-white/40 min-h-[100px] disabled:opacity-60"
-                placeholder="Conte em poucas linhas a história ou diferencial do seu negócio."
-                value={settings.aboutText || ""}
-                onChange={(e) => setSettings((s) => ({ ...s, aboutText: e.target.value }))}
-              />
-            </div>
-
-            {settings.services && settings.services.length > 0 ? (
-              <>
-                <div className="grid md:grid-cols-3 gap-4">
-                  {settings.services.map((svc, idx) => (
-                    <div key={idx} className="rounded-xl bg-white/5 border border-white/10 p-3 space-y-2">
-                      <label className="text-sm text-white/70">Serviço {idx + 1}</label>
-                      <input
-                        disabled={loadingSettings}
-                        className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-white placeholder-white/40 disabled:opacity-60"
-                        placeholder={`Título do serviço ${idx + 1}`}
-                        value={svc.title}
-                        onChange={(e) => {
-                          setSettings((s) => {
-                            const next = [...(s.services || [])];
-                            next[idx] = { ...next[idx], title: e.target.value };
-                            return { ...s, services: next };
-                          });
-                        }}
-                      />
-                      <textarea
-                        disabled={loadingSettings}
-                        className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-white placeholder-white/40 min-h-[80px] disabled:opacity-60"
-                        placeholder="Descrição (opcional)"
-                        value={svc.description || ""}
-                        onChange={(e) => {
-                          setSettings((s) => {
-                            const next = [...(s.services || [])];
-                            next[idx] = { ...next[idx], description: e.target.value };
-                            return { ...s, services: next };
-                          });
-                        }}
-                      />
-                    </div>
-                  ))}
+        {/* CONTEÚDO PRINCIPAL */}
+        <div className="grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            {/* CONFIGURAÇÕES */}
+            <VipGate enabled={vipEnabled} checking={checkingPlan} teaser="Configure aparência, tema e PIN VIP">
+              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
+                <h2 className="text-lg font-semibold">Configurações Gerais</h2>
+                
+                <div className="grid md:grid-cols-2 gap-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={settings.showBrand ?? true}
+                      onChange={(e) => saveSettings({ showBrand: e.target.checked })}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Mostrar marca no rodapé</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={settings.showPhone ?? false}
+                      onChange={(e) => saveSettings({ showPhone: e.target.checked })}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Mostrar telefone</span>
+                  </label>
                 </div>
-                <div className="text-xs text-white/60">* Se sua landing não usa "Serviços", basta deixar em branco — nada será publicado.</div>
-              </>
-            ) : (
-              <div className="text-sm text-white/60">Esta landing não usa cards de serviços.</div>
-            )}
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => saveSettings({})}
-                disabled={saving || loadingSettings}
-                className="rounded-xl bg-white text-black px-4 py-2 text-sm font-medium hover:bg-white/90 disabled:opacity-60"
-              >
-                {saving ? "Salvando..." : "Salvar alterações"}
-              </button>
-            </div>
-          </section>
-
-          {/* Cores */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-4">
-            <h3 className="font-semibold">Personalize as cores do site</h3>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {PALETAS.map((p) => (
-                <button
-                  key={p.name}
-                  disabled={loadingSettings}
-                  onClick={() => saveSettings({ colors: p.colors })}
-                  className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col items-center hover:border-white/30 disabled:opacity-60"
-                >
-                  <div className="flex gap-1 mb-2">
-                    {p.colors.map((c) => <div key={c} className="w-6 h-6 rounded" style={{ backgroundColor: c }} />)}
+                {settings.showPhone && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Número WhatsApp</label>
+                    <input
+                      type="tel"
+                      value={settings.whatsAppNumber || ""}
+                      onChange={(e) => saveSettings({ whatsAppNumber: e.target.value })}
+                      placeholder="(11) 99999-9999"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
                   </div>
-                  <span className="text-sm">{p.name}</span>
-                </button>
-              ))}
-            </div>
+                )}
 
-            {settings.colors?.length ? (
-              <div className="text-sm text-white/70">
-                <div className="mt-4">Paleta selecionada:</div>
-                <div className="flex gap-2 mt-2">
-                  {settings.colors.map((c) => (
-                    <span key={c} className="inline-flex items-center justify-center rounded px-2 py-1 border border-white/10" style={{ backgroundColor: c }}>
-                      <span className="text-[10px] mix-blend-difference">{c}</span>
-                    </span>
+                <div>
+                  <label className="block text-sm font-medium mb-1">PIN VIP</label>
+                  <input
+                    type="password"
+                    value={vipPin}
+                    onChange={(e) => {
+                      setVipPin(e.target.value);
+                      saveSettings({ vipPin: e.target.value });
+                    }}
+                    placeholder="Defina um PIN para acessar recursos VIP"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Use este PIN para acessar todas as funcionalidades do painel</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Paleta de cores</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {PALETAS.map((pal, i) => (
+                      <button
+                        key={i}
+                        onClick={() => saveSettings({
+                          theme: { primary: pal.colors[1], background: pal.colors[0], accent: pal.colors[2] }
+                        })}
+                        className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50"
+                      >
+                        <div className="flex gap-1">
+                          {pal.colors.map((c, j) => (
+                            <div key={j} className="w-4 h-4 rounded" style={{ backgroundColor: c }} />
+                          ))}
+                        </div>
+                        <span className="text-xs">{pal.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </VipGate>
+
+            {/* MÍDIAS */}
+            <VipGate enabled={vipEnabled} checking={loadingAssets} teaser="Personalize imagens e vídeos do seu site">
+              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
+                <h2 className="text-lg font-semibold">Gerenciar Mídias</h2>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {slots.map((slot) => (
+                    <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />
                   ))}
                 </div>
-              </div>
-            ) : null}
-          </section>
+              </section>
+            </VipGate>
+          </div>
 
-          {/* Feedbacks */}
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Feedbacks de Clientes</h3>
+          <div className="space-y-6">
+            {/* FEEDBACKS */}
+            <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Feedbacks Recentes</h2>
+                <span className="text-xs text-white/60">
+                  {vipEnabled && vipPin ? "Todos os feedbacks" : "Apenas aprovados"}
+                </span>
+              </div>
               <div className="text-xs text-white/60">E-mail e telefone ficam **somente aqui** (não são publicados).</div>
-            </div>
 
-            {loadingFeedbacks ? (
-              <div className="text-white/60 text-sm">Carregando…</div>
-            ) : feedbacks.length === 0 ? (
-              <div className="text-white/60 text-sm">Nenhum feedback ainda.</div>
-            ) : (
-              <div className="space-y-3">
-                {feedbacks.map((f) => (
-                  <div key={f.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="flex items-center gap-2 text-xs text-white/60">
-                      <span>{fmtDateTime(f.timestamp)}</span>
-                      {f.approved ? (
-                        <span className="rounded bg-emerald-500/20 text-emerald-300 px-2 py-0.5">Publicado</span>
-                      ) : (
-                        <span className="rounded bg-yellow-500/20 text-yellow-300 px-2 py-0.5">Pendente</span>
-                      )}
+              {loadingFeedbacks ? (
+                <div className="text-white/60 text-sm">Carregando…</div>
+              ) : feedbacks.length === 0 ? (
+                <div className="text-white/60 text-sm">Nenhum feedback ainda.</div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {feedbacks.slice(0, 10).map((f) => (
+                    <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 text-xs text-white/60">
+                            <span>{f.name || "Anônimo"}</span>
+                            <span>•</span>
+                            <span>{fmtDateTime(f.timestamp)}</span>
+                            {f.approved && <span className="text-emerald-400">✓ Aprovado</span>}
+                          </div>
+                          <p className="text-sm text-white mt-1 break-words">{f.message}</p>
+                          {(f.email || f.phone) && (
+                            <div className="text-xs text-white/50 mt-1">
+                              {f.email && <span>📧 {f.email}</span>}
+                              {f.email && f.phone && <span> • </span>}
+                              {f.phone && <span>📞 {f.phone}</span>}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {vipEnabled && vipPin && (
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setFeedbackApproval(f.id, true)}
+                              className={`px-2 py-1 text-xs rounded ${f.approved ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/70 hover:bg-emerald-600'}`}
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => setFeedbackApproval(f.id, false)}
+                              className={`px-2 py-1 text-xs rounded ${!f.approved ? 'bg-red-600 text-white' : 'bg-white/10 text-white/70 hover:bg-red-600'}`}
+                            >
+                              ✗
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm flex flex-wrap gap-x-2 gap-y-1">
-                      <span className="font-medium">{f.name || "Cliente"}</span>
-                      {typeof f.rating === "number" ? <span>• {f.rating}/5</span> : null}
-                      {f.email ? <span className="text-white/60">• {f.email}</span> : null}
-                      {f.phone ? <span className="text-white/60">• {f.phone}</span> : null}
-                    </div>
-                    {f.comment ? <div className="mt-1 text-white/80">{f.comment}</div> : null}
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        onClick={() => setFeedbackApproval(f.id, true)}
-                        disabled={!vipPin}
-                        className="rounded-lg bg-emerald-500 text-black px-3 py-1.5 text-xs font-medium disabled:opacity-60"
-                        title={vipPin ? "" : "Informe o PIN VIP no topo"}
-                      >
-                        Publicar
-                      </button>
-                      <button
-                        onClick={() => setFeedbackApproval(f.id, false)}
-                        disabled={!vipPin}
-                        className="rounded-lg bg-slate-700 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-60"
-                        title={vipPin ? "" : "Informe o PIN VIP no topo"}
-                      >
-                        Ocultar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </VipGate>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ---------- UI helpers ---------- */
-function Card({ title, value }: { title: string; value: React.ReactNode }) {
+/* ================= COMPONENTES ================= */
+function Card({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-      <div className="text-sm text-white/70">{title}</div>
-      <div className="mt-1 text-xl font-semibold text-white">{value}</div>
+    <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-4">
+      <div className="text-xs text-slate-500 uppercase tracking-wide">{title}</div>
+      <div className="text-lg font-semibold mt-1">{value}</div>
     </div>
   );
 }
@@ -706,38 +623,47 @@ function VipGate({
   );
 }
 
-function ImageCard({
-  slot, loading, onSelectFile,
-}: { slot: ImageSlot; loading?: boolean; onSelectFile: (file: File) => Promise<void>; }) {
-  const [busy, setBusy] = useState(false);
-  const showBusy = busy || loading;
+function MediaSlot({ slot, onUpload }: { slot: ImageSlot; onUpload: (slot: ImageSlot, file: File) => Promise<void> }) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploading(true);
+    try {
+      await onUpload(slot, file);
+    } catch (err: any) {
+      alert(err?.message || "Erro no upload");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-      <div className="aspect-video bg-black/30 grid place-items-center">
-        {slot.url ? <img src={slot.url} alt={slot.label} className="w-full h-full object-cover" /> :
-          <span className="text-white/40 text-sm">{loading ? "Carregando…" : "Sem imagem"}</span>}
-      </div>
-      <div className="p-3 flex items-center justify-between gap-3">
-        <div className="text-sm text-white/80">{slot.label}</div>
-        <label className={`inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm cursor-pointer ${
-          showBusy ? "bg-white/10 text-white/50 cursor-not-allowed" : "bg-white text-black hover:bg-white/90"
-        }`}>
-          {showBusy ? "Aguarde…" : "Trocar"}
+    <div className="border rounded-lg p-3">
+      <div className="text-sm font-medium mb-2">{slot.label}</div>
+      {slot.url ? (
+        <div className="space-y-2">
+          <img src={slot.url} alt={slot.label} className="w-full h-24 object-cover rounded" />
           <input
             type="file"
-            accept="image/*"
-            className="hidden"
-            disabled={showBusy}
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              setBusy(true);
-              try { await onSelectFile(f); }
-              finally { setBusy(false); e.currentTarget.value = ""; }
-            }}
+            accept="image/*,video/*"
+            onChange={handleFileChange}
+            disabled={uploading}
+            className="w-full text-xs"
           />
-        </label>
-      </div>
+        </div>
+      ) : (
+        <input
+          type="file"
+          accept="image/*,video/*"
+          onChange={handleFileChange}
+          disabled={uploading}
+          className="w-full text-xs"
+        />
+      )}
+      {uploading && <div className="text-xs text-blue-600">Enviando...</div>}
     </div>
   );
 }

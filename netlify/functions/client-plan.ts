@@ -46,10 +46,9 @@ export const handler = async (event: any) => {
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
         }),
-        fetch(GAS_BASE_URL, {
-          method: "POST", 
+        fetch(`${GAS_BASE_URL}?type=client_billing&email=${encodeURIComponent(email)}`, {
+          method: "GET", 
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "client_billing", email }),
           signal: controller.signal,
         }),
       ]);
