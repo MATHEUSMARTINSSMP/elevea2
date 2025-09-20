@@ -3650,6 +3650,284 @@ function validate_vip_pin(site, pin) {
   }
 }
 
+/**
+ * Cria estrutura de site padrão baseada no tipo de negócio detectado
+ */
+function createSiteStructureByType(site, businessCategory, onboardingData) {
+  const baseStructure = {
+    siteSlug: site,
+    businessType: businessCategory,
+    lastUpdated: new Date().toISOString(),
+    sections: []
+  };
+  
+  // Seções comuns para todos os tipos
+  const commonSections = [
+    {
+      id: "header",
+      name: "Cabeçalho",
+      visible: true,
+      data: {
+        brand: onboardingData.empresa || site,
+        nav_links: "#sobre,#servicos,#depoimentos,#contato"
+      }
+    },
+    {
+      id: "hero", 
+      name: "Hero Principal",
+      visible: true,
+      data: {
+        title: (onboardingData.empresa || site) + " - " + getBusinessTitle(businessCategory),
+        subtitle: onboardingData.historia || getBusinessSubtitle(businessCategory),
+        cta_whatsapp: onboardingData.whatsapp || ""
+      }
+    }
+  ];
+  
+  // Seções específicas por tipo de negócio
+  var specificSections = [];
+  
+  if (businessCategory === "health") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre o Profissional",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Profissional qualificado com experiência em cuidados de saúde, oferecendo atendimento personalizado e de qualidade.",
+          credentials: "CRM/CRO/CREFITO - Especialização"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Especialidades",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Consultas • Diagnósticos • Tratamentos • Acompanhamento"
+        }
+      },
+      {
+        id: "convenios",
+        name: "Convênios",
+        visible: true,
+        data: {
+          list: "Unimed • Bradesco Saúde • SulAmérica • Amil • Particular"
+        }
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa História",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Tradição e sabor se encontram em cada prato. Oferecemos uma experiência gastronômica única com ingredientes frescos e receitas especiais."
+        }
+      },
+      {
+        id: "cardapio",
+        name: "Cardápio",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Pratos Principais • Porções • Bebidas • Sobremesas"
+        }
+      },
+      {
+        id: "delivery",
+        name: "Delivery",
+        visible: true,
+        data: {
+          info: "Delivery próprio • iFood • Uber Eats • Rappi"
+        }
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Oficina",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Oficina especializada com profissionais qualificados e equipamentos modernos para cuidar do seu veículo com excelência."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Automotivos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Mecânica Geral • Elétrica • Freios • Suspensão • Ar Condicionado • Diagnóstico"
+        }
+      },
+      {
+        id: "marcas",
+        name: "Marcas Atendidas",
+        visible: true,
+        data: {
+          list: "Todas as marcas • Carros nacionais e importados • Motos • Utilitários"
+        }
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Joalheria",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Criamos peças únicas que eternizam momentos especiais. Tradição, elegância e sofisticação em cada joia."
+        }
+      },
+      {
+        id: "produtos",
+        name: "Nossos Produtos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Anéis • Colares • Brincos • Pulseiras • Alianças • Relógios • Peças Personalizadas"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Especiais",
+        visible: true,
+        data: {
+          list: "Design Personalizado • Reforma de Joias • Avaliação • Certificação • Garantia"
+        }
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa de construção com experiência sólida no mercado, oferecendo qualidade e pontualidade em todos os projetos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços de Construção",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Construção • Reforma • Ampliação • Acabamento • Elétrica • Hidráulica • Pintura"
+        }
+      },
+      {
+        id: "projetos",
+        name: "Tipos de Projeto",
+        visible: true,
+        data: {
+          list: "Residencial • Comercial • Industrial • Reformas • Manutenção"
+        }
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Soluções tecnológicas inovadoras para impulsionar seu negócio. Desenvolvimento, consultoria e suporte especializado."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Soluções Tecnológicas",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Desenvolvimento Web • Apps Mobile • Sistemas • Consultoria • Cloud • Suporte Técnico"
+        }
+      },
+      {
+        id: "tecnologias",
+        name: "Tecnologias",
+        visible: true,
+        data: {
+          list: "React • Node.js • Python • AWS • Google Cloud • Mobile • E-commerce"
+        }
+      }
+    ];
+  } else {
+    // general
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre Nós",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa comprometida com a excelência no atendimento e qualidade dos serviços oferecidos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Produtos e Serviços",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Atendimento personalizado • Qualidade garantida • Melhores preços • Entrega rápida"
+        }
+      }
+    ];
+  }
+  
+  // Seções finais comuns
+  const finalSections = [
+    {
+      id: "depoimentos",
+      name: "Depoimentos",
+      visible: true,
+      data: {
+        testimonials: []
+      }
+    },
+    {
+      id: "contato",
+      name: "Contato",
+      visible: true,
+      data: {
+        email: onboardingData.email || "",
+        whatsapp: onboardingData.whatsapp || "",
+        address: onboardingData.endereco || "",
+        maps_url: "",
+        instagram: "",
+        facebook: "",
+        tiktok: ""
+      }
+    }
+  ];
+  
+  baseStructure.sections = commonSections.concat(specificSections).concat(finalSections);
+  return baseStructure;
+}
+
+function getBusinessTitle(category) {
+  const titles = {
+    health: "Cuidando da sua saúde com excelência",
+    food: "Sabor que conquista",
+    automotive: "Seu veículo em boas mãos",
+    jewelry: "Joias que eternizam momentos",
+    construction: "Construindo seus sonhos",
+    technology: "Inovação e tecnologia",
+    general: "Qualidade e confiança"
+  };
+  return titles[category] || titles.general;
+}
+
+function getBusinessSubtitle(category) {
+  const subtitles = {
+    health: "Atendimento especializado e humanizado para o seu bem-estar",
+    food: "Tradição e qualidade em cada sabor que servimos",
+    automotive: "Manutenção e reparos automotivos com qualidade e confiança",
+    jewelry: "Criamos peças únicas para os seus momentos mais especiais",
+    construction: "Projetos executados com qualidade, segurança e pontualidade",
+    technology: "Soluções digitais que transformam e impulsionam seu negócio",
+    general: "Comprometidos com a excelência no atendimento e qualidade dos serviços"
+  };
+  return subtitles[category] || subtitles.general;
+}
+
 // === STATUS API (GET) ========================================================
 // Endpoints:
 //   ?type=validate&siteSlug=SLUG&cpf=XXXXXXXXXXX  -> valida slug/CPF antes do cadastro
@@ -3830,6 +4108,284 @@ function validate_vip_pin(site, pin) {
   } catch (e) {
     return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
   }
+}
+
+/**
+ * Cria estrutura de site padrão baseada no tipo de negócio detectado
+ */
+function createSiteStructureByType(site, businessCategory, onboardingData) {
+  const baseStructure = {
+    siteSlug: site,
+    businessType: businessCategory,
+    lastUpdated: new Date().toISOString(),
+    sections: []
+  };
+  
+  // Seções comuns para todos os tipos
+  const commonSections = [
+    {
+      id: "header",
+      name: "Cabeçalho",
+      visible: true,
+      data: {
+        brand: onboardingData.empresa || site,
+        nav_links: "#sobre,#servicos,#depoimentos,#contato"
+      }
+    },
+    {
+      id: "hero", 
+      name: "Hero Principal",
+      visible: true,
+      data: {
+        title: (onboardingData.empresa || site) + " - " + getBusinessTitle(businessCategory),
+        subtitle: onboardingData.historia || getBusinessSubtitle(businessCategory),
+        cta_whatsapp: onboardingData.whatsapp || ""
+      }
+    }
+  ];
+  
+  // Seções específicas por tipo de negócio
+  var specificSections = [];
+  
+  if (businessCategory === "health") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre o Profissional",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Profissional qualificado com experiência em cuidados de saúde, oferecendo atendimento personalizado e de qualidade.",
+          credentials: "CRM/CRO/CREFITO - Especialização"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Especialidades",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Consultas • Diagnósticos • Tratamentos • Acompanhamento"
+        }
+      },
+      {
+        id: "convenios",
+        name: "Convênios",
+        visible: true,
+        data: {
+          list: "Unimed • Bradesco Saúde • SulAmérica • Amil • Particular"
+        }
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa História",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Tradição e sabor se encontram em cada prato. Oferecemos uma experiência gastronômica única com ingredientes frescos e receitas especiais."
+        }
+      },
+      {
+        id: "cardapio",
+        name: "Cardápio",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Pratos Principais • Porções • Bebidas • Sobremesas"
+        }
+      },
+      {
+        id: "delivery",
+        name: "Delivery",
+        visible: true,
+        data: {
+          info: "Delivery próprio • iFood • Uber Eats • Rappi"
+        }
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Oficina",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Oficina especializada com profissionais qualificados e equipamentos modernos para cuidar do seu veículo com excelência."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Automotivos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Mecânica Geral • Elétrica • Freios • Suspensão • Ar Condicionado • Diagnóstico"
+        }
+      },
+      {
+        id: "marcas",
+        name: "Marcas Atendidas",
+        visible: true,
+        data: {
+          list: "Todas as marcas • Carros nacionais e importados • Motos • Utilitários"
+        }
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Joalheria",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Criamos peças únicas que eternizam momentos especiais. Tradição, elegância e sofisticação em cada joia."
+        }
+      },
+      {
+        id: "produtos",
+        name: "Nossos Produtos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Anéis • Colares • Brincos • Pulseiras • Alianças • Relógios • Peças Personalizadas"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Especiais",
+        visible: true,
+        data: {
+          list: "Design Personalizado • Reforma de Joias • Avaliação • Certificação • Garantia"
+        }
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa de construção com experiência sólida no mercado, oferecendo qualidade e pontualidade em todos os projetos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços de Construção",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Construção • Reforma • Ampliação • Acabamento • Elétrica • Hidráulica • Pintura"
+        }
+      },
+      {
+        id: "projetos",
+        name: "Tipos de Projeto",
+        visible: true,
+        data: {
+          list: "Residencial • Comercial • Industrial • Reformas • Manutenção"
+        }
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Soluções tecnológicas inovadoras para impulsionar seu negócio. Desenvolvimento, consultoria e suporte especializado."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Soluções Tecnológicas",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Desenvolvimento Web • Apps Mobile • Sistemas • Consultoria • Cloud • Suporte Técnico"
+        }
+      },
+      {
+        id: "tecnologias",
+        name: "Tecnologias",
+        visible: true,
+        data: {
+          list: "React • Node.js • Python • AWS • Google Cloud • Mobile • E-commerce"
+        }
+      }
+    ];
+  } else {
+    // general
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre Nós",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa comprometida com a excelência no atendimento e qualidade dos serviços oferecidos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Produtos e Serviços",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Atendimento personalizado • Qualidade garantida • Melhores preços • Entrega rápida"
+        }
+      }
+    ];
+  }
+  
+  // Seções finais comuns
+  const finalSections = [
+    {
+      id: "depoimentos",
+      name: "Depoimentos",
+      visible: true,
+      data: {
+        testimonials: []
+      }
+    },
+    {
+      id: "contato",
+      name: "Contato",
+      visible: true,
+      data: {
+        email: onboardingData.email || "",
+        whatsapp: onboardingData.whatsapp || "",
+        address: onboardingData.endereco || "",
+        maps_url: "",
+        instagram: "",
+        facebook: "",
+        tiktok: ""
+      }
+    }
+  ];
+  
+  baseStructure.sections = commonSections.concat(specificSections).concat(finalSections);
+  return baseStructure;
+}
+
+function getBusinessTitle(category) {
+  const titles = {
+    health: "Cuidando da sua saúde com excelência",
+    food: "Sabor que conquista",
+    automotive: "Seu veículo em boas mãos",
+    jewelry: "Joias que eternizam momentos",
+    construction: "Construindo seus sonhos",
+    technology: "Inovação e tecnologia",
+    general: "Qualidade e confiança"
+  };
+  return titles[category] || titles.general;
+}
+
+function getBusinessSubtitle(category) {
+  const subtitles = {
+    health: "Atendimento especializado e humanizado para o seu bem-estar",
+    food: "Tradição e qualidade em cada sabor que servimos",
+    automotive: "Manutenção e reparos automotivos com qualidade e confiança",
+    jewelry: "Criamos peças únicas para os seus momentos mais especiais",
+    construction: "Projetos executados com qualidade, segurança e pontualidade",
+    technology: "Soluções digitais que transformam e impulsionam seu negócio",
+    general: "Comprometidos com a excelência no atendimento e qualidade dos serviços"
+  };
+  return subtitles[category] || subtitles.general;
 }
 
 function testeLogin() {
@@ -4175,6 +4731,284 @@ function validate_vip_pin(site, pin) {
   }
 }
 
+/**
+ * Cria estrutura de site padrão baseada no tipo de negócio detectado
+ */
+function createSiteStructureByType(site, businessCategory, onboardingData) {
+  const baseStructure = {
+    siteSlug: site,
+    businessType: businessCategory,
+    lastUpdated: new Date().toISOString(),
+    sections: []
+  };
+  
+  // Seções comuns para todos os tipos
+  const commonSections = [
+    {
+      id: "header",
+      name: "Cabeçalho",
+      visible: true,
+      data: {
+        brand: onboardingData.empresa || site,
+        nav_links: "#sobre,#servicos,#depoimentos,#contato"
+      }
+    },
+    {
+      id: "hero", 
+      name: "Hero Principal",
+      visible: true,
+      data: {
+        title: (onboardingData.empresa || site) + " - " + getBusinessTitle(businessCategory),
+        subtitle: onboardingData.historia || getBusinessSubtitle(businessCategory),
+        cta_whatsapp: onboardingData.whatsapp || ""
+      }
+    }
+  ];
+  
+  // Seções específicas por tipo de negócio
+  var specificSections = [];
+  
+  if (businessCategory === "health") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre o Profissional",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Profissional qualificado com experiência em cuidados de saúde, oferecendo atendimento personalizado e de qualidade.",
+          credentials: "CRM/CRO/CREFITO - Especialização"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Especialidades",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Consultas • Diagnósticos • Tratamentos • Acompanhamento"
+        }
+      },
+      {
+        id: "convenios",
+        name: "Convênios",
+        visible: true,
+        data: {
+          list: "Unimed • Bradesco Saúde • SulAmérica • Amil • Particular"
+        }
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa História",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Tradição e sabor se encontram em cada prato. Oferecemos uma experiência gastronômica única com ingredientes frescos e receitas especiais."
+        }
+      },
+      {
+        id: "cardapio",
+        name: "Cardápio",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Pratos Principais • Porções • Bebidas • Sobremesas"
+        }
+      },
+      {
+        id: "delivery",
+        name: "Delivery",
+        visible: true,
+        data: {
+          info: "Delivery próprio • iFood • Uber Eats • Rappi"
+        }
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Oficina",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Oficina especializada com profissionais qualificados e equipamentos modernos para cuidar do seu veículo com excelência."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Automotivos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Mecânica Geral • Elétrica • Freios • Suspensão • Ar Condicionado • Diagnóstico"
+        }
+      },
+      {
+        id: "marcas",
+        name: "Marcas Atendidas",
+        visible: true,
+        data: {
+          list: "Todas as marcas • Carros nacionais e importados • Motos • Utilitários"
+        }
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Joalheria",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Criamos peças únicas que eternizam momentos especiais. Tradição, elegância e sofisticação em cada joia."
+        }
+      },
+      {
+        id: "produtos",
+        name: "Nossos Produtos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Anéis • Colares • Brincos • Pulseiras • Alianças • Relógios • Peças Personalizadas"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Especiais",
+        visible: true,
+        data: {
+          list: "Design Personalizado • Reforma de Joias • Avaliação • Certificação • Garantia"
+        }
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa de construção com experiência sólida no mercado, oferecendo qualidade e pontualidade em todos os projetos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços de Construção",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Construção • Reforma • Ampliação • Acabamento • Elétrica • Hidráulica • Pintura"
+        }
+      },
+      {
+        id: "projetos",
+        name: "Tipos de Projeto",
+        visible: true,
+        data: {
+          list: "Residencial • Comercial • Industrial • Reformas • Manutenção"
+        }
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Soluções tecnológicas inovadoras para impulsionar seu negócio. Desenvolvimento, consultoria e suporte especializado."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Soluções Tecnológicas",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Desenvolvimento Web • Apps Mobile • Sistemas • Consultoria • Cloud • Suporte Técnico"
+        }
+      },
+      {
+        id: "tecnologias",
+        name: "Tecnologias",
+        visible: true,
+        data: {
+          list: "React • Node.js • Python • AWS • Google Cloud • Mobile • E-commerce"
+        }
+      }
+    ];
+  } else {
+    // general
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre Nós",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa comprometida com a excelência no atendimento e qualidade dos serviços oferecidos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Produtos e Serviços",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Atendimento personalizado • Qualidade garantida • Melhores preços • Entrega rápida"
+        }
+      }
+    ];
+  }
+  
+  // Seções finais comuns
+  const finalSections = [
+    {
+      id: "depoimentos",
+      name: "Depoimentos",
+      visible: true,
+      data: {
+        testimonials: []
+      }
+    },
+    {
+      id: "contato",
+      name: "Contato",
+      visible: true,
+      data: {
+        email: onboardingData.email || "",
+        whatsapp: onboardingData.whatsapp || "",
+        address: onboardingData.endereco || "",
+        maps_url: "",
+        instagram: "",
+        facebook: "",
+        tiktok: ""
+      }
+    }
+  ];
+  
+  baseStructure.sections = commonSections.concat(specificSections).concat(finalSections);
+  return baseStructure;
+}
+
+function getBusinessTitle(category) {
+  const titles = {
+    health: "Cuidando da sua saúde com excelência",
+    food: "Sabor que conquista",
+    automotive: "Seu veículo em boas mãos",
+    jewelry: "Joias que eternizam momentos",
+    construction: "Construindo seus sonhos",
+    technology: "Inovação e tecnologia",
+    general: "Qualidade e confiança"
+  };
+  return titles[category] || titles.general;
+}
+
+function getBusinessSubtitle(category) {
+  const subtitles = {
+    health: "Atendimento especializado e humanizado para o seu bem-estar",
+    food: "Tradição e qualidade em cada sabor que servimos",
+    automotive: "Manutenção e reparos automotivos com qualidade e confiança",
+    jewelry: "Criamos peças únicas para os seus momentos mais especiais",
+    construction: "Projetos executados com qualidade, segurança e pontualidade",
+    technology: "Soluções digitais que transformam e impulsionam seu negócio",
+    general: "Comprometidos com a excelência no atendimento e qualidade dos serviços"
+  };
+  return subtitles[category] || subtitles.general;
+}
+
 // === STATUS API (GET) ========================================================
 // Endpoints:
 //   ?type=validate&siteSlug=SLUG&cpf=XXXXXXXXXXX  -> valida slug/CPF antes do cadastro
@@ -4360,4 +5194,282 @@ function validate_vip_pin(site, pin) {
   } catch (e) {
     return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
   }
+}
+
+/**
+ * Cria estrutura de site padrão baseada no tipo de negócio detectado
+ */
+function createSiteStructureByType(site, businessCategory, onboardingData) {
+  const baseStructure = {
+    siteSlug: site,
+    businessType: businessCategory,
+    lastUpdated: new Date().toISOString(),
+    sections: []
+  };
+  
+  // Seções comuns para todos os tipos
+  const commonSections = [
+    {
+      id: "header",
+      name: "Cabeçalho",
+      visible: true,
+      data: {
+        brand: onboardingData.empresa || site,
+        nav_links: "#sobre,#servicos,#depoimentos,#contato"
+      }
+    },
+    {
+      id: "hero", 
+      name: "Hero Principal",
+      visible: true,
+      data: {
+        title: (onboardingData.empresa || site) + " - " + getBusinessTitle(businessCategory),
+        subtitle: onboardingData.historia || getBusinessSubtitle(businessCategory),
+        cta_whatsapp: onboardingData.whatsapp || ""
+      }
+    }
+  ];
+  
+  // Seções específicas por tipo de negócio
+  var specificSections = [];
+  
+  if (businessCategory === "health") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre o Profissional",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Profissional qualificado com experiência em cuidados de saúde, oferecendo atendimento personalizado e de qualidade.",
+          credentials: "CRM/CRO/CREFITO - Especialização"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Especialidades",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Consultas • Diagnósticos • Tratamentos • Acompanhamento"
+        }
+      },
+      {
+        id: "convenios",
+        name: "Convênios",
+        visible: true,
+        data: {
+          list: "Unimed • Bradesco Saúde • SulAmérica • Amil • Particular"
+        }
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa História",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Tradição e sabor se encontram em cada prato. Oferecemos uma experiência gastronômica única com ingredientes frescos e receitas especiais."
+        }
+      },
+      {
+        id: "cardapio",
+        name: "Cardápio",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Pratos Principais • Porções • Bebidas • Sobremesas"
+        }
+      },
+      {
+        id: "delivery",
+        name: "Delivery",
+        visible: true,
+        data: {
+          info: "Delivery próprio • iFood • Uber Eats • Rappi"
+        }
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Oficina",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Oficina especializada com profissionais qualificados e equipamentos modernos para cuidar do seu veículo com excelência."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Automotivos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Mecânica Geral • Elétrica • Freios • Suspensão • Ar Condicionado • Diagnóstico"
+        }
+      },
+      {
+        id: "marcas",
+        name: "Marcas Atendidas",
+        visible: true,
+        data: {
+          list: "Todas as marcas • Carros nacionais e importados • Motos • Utilitários"
+        }
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Joalheria",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Criamos peças únicas que eternizam momentos especiais. Tradição, elegância e sofisticação em cada joia."
+        }
+      },
+      {
+        id: "produtos",
+        name: "Nossos Produtos",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Anéis • Colares • Brincos • Pulseiras • Alianças • Relógios • Peças Personalizadas"
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços Especiais",
+        visible: true,
+        data: {
+          list: "Design Personalizado • Reforma de Joias • Avaliação • Certificação • Garantia"
+        }
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre a Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa de construção com experiência sólida no mercado, oferecendo qualidade e pontualidade em todos os projetos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Serviços de Construção",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Construção • Reforma • Ampliação • Acabamento • Elétrica • Hidráulica • Pintura"
+        }
+      },
+      {
+        id: "projetos",
+        name: "Tipos de Projeto",
+        visible: true,
+        data: {
+          list: "Residencial • Comercial • Industrial • Reformas • Manutenção"
+        }
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Nossa Empresa",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Soluções tecnológicas inovadoras para impulsionar seu negócio. Desenvolvimento, consultoria e suporte especializado."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Soluções Tecnológicas",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Desenvolvimento Web • Apps Mobile • Sistemas • Consultoria • Cloud • Suporte Técnico"
+        }
+      },
+      {
+        id: "tecnologias",
+        name: "Tecnologias",
+        visible: true,
+        data: {
+          list: "React • Node.js • Python • AWS • Google Cloud • Mobile • E-commerce"
+        }
+      }
+    ];
+  } else {
+    // general
+    specificSections = [
+      {
+        id: "sobre",
+        name: "Sobre Nós",
+        visible: true,
+        data: {
+          about: onboardingData.historia || "Empresa comprometida com a excelência no atendimento e qualidade dos serviços oferecidos."
+        }
+      },
+      {
+        id: "servicos",
+        name: "Produtos e Serviços",
+        visible: true,
+        data: {
+          list: onboardingData.produtos || "Atendimento personalizado • Qualidade garantida • Melhores preços • Entrega rápida"
+        }
+      }
+    ];
+  }
+  
+  // Seções finais comuns
+  const finalSections = [
+    {
+      id: "depoimentos",
+      name: "Depoimentos",
+      visible: true,
+      data: {
+        testimonials: []
+      }
+    },
+    {
+      id: "contato",
+      name: "Contato",
+      visible: true,
+      data: {
+        email: onboardingData.email || "",
+        whatsapp: onboardingData.whatsapp || "",
+        address: onboardingData.endereco || "",
+        maps_url: "",
+        instagram: "",
+        facebook: "",
+        tiktok: ""
+      }
+    }
+  ];
+  
+  baseStructure.sections = commonSections.concat(specificSections).concat(finalSections);
+  return baseStructure;
+}
+
+function getBusinessTitle(category) {
+  const titles = {
+    health: "Cuidando da sua saúde com excelência",
+    food: "Sabor que conquista",
+    automotive: "Seu veículo em boas mãos",
+    jewelry: "Joias que eternizam momentos",
+    construction: "Construindo seus sonhos",
+    technology: "Inovação e tecnologia",
+    general: "Qualidade e confiança"
+  };
+  return titles[category] || titles.general;
+}
+
+function getBusinessSubtitle(category) {
+  const subtitles = {
+    health: "Atendimento especializado e humanizado para o seu bem-estar",
+    food: "Tradição e qualidade em cada sabor que servimos",
+    automotive: "Manutenção e reparos automotivos com qualidade e confiança",
+    jewelry: "Criamos peças únicas para os seus momentos mais especiais",
+    construction: "Projetos executados com qualidade, segurança e pontualidade",
+    technology: "Soluções digitais que transformam e impulsionam seu negócio",
+    general: "Comprometidos com a excelência no atendimento e qualidade dos serviços"
+  };
+  return subtitles[category] || subtitles.general;
 }
