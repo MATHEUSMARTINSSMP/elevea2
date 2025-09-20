@@ -3225,7 +3225,7 @@ function bootstrapDefaultSections_(site) {
   }
   function gmapsLink(end) {
     var addr = fullAddress(end);
-    return addr ? "https://maps.google.com/?q=" + encodeURIComponent(addr) : "";
+    return addr ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr) : "";
   }
 
   var ids = ["hero","sobre","contato","servicos","portfolio","depoimentos"];
@@ -3972,7 +3972,7 @@ function sectionsBootstrapFromOnboarding_(ss, site) {
       data[id] = { fields: {
         title: (onbData.empresa||site) + " - " + getBusinessTitle(detectBusinessType(onbData.empresa, onbData.historia, onbData.businessCategory)),
         subtitle: onbData.historia || getBusinessSubtitle(detectBusinessType(onbData.empresa, onbData.historia, onbData.businessCategory)),
-        cta_whatsapp: onbData.whatsapp || ""
+        cta_whatsapp: onbData.whatsapp ? ("https://wa.me/"+onbData.whatsapp.replace(/\D+/g,'')) : ""
       }, slots: {} };
     } else if (id === "contato") {
       data[id] = { fields: {
