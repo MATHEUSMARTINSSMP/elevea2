@@ -1,7 +1,7 @@
 // src/routes/guards.tsx
 import React, { useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useSession } from "@/hooks/useSession";
+import { useSession } from "../src/hooks/useSession";
 
 /**
  * Só renderiza children quando o hook já leu o storage (ready=true).

@@ -1,17 +1,17 @@
 import { useEffect } from 'react';
-import Header from '@/components/Header';
-import Hero from '@/components/Hero';
-import ProfessionCarousel from '@/components/ProfessionCarousel';
-import About from '@/components/About';
-import WhyDigital from '@/components/WhyDigital';
-import Chatbot from '@/components/Chatbot';
-import Pricing from '@/components/Pricing';
-import Features from '@/components/Features';
-import Testimonials from '@/components/Testimonials';
-import HowItWorks from '@/components/HowItWorks';
-import FAQ from '@/components/FAQ';
-import Footer from '@/components/Footer';
-import WhatsAppButton from '@/components/WhatsAppButton';
+import Header from '../src/components/Header';
+import Hero from '../src/components/Hero';
+import ProfessionCarousel from '../src/components/ProfessionCarousel';
+import About from '../src/components/About';
+import WhyDigital from '../src/components/WhyDigital';
+import Chatbot from '../src/components/Chatbot';
+import Pricing from '../src/components/Pricing';
+import Features from '../src/components/Features';
+import Testimonials from '../src/components/Testimonials';
+import HowItWorks from '../src/components/HowItWorks';
+import FAQ from '../src/components/FAQ';
+import Footer from '../src/components/Footer';
+import WhatsAppButton from '../src/components/WhatsAppButton';
 import { ExternalLink } from 'lucide-react';
 
 /* ===== SEO CONSTANTES ===== */
