@@ -253,7 +253,7 @@ export default function ClientDashboard() {
           CARDS_TIMEOUT_MS
         ).catch(() => ({ ok: true, items: [] as any[] }));
         if (!alive) return;
-        const urlByKey = new Map<string, string>(assets.items.map((i) => [i.key, i.url]));
+        const urlByKey = new Map<string, string>(assets.items.map((i): [string, string] => [i.key, i.url]));
         const ALIASES: Record<string, string[]> = {
           media_1: ["media_1", "hero", "banner", "principal"],
           media_2: ["media_2", "destaque_1", "gallery_1"],
@@ -274,13 +274,32 @@ export default function ClientDashboard() {
       }
     })();
 
-    // FEEDBACKS (usa action existente no backend)
+    // FEEDBACKS (usa endpoint seguro com PIN para VIP, público para outros)
     (async () => {
       try {
-        const fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
-          `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
-          CARDS_TIMEOUT_MS
-        ).catch(() => ({ ok: true, items: [] as Feedback[] }));
+        let fb: { ok: boolean; items: Feedback[] };
+        
+        // Se tem PIN VIP, usa endpoint seguro para ver todos os feedbacks
+        if (vipEnabled && vipPin.trim()) {
+          fb = await postJSON<{ ok: boolean; items: Feedback[] }>(
+            "/.netlify/functions/client-api",
+            { 
+              action: "list_feedbacks_secure", 
+              site: user!.siteSlug!, 
+              page: 1, 
+              pageSize: 50,
+              pin: vipPin.trim()
+            },
+            CARDS_TIMEOUT_MS
+          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
+        } else {
+          // Sem PIN ou não-VIP: apenas feedbacks públicos/aprovados
+          fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
+            `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
+            CARDS_TIMEOUT_MS
+          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
+        }
+        
         if (!alive) return;
         setFeedbacks(fb.items || []);
       } catch {}
@@ -290,7 +309,7 @@ export default function ClientDashboard() {
     })();
 
     return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, user?.email]);
+  }, [canQuery, user?.siteSlug, user?.email, vipEnabled, vipPin]);
 
   /* Ações */
   async function saveSettings(partial: Partial<ClientSettings>) {

@@ -74,7 +74,8 @@ exports.handler = async (event) => {
       if (action === "list_feedbacks") {
         const page = Number(qs.page || 1) || 1;
         const size = Number(qs.size || 20) || 20;
-        const url = `${GAS_BASE_URL}?type=list_feedbacks&site=${encodeURIComponent(site)}&page=${page}&pageSize=${size}`;
+        // SEGURANÇA: usa list_feedbacks_public para GET público (apenas feedbacks aprovados)
+        const url = `${GAS_BASE_URL}?type=list_feedbacks_public&site=${encodeURIComponent(site)}&page=${page}&pageSize=${size}`;
         const r = await fetch(url);
         const j = await r.json().catch(() => ({}));
         return { statusCode: 200, headers, body: JSON.stringify(j) };
@@ -198,6 +199,25 @@ exports.handler = async (event) => {
             id: body.id,
             approved: body.approved,
             pin: body.pin
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        return { statusCode: 200, headers, body: JSON.stringify(j) };
+      }
+
+      // NOVO: endpoint seguro para listar feedbacks com PIN (VIP vê todos, sem PIN vê só públicos)
+      if (action === "list_feedbacks_secure") {
+        const site = String(body.site || "").trim().toUpperCase();
+        if (!site) return { statusCode: 400, headers, body: JSON.stringify({ ok:false, error:"missing_site" }) };
+        const r = await fetch(`${GAS_BASE_URL}`, {
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "list_feedbacks_secure",
+            site: site,
+            page: body.page || 1,
+            pageSize: body.pageSize || 20,
+            pin: body.pin || ""
           }),
         });
         const j = await r.json().catch(() => ({}));
