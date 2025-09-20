@@ -1359,6 +1359,38 @@ function handleSaveOnboarding_(ss, data) {
 
     var plano = String(data.plano || data.plan || "").toLowerCase(); // "vip" | "essential"
 
+    // ===== DETECÇÃO AUTOMÁTICA DE TIPO DE NEGÓCIO =====
+    var businessDetection = detectBusinessType({
+      empresa: empresa,
+      historia: historia,
+      produtos: produtos,
+      endereco: endereco
+    });
+    
+    var businessCategory = businessDetection.category;
+    
+    // ===== CRIAÇÃO AUTOMÁTICA DA ESTRUTURA DO SITE =====
+    var siteStructure = createSiteStructureByType(site, businessCategory, {
+      empresa: empresa,
+      email: email,
+      whatsapp: whatsapp,
+      endereco: endereco,
+      historia: historia,
+      produtos: produtos
+    });
+    
+    // ===== SALVAR ESTRUTURA NA PLANILHA site_structure =====
+    try {
+      var result = save_site_structure(site, siteStructure);
+      if (!result.ok) {
+        log_(ss, 'site_structure_save_fail', { error: result.error, site: site });
+      } else {
+        log_(ss, 'site_structure_created', { site: site, category: businessCategory, confidence: businessDetection.confidence });
+      }
+    } catch (e) {
+      log_(ss, 'site_structure_error', { error: String(e), site: site });
+    }
+
     var settings = {
       identity: { empresa: empresa, slug: site, whatsapp: whatsapp, email: email, endereco: endereco },
       content:  { historia: historia, produtos: produtos, fundacao: fundacao },
@@ -1367,10 +1399,11 @@ function handleSaveOnboarding_(ss, data) {
         templateId: templateId, templateName: template.name
       },
       media:    { drive_folder_url: folderUrl, logoUrl: logoUrl, fotosUrls: fotosUrls },
-      plan:     { plano: plano }
+      plan:     { plano: plano },
+      business: { category: businessCategory, detection: businessDetection }
     };
 
-    // Prompt completo e padronizado (usa a mesma função do onboarding principal)
+    // Prompt completo e padronizado (inclui tipo de negócio detectado)
     var lovablePrompt = buildLovablePrompt_({
       plan: plano,
       email: email,
