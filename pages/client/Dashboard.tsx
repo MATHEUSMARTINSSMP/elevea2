@@ -131,6 +131,11 @@ export default function ClientDashboard() {
   const [vipPin, setVipPin] = useState("");
   const [saving, setSaving] = useState(false);
 
+  /* Estrutura do site (personalização VIP) */
+  const [siteStructure, setSiteStructure] = useState<any>(null);
+  const [loadingStructure, setLoadingStructure] = useState(true);
+  const [savingStructure, setSavingStructure] = useState(false);
+
   // VIP habilita se QUALQUER fonte indicar isso
   const vipEnabled =
     looksVip(plan || undefined) ||
@@ -303,6 +308,41 @@ export default function ClientDashboard() {
     return () => { alive = false; };
   }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
 
+  /* 4) ESTRUTURA DO SITE - apenas para VIP com PIN */
+  useEffect(() => {
+    if (!canQuery || !vipEnabled || !vipPin) {
+      setSiteStructure(null);
+      setLoadingStructure(false);
+      return;
+    }
+
+    let alive = true;
+    (async () => {
+      setLoadingStructure(true);
+      try {
+        const response = await getJSON<{
+          ok: boolean;
+          structure?: any;
+          isDefault?: boolean;
+        }>(
+          `/.netlify/functions/site-structure?site=${encodeURIComponent(user!.siteSlug!)}&pin=${encodeURIComponent(vipPin)}`,
+          CARDS_TIMEOUT_MS
+        );
+
+        if (!alive) return;
+        if (response.ok && response.structure) {
+          setSiteStructure(response.structure);
+        }
+      } catch (e) {
+        console.log("Erro ao carregar estrutura:", e);
+      } finally {
+        if (alive) setLoadingStructure(false);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
+
   /* Ações */
   async function saveSettings(partial: Partial<ClientSettings>) {
     if (!canQuery) return;
@@ -350,6 +390,37 @@ export default function ClientDashboard() {
     } catch (e: any) {
       alert(e?.message || "Não foi possível atualizar a aprovação.");
     }
+  }
+
+  async function saveSiteStructure(updatedStructure: any) {
+    if (!canQuery || !vipPin) return;
+    setSavingStructure(true);
+    try {
+      const response = await postJSON<{ ok: boolean }>(
+        "/.netlify/functions/site-structure",
+        { structure: updatedStructure },
+        CARDS_TIMEOUT_MS
+      );
+      if (!response.ok) throw new Error("Falha ao salvar estrutura");
+      setSiteStructure(updatedStructure);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar estrutura do site");
+    } finally {
+      setSavingStructure(false);
+    }
+  }
+
+  function updateSectionField(sectionId: string, field: string, value: any) {
+    if (!siteStructure) return;
+    
+    const updatedStructure = {
+      ...siteStructure,
+      sections: siteStructure.sections.map((section: any) =>
+        section.id === sectionId ? { ...section, [field]: value } : section
+      )
+    };
+    
+    setSiteStructure(updatedStructure);
   }
 
   function logout() {
