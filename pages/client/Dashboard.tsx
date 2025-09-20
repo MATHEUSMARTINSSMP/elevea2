@@ -284,9 +284,10 @@ export default function ClientDashboard() {
         let fb: { ok: boolean; items: Feedback[] };
 
         if (vipEnabled && vipPin) {
-          // VIP com PIN: vê todos os feedbacks
-          fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
-            `/.netlify/functions/client-api?action=list_feedbacks_secure&site=${encodeURIComponent(user!.siteSlug!)}&pin=${encodeURIComponent(vipPin)}`,
+          // VIP com PIN: vê todos os feedbacks (POST para segurança)
+          fb = await postJSON<{ ok: boolean; items: Feedback[] }>(
+            "/.netlify/functions/client-api",
+            { action: "list_feedbacks_secure", site: user!.siteSlug!, pin: vipPin },
             CARDS_TIMEOUT_MS
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         } else {
