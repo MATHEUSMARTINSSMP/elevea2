@@ -392,17 +392,24 @@ export default function ClientDashboard() {
     }
   }
 
-  async function saveSiteStructure(updatedStructure: any) {
+  async function saveSiteStructure(updatedStructure?: any) {
     if (!canQuery || !vipPin) return;
+    const structureToSave = updatedStructure || siteStructure;
+    if (!structureToSave) return;
+    
     setSavingStructure(true);
     try {
       const response = await postJSON<{ ok: boolean }>(
         "/.netlify/functions/site-structure",
-        { structure: updatedStructure },
+        { 
+          structure: structureToSave,
+          pin: vipPin,
+          site: user!.siteSlug!
+        },
         CARDS_TIMEOUT_MS
       );
       if (!response.ok) throw new Error("Falha ao salvar estrutura");
-      setSiteStructure(updatedStructure);
+      setSiteStructure(structureToSave);
     } catch (e: any) {
       alert(e?.message || "Erro ao salvar estrutura do site");
     } finally {
@@ -576,6 +583,129 @@ export default function ClientDashboard() {
                     <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />
                   ))}
                 </div>
+              </section>
+            </VipGate>
+
+            {/* PERSONALIZAÇÃO DE SEÇÕES */}
+            <VipGate enabled={vipEnabled && !!vipPin} checking={loadingStructure} teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site">
+              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Personalizar Seções do Site</h2>
+                  {savingStructure && (
+                    <span className="text-xs text-blue-600">Salvando...</span>
+                  )}
+                </div>
+
+                {loadingStructure ? (
+                  <div className="text-slate-500 text-sm">Carregando estrutura do site...</div>
+                ) : !siteStructure ? (
+                  <div className="text-slate-500 text-sm">Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.</div>
+                ) : (
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    <div className="text-xs text-slate-600 mb-4">
+                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado: <strong>{siteStructure.category || 'geral'}</strong>
+                    </div>
+                    {siteStructure.sections?.map((section: any) => (
+                      <div key={section.id} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-medium text-sm capitalize">{section.id.replace('-', ' ')}</h3>
+                          <span className={`text-xs px-2 py-1 rounded ${section.visible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {section.visible ? 'Visível' : 'Oculta'}
+                          </span>
+                        </div>
+                        
+                        <div className="grid gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Título</label>
+                            <input
+                              type="text"
+                              value={section.title || ''}
+                              onChange={(e) => updateSectionField(section.id, 'title', e.target.value)}
+                              placeholder="Título da seção"
+                              className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Subtítulo</label>
+                            <input
+                              type="text"
+                              value={section.subtitle || ''}
+                              onChange={(e) => updateSectionField(section.id, 'subtitle', e.target.value)}
+                              placeholder="Subtítulo da seção"
+                              className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
+                            />
+                          </div>
+
+                          {section.description !== undefined && (
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">Descrição</label>
+                              <textarea
+                                value={section.description || ''}
+                                onChange={(e) => updateSectionField(section.id, 'description', e.target.value)}
+                                placeholder="Descrição detalhada da seção"
+                                rows={2}
+                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
+                              />
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">URL da Imagem</label>
+                              <input
+                                type="url"
+                                value={section.image || ''}
+                                onChange={(e) => updateSectionField(section.id, 'image', e.target.value)}
+                                placeholder="https://..."
+                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
+                              />
+                            </div>
+                            
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">Visibilidade</label>
+                              <select
+                                value={section.visible ? 'true' : 'false'}
+                                onChange={(e) => updateSectionField(section.id, 'visible', e.target.value === 'true')}
+                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
+                              >
+                                <option value="true">Visível</option>
+                                <option value="false">Oculta</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {section.image && (
+                          <div className="mt-2">
+                            <img 
+                              src={section.image} 
+                              alt={section.title || 'Preview'} 
+                              className="w-20 h-12 object-cover rounded border"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    <div className="pt-4 border-t">
+                      <button
+                        onClick={saveSiteStructure}
+                        disabled={savingStructure}
+                        className={`w-full px-4 py-2 rounded-lg font-medium text-sm ${
+                          savingStructure 
+                            ? 'bg-slate-200 text-slate-500 cursor-not-allowed' 
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {savingStructure ? 'Salvando...' : 'Salvar Alterações'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </section>
             </VipGate>
           </div>

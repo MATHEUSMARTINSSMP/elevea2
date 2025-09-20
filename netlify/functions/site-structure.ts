@@ -57,7 +57,15 @@ export const handler: Handler = async (event, context) => {
   }
 
   try {
-    const { site } = event.queryStringParameters || {}
+    let site = event.queryStringParameters?.site
+    
+    // Para POST, pode vir no body também
+    if (!site && event.httpMethod === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}')
+        site = body.site
+      } catch {}
+    }
     
     if (!site) {
       return {
