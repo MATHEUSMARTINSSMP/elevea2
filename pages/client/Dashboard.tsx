@@ -325,7 +325,7 @@ export default function ClientDashboard() {
           structure?: any;
           isDefault?: boolean;
         }>(
-          `/.netlify/functions/site-structure?site=${encodeURIComponent(user!.siteSlug!)}&pin=${encodeURIComponent(vipPin)}`,
+          `/.netlify/functions/site-structure?site=${encodeURIComponent(user!.siteSlug!)}`,
           CARDS_TIMEOUT_MS
         );
 
