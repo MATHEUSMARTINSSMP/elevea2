@@ -17,7 +17,7 @@ function looksVip(plan: string): boolean {
 function isActiveStatus(status: string): boolean {
   if (!status) return false;
   const s = String(status).toLowerCase().trim();
-  return s === "active" || s === "ativo" || s === "activo";
+  return s === "active" || s === "ativo" || s === "activo" || s === "approved" || s === "authorized";
 }
 
 export const handler = async (event: any) => {
@@ -55,20 +55,35 @@ export const handler = async (event: any) => {
       ]);
 
       clearTimeout(timeoutId);
+      
       const statusData = statusRes.status === "fulfilled" ? await statusRes.value.json().catch(() => ({})) : {};
-const plan = billingData.plan || "";
-const status = statusData.status || billingData.status || "";
-const nextCharge = billingData.next_renewal || null; // ✅ CORRETO
-const lastPayment = billingData.last_payment || null; // ✅ DIRETO do GAS
+      const billingData = billingRes.status === "fulfilled" ? await billingRes.value.json().catch(() => ({})) : {};
 
-// Determina se é VIP baseado em múltiplas fontes
-const vip = looksVip(plan) || isActiveStatus(status) || statusData.active;
+      const plan = billingData.plan || "";
+      const status = statusData.status || billingData.status || "";
+      const nextCharge = billingData.next_renewal || null;
+      const lastPayment = billingData.last_payment || null;
 
-return json(200, {
-  ok: true,
-  vip,
-  plan: vip ? "vip" : (plan || ""),
-  status,
-  nextCharge,
-  lastPayment,
-});
+      // Determina se é VIP baseado em múltiplas fontes
+      const vip = looksVip(plan) || isActiveStatus(status) || statusData.active;
+
+      return json(200, {
+        ok: true,
+        vip,
+        plan: vip ? "vip" : (plan || ""),
+        status,
+        nextCharge,
+        lastPayment,
+      });
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        return json(408, { ok: false, error: "timeout_4s" });
+      }
+      throw e;
+    }
+  } catch (e: any) {
+    console.error("client-plan error:", e);
+    return json(500, { ok: false, error: String(e?.message || e) });
+  }
+};

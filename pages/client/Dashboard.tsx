@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSession } from "../../src/hooks/useSession";
+import { useAuth } from "../../src/hooks/useAuth";
 
 /* ================= CONFIG ================= */
 const PLAN_TIMEOUT_MS = 3000;         // descobrir VIP - OTIMIZADO
 const CARDS_TIMEOUT_MS = 5000;        // cards paralelo - OTIMIZADO
 const UPGRADE_URL =
-  import.meta.env.VITE_UPGRADE_URL ||
+  (import.meta as any).env?.VITE_UPGRADE_URL ||
   "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=99dceb0e108a4f238a84fbef3e91bab8";
 
 /* Paletas demo */
@@ -101,6 +102,7 @@ async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T>
 /* ================= Página ================= */
 export default function ClientDashboard() {
   const { user } = useSession();
+  const { logout: authLogout } = useAuth();
   const canQuery = !!user?.email && !!user?.siteSlug && user?.role === "client";
 
   /* Plano / gate VIP */
@@ -333,7 +335,7 @@ export default function ClientDashboard() {
       } finally {
         setLoadingFeedbacks(false);
       }
-    }
+    })();
 
     return () => { alive = false; };
   }, [canQuery, user?.siteSlug, user?.email, vipEnabled, vipPin]);
@@ -388,8 +390,7 @@ export default function ClientDashboard() {
   }
 
   function logout() {
-    try { localStorage.removeItem("auth"); } catch {}
-    window.location.href = "/login";
+    authLogout();
   }
 
   if (!user) return null;
