@@ -1110,33 +1110,19 @@ function buildLovablePrompt_(ctx) {
   L.push("- ELEVEA_ADMIN_TOKEN    → token igual ao ADMIN_DASH_TOKEN no GAS (para publicar sections)");
   L.push("- ELEVEA_STATUS_URL     → (opcional) mesma URL do GAS para checar status e carregar settings");
 
-  /* — Mapa de sessões obrigatório (IDs estáveis) */
-  L.push("Gere um arquivo **src/elevea.sections.json** com um array de sessões. IDs estáveis em kebab-case:");
-  L.push(`
-[
-  { "id":"header", "name":"Cabeçalho", "fields":[
-      { "key":"brand","label":"Nome da marca" },
-      { "key":"nav_links","label":"Links do menu (âncoras)", "hint":"#sobre,#servicos,#depoimentos,#contato" }
-    ]},
-  { "id":"hero", "name":"Hero", "fields":[
-      { "key":"title","label":"Título" },
-      { "key":"subtitle","label":"Subtítulo" },
-      { "key":"cta_whatsapp","label":"Link WhatsApp" }
-    ], "slots":[ { "key":"hero_img","label":"Imagem principal" } ]},
-  { "id":"sobre","name":"Sobre","fields":[ { "key":"about","label":"Texto Sobre" } ]},
-  { "id":"servicos","name":"Produtos/Serviços","fields":[ { "key":"list","label":"Lista (texto livre)" } ]},
-  { "id":"destaques","name":"Destaques","fields":[ { "key":"bullets","label":"Pontos fortes (lista)" } ]},
-  { "id":"depoimentos","name":"Depoimentos","fields":[]},
-  { "id":"contato","name":"Contato","fields":[
-      { "key":"email","label":"E-mail" },
-      { "key":"whatsapp","label":"WhatsApp" },
-      { "key":"address","label":"Endereço" },
-      { "key":"maps_url","label":"Google Maps URL" },
-      { "key":"instagram","label":"Instagram" },
-      { "key":"facebook","label":"Facebook" },
-      { "key":"tiktok","label":"TikTok" }
-    ]}
-]`.trim());
+  /* — Detecção automática do tipo de negócio */
+  var businessText = [historia, produtos].filter(Boolean).join(" ");
+  var businessDetection = detectBusinessType(businessText);
+  var businessCategory = businessDetection.category;
+  
+  L.push("TIPO DE NEGÓCIO DETECTADO: " + businessCategory.toUpperCase());
+  L.push("Palavras-chave: " + businessDetection.keywords.join(", "));
+  
+  /* — Mapa de sessões personalizadas por tipo de negócio */
+  var sectionsConfig = generateSectionsForBusiness_(businessCategory, { historia: historia, produtos: produtos });
+  
+  L.push("Gere um arquivo **src/elevea.sections.json** com um array de sessões personalizadas para " + businessCategory + ":");
+  L.push(JSON.stringify(sectionsConfig, null, 2));
 
   /* — Script pós-deploy (Netlify onSuccess) para publicar defs no GAS */
   L.push("Crie `tools/elevea-sync-sections.mjs` (Node 18+, sem libs externas): lê `src/elevea.sections.json` e POST em ELEVEA_GAS_URL:");
@@ -3928,6 +3914,224 @@ function getBusinessSubtitle(category) {
   return subtitles[category] || subtitles.general;
 }
 
+/**
+ * Gera configuração de seções personalizadas para o elevea.sections.json baseado no tipo de negócio
+ */
+function generateSectionsForBusiness_(businessCategory, context) {
+  var baseFields = [
+    {
+      "id": "header",
+      "name": "Cabeçalho",
+      "fields": [
+        { "key": "brand", "label": "Nome da marca" },
+        { "key": "nav_links", "label": "Links do menu (âncoras)", "hint": "#sobre,#servicos,#depoimentos,#contato" }
+      ]
+    },
+    {
+      "id": "hero",
+      "name": "Hero Principal",
+      "fields": [
+        { "key": "title", "label": "Título principal" },
+        { "key": "subtitle", "label": "Subtítulo" },
+        { "key": "cta_whatsapp", "label": "Link WhatsApp" }
+      ],
+      "slots": [
+        { "key": "hero_img", "label": "Imagem principal" }
+      ]
+    }
+  ];
+
+  var specificFields = [];
+  
+  if (businessCategory === "health") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre o Profissional",
+        "fields": [
+          { "key": "about", "label": "Apresentação profissional" },
+          { "key": "credentials", "label": "Credenciais e especializações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Especialidades",
+        "fields": [
+          { "key": "list", "label": "Lista de especialidades" }
+        ]
+      },
+      {
+        "id": "convenios",
+        "name": "Convênios",
+        "fields": [
+          { "key": "list", "label": "Convênios aceitos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa História",
+        "fields": [
+          { "key": "about", "label": "História e tradição" }
+        ]
+      },
+      {
+        "id": "cardapio",
+        "name": "Cardápio",
+        "fields": [
+          { "key": "list", "label": "Principais pratos e categorias" }
+        ]
+      },
+      {
+        "id": "delivery",
+        "name": "Delivery",
+        "fields": [
+          { "key": "info", "label": "Informações de delivery" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Oficina",
+        "fields": [
+          { "key": "about", "label": "Experiência e qualificações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Automotivos",
+        "fields": [
+          { "key": "list", "label": "Lista de serviços oferecidos" }
+        ]
+      },
+      {
+        "id": "marcas",
+        "name": "Marcas Atendidas",
+        "fields": [
+          { "key": "list", "label": "Marcas e tipos de veículos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Joalheria",
+        "fields": [
+          { "key": "about", "label": "Tradição e arte em joias" }
+        ]
+      },
+      {
+        "id": "produtos",
+        "name": "Nossos Produtos",
+        "fields": [
+          { "key": "list", "label": "Tipos de joias e produtos" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Especiais",
+        "fields": [
+          { "key": "list", "label": "Serviços personalizados" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Empresa",
+        "fields": [
+          { "key": "about", "label": "Experiência em construção" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços de Construção",
+        "fields": [
+          { "key": "list", "label": "Tipos de construção e reforma" }
+        ]
+      },
+      {
+        "id": "projetos",
+        "name": "Tipos de Projeto",
+        "fields": [
+          { "key": "list", "label": "Categorias de projetos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Empresa",
+        "fields": [
+          { "key": "about", "label": "Inovação e tecnologia" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Soluções Tecnológicas",
+        "fields": [
+          { "key": "list", "label": "Serviços e soluções oferecidas" }
+        ]
+      },
+      {
+        "id": "tecnologias",
+        "name": "Tecnologias",
+        "fields": [
+          { "key": "list", "label": "Tecnologias utilizadas" }
+        ]
+      }
+    ];
+  } else {
+    // general
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre Nós",
+        "fields": [
+          { "key": "about", "label": "Apresentação da empresa" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Produtos e Serviços",
+        "fields": [
+          { "key": "list", "label": "Lista de produtos/serviços" }
+        ]
+      }
+    ];
+  }
+
+  var finalFields = [
+    {
+      "id": "depoimentos",
+      "name": "Depoimentos",
+      "fields": []
+    },
+    {
+      "id": "contato",
+      "name": "Contato",
+      "fields": [
+        { "key": "email", "label": "E-mail" },
+        { "key": "whatsapp", "label": "WhatsApp" },
+        { "key": "address", "label": "Endereço" },
+        { "key": "maps_url", "label": "Google Maps URL" },
+        { "key": "instagram", "label": "Instagram" },
+        { "key": "facebook", "label": "Facebook" },
+        { "key": "tiktok", "label": "TikTok" }
+      ]
+    }
+  ];
+
+  return baseFields.concat(specificFields).concat(finalFields);
+}
+
 // === STATUS API (GET) ========================================================
 // Endpoints:
 //   ?type=validate&siteSlug=SLUG&cpf=XXXXXXXXXXX  -> valida slug/CPF antes do cadastro
@@ -4386,6 +4590,224 @@ function getBusinessSubtitle(category) {
     general: "Comprometidos com a excelência no atendimento e qualidade dos serviços"
   };
   return subtitles[category] || subtitles.general;
+}
+
+/**
+ * Gera configuração de seções personalizadas para o elevea.sections.json baseado no tipo de negócio
+ */
+function generateSectionsForBusiness_(businessCategory, context) {
+  var baseFields = [
+    {
+      "id": "header",
+      "name": "Cabeçalho",
+      "fields": [
+        { "key": "brand", "label": "Nome da marca" },
+        { "key": "nav_links", "label": "Links do menu (âncoras)", "hint": "#sobre,#servicos,#depoimentos,#contato" }
+      ]
+    },
+    {
+      "id": "hero",
+      "name": "Hero Principal",
+      "fields": [
+        { "key": "title", "label": "Título principal" },
+        { "key": "subtitle", "label": "Subtítulo" },
+        { "key": "cta_whatsapp", "label": "Link WhatsApp" }
+      ],
+      "slots": [
+        { "key": "hero_img", "label": "Imagem principal" }
+      ]
+    }
+  ];
+
+  var specificFields = [];
+  
+  if (businessCategory === "health") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre o Profissional",
+        "fields": [
+          { "key": "about", "label": "Apresentação profissional" },
+          { "key": "credentials", "label": "Credenciais e especializações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Especialidades",
+        "fields": [
+          { "key": "list", "label": "Lista de especialidades" }
+        ]
+      },
+      {
+        "id": "convenios",
+        "name": "Convênios",
+        "fields": [
+          { "key": "list", "label": "Convênios aceitos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa História",
+        "fields": [
+          { "key": "about", "label": "História e tradição" }
+        ]
+      },
+      {
+        "id": "cardapio",
+        "name": "Cardápio",
+        "fields": [
+          { "key": "list", "label": "Principais pratos e categorias" }
+        ]
+      },
+      {
+        "id": "delivery",
+        "name": "Delivery",
+        "fields": [
+          { "key": "info", "label": "Informações de delivery" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Oficina",
+        "fields": [
+          { "key": "about", "label": "Experiência e qualificações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Automotivos",
+        "fields": [
+          { "key": "list", "label": "Lista de serviços oferecidos" }
+        ]
+      },
+      {
+        "id": "marcas",
+        "name": "Marcas Atendidas",
+        "fields": [
+          { "key": "list", "label": "Marcas e tipos de veículos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Joalheria",
+        "fields": [
+          { "key": "about", "label": "Tradição e arte em joias" }
+        ]
+      },
+      {
+        "id": "produtos",
+        "name": "Nossos Produtos",
+        "fields": [
+          { "key": "list", "label": "Tipos de joias e produtos" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Especiais",
+        "fields": [
+          { "key": "list", "label": "Serviços personalizados" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Empresa",
+        "fields": [
+          { "key": "about", "label": "Experiência em construção" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços de Construção",
+        "fields": [
+          { "key": "list", "label": "Tipos de construção e reforma" }
+        ]
+      },
+      {
+        "id": "projetos",
+        "name": "Tipos de Projeto",
+        "fields": [
+          { "key": "list", "label": "Categorias de projetos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Empresa",
+        "fields": [
+          { "key": "about", "label": "Inovação e tecnologia" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Soluções Tecnológicas",
+        "fields": [
+          { "key": "list", "label": "Serviços e soluções oferecidas" }
+        ]
+      },
+      {
+        "id": "tecnologias",
+        "name": "Tecnologias",
+        "fields": [
+          { "key": "list", "label": "Tecnologias utilizadas" }
+        ]
+      }
+    ];
+  } else {
+    // general
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre Nós",
+        "fields": [
+          { "key": "about", "label": "Apresentação da empresa" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Produtos e Serviços",
+        "fields": [
+          { "key": "list", "label": "Lista de produtos/serviços" }
+        ]
+      }
+    ];
+  }
+
+  var finalFields = [
+    {
+      "id": "depoimentos",
+      "name": "Depoimentos",
+      "fields": []
+    },
+    {
+      "id": "contato",
+      "name": "Contato",
+      "fields": [
+        { "key": "email", "label": "E-mail" },
+        { "key": "whatsapp", "label": "WhatsApp" },
+        { "key": "address", "label": "Endereço" },
+        { "key": "maps_url", "label": "Google Maps URL" },
+        { "key": "instagram", "label": "Instagram" },
+        { "key": "facebook", "label": "Facebook" },
+        { "key": "tiktok", "label": "TikTok" }
+      ]
+    }
+  ];
+
+  return baseFields.concat(specificFields).concat(finalFields);
 }
 
 function testeLogin() {
@@ -5009,6 +5431,224 @@ function getBusinessSubtitle(category) {
   return subtitles[category] || subtitles.general;
 }
 
+/**
+ * Gera configuração de seções personalizadas para o elevea.sections.json baseado no tipo de negócio
+ */
+function generateSectionsForBusiness_(businessCategory, context) {
+  var baseFields = [
+    {
+      "id": "header",
+      "name": "Cabeçalho",
+      "fields": [
+        { "key": "brand", "label": "Nome da marca" },
+        { "key": "nav_links", "label": "Links do menu (âncoras)", "hint": "#sobre,#servicos,#depoimentos,#contato" }
+      ]
+    },
+    {
+      "id": "hero",
+      "name": "Hero Principal",
+      "fields": [
+        { "key": "title", "label": "Título principal" },
+        { "key": "subtitle", "label": "Subtítulo" },
+        { "key": "cta_whatsapp", "label": "Link WhatsApp" }
+      ],
+      "slots": [
+        { "key": "hero_img", "label": "Imagem principal" }
+      ]
+    }
+  ];
+
+  var specificFields = [];
+  
+  if (businessCategory === "health") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre o Profissional",
+        "fields": [
+          { "key": "about", "label": "Apresentação profissional" },
+          { "key": "credentials", "label": "Credenciais e especializações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Especialidades",
+        "fields": [
+          { "key": "list", "label": "Lista de especialidades" }
+        ]
+      },
+      {
+        "id": "convenios",
+        "name": "Convênios",
+        "fields": [
+          { "key": "list", "label": "Convênios aceitos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa História",
+        "fields": [
+          { "key": "about", "label": "História e tradição" }
+        ]
+      },
+      {
+        "id": "cardapio",
+        "name": "Cardápio",
+        "fields": [
+          { "key": "list", "label": "Principais pratos e categorias" }
+        ]
+      },
+      {
+        "id": "delivery",
+        "name": "Delivery",
+        "fields": [
+          { "key": "info", "label": "Informações de delivery" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Oficina",
+        "fields": [
+          { "key": "about", "label": "Experiência e qualificações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Automotivos",
+        "fields": [
+          { "key": "list", "label": "Lista de serviços oferecidos" }
+        ]
+      },
+      {
+        "id": "marcas",
+        "name": "Marcas Atendidas",
+        "fields": [
+          { "key": "list", "label": "Marcas e tipos de veículos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Joalheria",
+        "fields": [
+          { "key": "about", "label": "Tradição e arte em joias" }
+        ]
+      },
+      {
+        "id": "produtos",
+        "name": "Nossos Produtos",
+        "fields": [
+          { "key": "list", "label": "Tipos de joias e produtos" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Especiais",
+        "fields": [
+          { "key": "list", "label": "Serviços personalizados" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Empresa",
+        "fields": [
+          { "key": "about", "label": "Experiência em construção" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços de Construção",
+        "fields": [
+          { "key": "list", "label": "Tipos de construção e reforma" }
+        ]
+      },
+      {
+        "id": "projetos",
+        "name": "Tipos de Projeto",
+        "fields": [
+          { "key": "list", "label": "Categorias de projetos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Empresa",
+        "fields": [
+          { "key": "about", "label": "Inovação e tecnologia" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Soluções Tecnológicas",
+        "fields": [
+          { "key": "list", "label": "Serviços e soluções oferecidas" }
+        ]
+      },
+      {
+        "id": "tecnologias",
+        "name": "Tecnologias",
+        "fields": [
+          { "key": "list", "label": "Tecnologias utilizadas" }
+        ]
+      }
+    ];
+  } else {
+    // general
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre Nós",
+        "fields": [
+          { "key": "about", "label": "Apresentação da empresa" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Produtos e Serviços",
+        "fields": [
+          { "key": "list", "label": "Lista de produtos/serviços" }
+        ]
+      }
+    ];
+  }
+
+  var finalFields = [
+    {
+      "id": "depoimentos",
+      "name": "Depoimentos",
+      "fields": []
+    },
+    {
+      "id": "contato",
+      "name": "Contato",
+      "fields": [
+        { "key": "email", "label": "E-mail" },
+        { "key": "whatsapp", "label": "WhatsApp" },
+        { "key": "address", "label": "Endereço" },
+        { "key": "maps_url", "label": "Google Maps URL" },
+        { "key": "instagram", "label": "Instagram" },
+        { "key": "facebook", "label": "Facebook" },
+        { "key": "tiktok", "label": "TikTok" }
+      ]
+    }
+  ];
+
+  return baseFields.concat(specificFields).concat(finalFields);
+}
+
 // === STATUS API (GET) ========================================================
 // Endpoints:
 //   ?type=validate&siteSlug=SLUG&cpf=XXXXXXXXXXX  -> valida slug/CPF antes do cadastro
@@ -5472,4 +6112,222 @@ function getBusinessSubtitle(category) {
     general: "Comprometidos com a excelência no atendimento e qualidade dos serviços"
   };
   return subtitles[category] || subtitles.general;
+}
+
+/**
+ * Gera configuração de seções personalizadas para o elevea.sections.json baseado no tipo de negócio
+ */
+function generateSectionsForBusiness_(businessCategory, context) {
+  var baseFields = [
+    {
+      "id": "header",
+      "name": "Cabeçalho",
+      "fields": [
+        { "key": "brand", "label": "Nome da marca" },
+        { "key": "nav_links", "label": "Links do menu (âncoras)", "hint": "#sobre,#servicos,#depoimentos,#contato" }
+      ]
+    },
+    {
+      "id": "hero",
+      "name": "Hero Principal",
+      "fields": [
+        { "key": "title", "label": "Título principal" },
+        { "key": "subtitle", "label": "Subtítulo" },
+        { "key": "cta_whatsapp", "label": "Link WhatsApp" }
+      ],
+      "slots": [
+        { "key": "hero_img", "label": "Imagem principal" }
+      ]
+    }
+  ];
+
+  var specificFields = [];
+  
+  if (businessCategory === "health") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre o Profissional",
+        "fields": [
+          { "key": "about", "label": "Apresentação profissional" },
+          { "key": "credentials", "label": "Credenciais e especializações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Especialidades",
+        "fields": [
+          { "key": "list", "label": "Lista de especialidades" }
+        ]
+      },
+      {
+        "id": "convenios",
+        "name": "Convênios",
+        "fields": [
+          { "key": "list", "label": "Convênios aceitos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "food") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa História",
+        "fields": [
+          { "key": "about", "label": "História e tradição" }
+        ]
+      },
+      {
+        "id": "cardapio",
+        "name": "Cardápio",
+        "fields": [
+          { "key": "list", "label": "Principais pratos e categorias" }
+        ]
+      },
+      {
+        "id": "delivery",
+        "name": "Delivery",
+        "fields": [
+          { "key": "info", "label": "Informações de delivery" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "automotive") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Oficina",
+        "fields": [
+          { "key": "about", "label": "Experiência e qualificações" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Automotivos",
+        "fields": [
+          { "key": "list", "label": "Lista de serviços oferecidos" }
+        ]
+      },
+      {
+        "id": "marcas",
+        "name": "Marcas Atendidas",
+        "fields": [
+          { "key": "list", "label": "Marcas e tipos de veículos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "jewelry") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Joalheria",
+        "fields": [
+          { "key": "about", "label": "Tradição e arte em joias" }
+        ]
+      },
+      {
+        "id": "produtos",
+        "name": "Nossos Produtos",
+        "fields": [
+          { "key": "list", "label": "Tipos de joias e produtos" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços Especiais",
+        "fields": [
+          { "key": "list", "label": "Serviços personalizados" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "construction") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre a Empresa",
+        "fields": [
+          { "key": "about", "label": "Experiência em construção" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Serviços de Construção",
+        "fields": [
+          { "key": "list", "label": "Tipos de construção e reforma" }
+        ]
+      },
+      {
+        "id": "projetos",
+        "name": "Tipos de Projeto",
+        "fields": [
+          { "key": "list", "label": "Categorias de projetos" }
+        ]
+      }
+    ];
+  } else if (businessCategory === "technology") {
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Nossa Empresa",
+        "fields": [
+          { "key": "about", "label": "Inovação e tecnologia" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Soluções Tecnológicas",
+        "fields": [
+          { "key": "list", "label": "Serviços e soluções oferecidas" }
+        ]
+      },
+      {
+        "id": "tecnologias",
+        "name": "Tecnologias",
+        "fields": [
+          { "key": "list", "label": "Tecnologias utilizadas" }
+        ]
+      }
+    ];
+  } else {
+    // general
+    specificFields = [
+      {
+        "id": "sobre",
+        "name": "Sobre Nós",
+        "fields": [
+          { "key": "about", "label": "Apresentação da empresa" }
+        ]
+      },
+      {
+        "id": "servicos",
+        "name": "Produtos e Serviços",
+        "fields": [
+          { "key": "list", "label": "Lista de produtos/serviços" }
+        ]
+      }
+    ];
+  }
+
+  var finalFields = [
+    {
+      "id": "depoimentos",
+      "name": "Depoimentos",
+      "fields": []
+    },
+    {
+      "id": "contato",
+      "name": "Contato",
+      "fields": [
+        { "key": "email", "label": "E-mail" },
+        { "key": "whatsapp", "label": "WhatsApp" },
+        { "key": "address", "label": "Endereço" },
+        { "key": "maps_url", "label": "Google Maps URL" },
+        { "key": "instagram", "label": "Instagram" },
+        { "key": "facebook", "label": "Facebook" },
+        { "key": "tiktok", "label": "TikTok" }
+      ]
+    }
+  ];
+
+  return baseFields.concat(specificFields).concat(finalFields);
 }
