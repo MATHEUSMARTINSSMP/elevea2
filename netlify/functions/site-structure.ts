@@ -27,10 +27,16 @@ async function callGAS(action: string, data: any): Promise<any> {
   const timeoutId = setTimeout(() => controller.abort(), 8000) // 8s timeout
 
   try {
+    // Alguns endpoints usam 'action' em vez de 'type' no GAS
+    const isActionEndpoint = ['get_site_structure', 'save_site_structure', 'validate_vip_pin'].includes(action)
+    const payload = isActionEndpoint 
+      ? { action, ...data }
+      : { type: action, ...data }
+
     const response = await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...data }),
+      body: JSON.stringify(payload),
       signal: controller.signal
     })
 
@@ -79,21 +85,12 @@ export const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === 'GET') {
-      // Buscar dados do cliente para detectar tipo de negócio
-      const clientResult = await callGAS('buscar_info_site', { site })
-      let businessInfo = { empresa: site, historia: "", produtos: "", siteSlug: site }
-      
-      if (clientResult.ok && clientResult.dados) {
-        businessInfo = {
-          empresa: clientResult.dados.empresa || site,
-          historia: clientResult.dados.historia || "",
-          produtos: clientResult.dados.produtos || "",
-          siteSlug: site
-        }
-      }
+      // Para detectar tipo de negócio, usamos informações básicas do site
+      // O GAS já tem a detecção automática implementada durante o onboarding
+      const businessInfo = { empresa: site, historia: "", produtos: "", siteSlug: site }
 
-      // Detecta o tipo de negócio automaticamente
-      const businessText = `${businessInfo.historia} ${businessInfo.produtos} ${businessInfo.empresa}`.toLowerCase()
+      // Detecta o tipo de negócio automaticamente baseado no nome do site
+      const businessText = `${businessInfo.empresa}`.toLowerCase()
       const businessType = detectBusinessType(businessText)
       
       const result = await callGAS('get_site_structure', { site })
