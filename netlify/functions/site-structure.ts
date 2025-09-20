@@ -20,7 +20,7 @@ interface SiteStructure {
   sections: SiteSection[]
 }
 
-const GAS_URL = process.env.GAS_URL || process.env.VITE_GAS_URL || ""
+const GAS_URL = process.env.GAS_URL || process.env.VITE_GAS_URL || process.env.ELEVEA_GAS_URL || ""
 
 async function callGAS(action: string, data: any): Promise<any> {
   const controller = new AbortController()
@@ -240,13 +240,13 @@ function detectBusinessType(businessText: string) {
     };
   }
 
-  // 💎 JOIAS E ACESSÓRIOS
-  if (text.match(/joia|ouro|prata|diamant|anel|colar|brinco|pulseir|relogio|alianc|noivad|casament|semi.joia|bijuter|acessori|piercing|corrente|pingent|chaveiro|broche|tiara|headband|oculos|bolsa|carteira|cinto|sapato|tenis|sandalia|chinelo|bota|scarpin|salto|rasteirnha|havaina|melissa|nike|adidas|puma|vans|converse|roupas|camisa|blusa|vestido|saia|calca|short|bermud|jaqueta|casaco|moletom|camiso|pijama|roupa.intim|sutia|calcinha|cueca|boxer|meia|underwear|lingerie|maio|biquin|sunga|praia|verao|inverno|outono|primaver|moda|estilo|tendenc|design|griffe|marca|luxo|premium|exclusiv|personalizad|custom|import|nacion|brasile|estrangei|joalheria|bijuteria|acessorio|relojoaria|alianca|noivado|casamento|ouro|prata|diamante|anel|colar|brinco|pulseira|corrente|moda|roupa|calcado|bolsa|oculos/)) {
+  // 💎 JOIAS E BIJUTERIAS
+  if (text.match(/joia|bijoux|anel|colar|brinco|pulseira|corrente|pingente|ouro|prata|diamante|esmeralda|rubi|safira|perola|cristal|relogio|alianca|casament|noivado|formatura|presente|ourivesar|joalher|designer|artesana|personaliz|exclusiv|luxo|elegante|sofistic|premium|import|suic|italia|joalheria|ourivesaria|bijuteria|acessorios|pedras.preciosas|metais.nobres|semi.joias/)) {
     return {
-      category: "fashion",
+      category: "jewelry",
       type: "product",
       sections: ["hero", "products", "collections", "about", "gallery", "testimonials", "contact", "catalog"],
-      keywords: ["elegância", "estilo", "qualidade", "exclusivo", "tendência", "design", "coleção"]
+      keywords: ["joias", "elegância", "exclusividade", "momentos", "personalizado", "luxo", "sofisticação"]
     };
   }
 
@@ -282,7 +282,7 @@ function detectBusinessType(businessText: string) {
 function createDefaultStructure(siteSlug: string, businessCategory: string): SiteStructure {
   // Mapear categoria para tipo válido
   let businessType: 'service' | 'product' | 'hybrid' | 'custom' = 'service'
-  if (businessCategory === 'fashion') {
+  if (businessCategory === 'jewelry') {
     businessType = 'product'
   } else if (businessCategory === 'food') {
     businessType = 'hybrid'
@@ -338,14 +338,14 @@ function createDefaultStructure(siteSlug: string, businessCategory: string): Sit
         visible: true
       }
     ]
-  } else if (businessCategory === 'fashion') {
-    // Template para comércio de produtos (joalheria, loja, etc.)
+  } else if (businessCategory === 'jewelry' || businessCategory === 'food') {
+    // Template para comércio de produtos (joalheria, restaurante, etc.)
     baseStructure.sections = [
       {
         id: 'hero',
         type: 'hero',
-        title: 'Nossa Loja',
-        subtitle: 'Os melhores produtos para você',
+        title: businessCategory === 'jewelry' ? 'Nossa Joalheria' : 'Nosso Restaurante',
+        subtitle: businessCategory === 'jewelry' ? 'Joias exclusivas para momentos especiais' : 'Sabores únicos para você',
         image: '',
         order: 1,
         visible: true
@@ -353,8 +353,8 @@ function createDefaultStructure(siteSlug: string, businessCategory: string): Sit
       {
         id: 'products',
         type: 'products',
-        title: 'Nossos Produtos',
-        subtitle: 'Qualidade e variedade em um só lugar',
+        title: businessCategory === 'jewelry' ? 'Nossas Joias' : 'Nosso Cardápio',
+        subtitle: businessCategory === 'jewelry' ? 'Peças únicas e personalizadas' : 'Pratos especiais da casa',
         image: '',
         order: 2,
         visible: true
@@ -363,7 +363,7 @@ function createDefaultStructure(siteSlug: string, businessCategory: string): Sit
         id: 'gallery',
         type: 'gallery',
         title: 'Galeria',
-        subtitle: 'Veja nossos produtos em detalhes',
+        subtitle: businessCategory === 'jewelry' ? 'Veja nossas criações' : 'Ambiente e pratos',
         image: '',
         order: 3,
         visible: true
@@ -371,9 +371,9 @@ function createDefaultStructure(siteSlug: string, businessCategory: string): Sit
       {
         id: 'about',
         type: 'about',
-        title: 'Sobre a Loja',
-        subtitle: 'Nossa paixão por qualidade',
-        description: 'Oferecemos produtos cuidadosamente selecionados.',
+        title: businessCategory === 'jewelry' ? 'Nossa Arte' : 'Nossa História',
+        subtitle: businessCategory === 'jewelry' ? 'Tradição e elegância' : 'Tradição e sabor',
+        description: businessCategory === 'jewelry' ? 'Criamos peças únicas que eternizam momentos especiais.' : 'Oferecemos uma experiência gastronômica única.',
         image: '',
         order: 4,
         visible: true
@@ -381,8 +381,8 @@ function createDefaultStructure(siteSlug: string, businessCategory: string): Sit
       {
         id: 'contact',
         type: 'contact',
-        title: 'Onde Encontrar',
-        subtitle: 'Visite nossa loja ou fale conosco',
+        title: 'Entre em Contato',
+        subtitle: businessCategory === 'jewelry' ? 'Visite nossa joalheria' : 'Faça sua reserva',
         image: '',
         order: 5,
         visible: true
