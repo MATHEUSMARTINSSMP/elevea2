@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useSession } from "@/hooks/useSession";
+import { useSession } from "../../src/hooks/useSession";
 
 /* ================= CONFIG ================= */
 const PLAN_TIMEOUT_MS = 7000;         // descobrir VIP
@@ -253,7 +253,7 @@ export default function ClientDashboard() {
           CARDS_TIMEOUT_MS
         ).catch(() => ({ ok: true, items: [] as any[] }));
         if (!alive) return;
-        const urlByKey = new Map(assets.items.map((i) => [i.key, i.url]));
+        const urlByKey = new Map<string, string>(assets.items.map((i) => [i.key, i.url]));
         const ALIASES: Record<string, string[]> = {
           media_1: ["media_1", "hero", "banner", "principal"],
           media_2: ["media_2", "destaque_1", "gallery_1"],
