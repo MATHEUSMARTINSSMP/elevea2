@@ -20,7 +20,7 @@ interface SiteStructure {
   sections: SiteSection[]
 }
 
-const GAS_URL = process.env.VITE_GAS_URL || ""
+const GAS_URL = process.env.GAS_URL || process.env.VITE_GAS_URL || ""
 
 async function callGAS(action: string, data: any): Promise<any> {
   const controller = new AbortController()
@@ -57,7 +57,7 @@ export const handler: Handler = async (event, context) => {
   }
 
   try {
-    const { site, pin } = event.queryStringParameters || {}
+    const { site } = event.queryStringParameters || {}
     
     if (!site) {
       return {
@@ -101,6 +101,9 @@ export const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === 'POST') {
+      const body = JSON.parse(event.body || '{}')
+      const { structure, pin } = body
+
       if (!pin) {
         return {
           statusCode: 403,
@@ -111,9 +114,6 @@ export const handler: Handler = async (event, context) => {
           })
         }
       }
-
-      const body = JSON.parse(event.body || '{}')
-      const { structure } = body
 
       if (!structure || !structure.sections) {
         return {

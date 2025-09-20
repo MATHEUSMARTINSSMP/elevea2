@@ -3383,6 +3383,240 @@ function atualizarPreapprovalNosCadastros() {
   }
 }
 
+/* ========================= SISTEMA UNIVERSAL PARA 100+ TIPOS DE NEGÓCIO ===================================== */
+
+/**
+ * Detecta automaticamente o tipo de negócio baseado em texto/contexto
+ * Sistema preparado para 100+ categorias diferentes
+ */
+function detectBusinessType(businessText) {
+  const text = String(businessText || "").toLowerCase();
+  
+  // 🏥 SAÚDE E MEDICINA (médicos, clínicas, fisioterapia, etc.)
+  if (text.match(/clinic|hospital|medic|dentist|fisio|psico|terapi|farma|opto|veter|nutri|estetic|spa|massag|quiropra|podologi|fonoaudio|acupunt|odonto|dermato|radiolog|laborator|ambulato|upa|pronto.socorro|posto.saude|home.care|pilates|crossfit|academia|ginasti|muscula|orthop|cardio|pneumo|gastro|neuro|urolog|gineco|pediatra|geriatra|anestesi|cirurgi|emergen|uti|cti|saude|medico|doutor|clinica|consulta|tratamento|terapia|fisioterapia|psicologia|odontologia|veterinaria|estetica|massagem|acupuntura|laboratorio|exame|cirurgia|emergencia|ambulatorio/)) {
+    return {
+      category: "health",
+      type: "service",
+      sections: ["hero", "about", "services", "team", "testimonials", "contact", "appointment"],
+      keywords: ["saúde", "médico", "clínica", "tratamento", "consulta", "especialista", "cuidado"]
+    };
+  }
+
+  // 🍽️ ALIMENTAÇÃO E RESTAURANTES (restaurantes, lanchonetes, delivery, etc.)
+  if (text.match(/restauran|lanchon|pizzar|hambur|coffee|cafeter|padari|confeit|doceri|sorvet|açai|sushi|barbec|churrascar|bistro|pub|bar|cantina|food.truck|delivery|ifood|comida|gastrono|chef|culinar|menu|prato|bebida|drink|cocktail|cervej|cacha|vinho|whisky|vodka|tequila|gin|rum|licor|caipirnha|catering|buffet|festa|event|recep|casamen|formatur|aniver|restaurante|lanchonete|pizzaria|hamburger|cafeteria|padaria|confeitaria|doceria|sorveteria|acai|churrascaria|gastronomia|culinaria|cardapio|comida|bebida|entrega|delivery/)) {
+    return {
+      category: "food",
+      type: "hybrid",
+      sections: ["hero", "menu", "about", "gallery", "reviews", "delivery", "contact", "hours"],
+      keywords: ["cardápio", "delivery", "sabor", "comida", "especialidade", "ambiente", "refeição"]
+    };
+  }
+
+  // 🔧 SERVIÇOS AUTOMOTIVOS (borracharia, mecânica, lava-jato, etc.)
+  if (text.match(/auto|car|moto|bicicleta|bike|pneu|borrachar|mecanic|eletric|lava.jato|funilari|pintur|insulfilm|som|alarme|tracker|gps|reboque|guincho|vistoria|despachant|cartorio|detran|licenciament|emplacament|transfer|financiament|seguro|oficina|garage|posto|combusti|gasolin|alcool|diesel|gnv|lubri|oleo|filtro|peca|acessori|tunin|custom|restor|antiqu|classico|modific|turbo|nitro|suspens|freio|embrag|motor|cambio|direcao|alinhament|balancear|geometria|diagnos|scaner|teste|manutenc|prevent|corret|urgent|24h|plantao|automotivo|carro|automovel|veiculo|borracharia|mecanica|eletrica|lavajato|funilaria|pintura|oficina|posto|combustivel|gasolina|oleo|filtro|peca|acessorio|manutencao|conserto|reparo/)) {
+    return {
+      category: "automotive",
+      type: "service", 
+      sections: ["hero", "services", "about", "gallery", "brands", "contact", "emergency"],
+      keywords: ["mecânica", "conserto", "manutenção", "especialista", "qualidade", "confiança", "experiência"]
+    };
+  }
+
+  // 💎 JOIAS E ACESSÓRIOS (joalheria, bijuteria, relógios, etc.)
+  if (text.match(/joia|ouro|prata|diamant|anel|colar|brinco|pulseir|relogio|alianc|noivad|casament|semi.joia|bijuter|acessori|piercing|corrente|pingent|chaveiro|broche|tiara|headband|oculos|bolsa|carteira|cinto|sapato|tenis|sandalia|chinelo|bota|scarpin|salto|rasteirnha|havaina|melissa|nike|adidas|puma|vans|converse|roupas|camisa|blusa|vestido|saia|calca|short|bermud|jaqueta|casaco|moletom|camiso|pijama|roupa.intim|sutia|calcinha|cueca|boxer|meia|underwear|lingerie|maio|biquin|sunga|praia|verao|inverno|outono|primaver|moda|estilo|tendenc|design|griffe|marca|luxo|premium|exclusiv|personalizad|custom|import|nacion|brasile|estrangei|joalheria|bijuteria|acessorio|relojoaria|alianca|noivado|casamento|ouro|prata|diamante|anel|colar|brinco|pulseira|corrente|moda|roupa|calcado|bolsa|oculos/)) {
+    return {
+      category: "fashion",
+      type: "product",
+      sections: ["hero", "products", "collections", "about", "gallery", "testimonials", "contact", "catalog"],
+      keywords: ["elegância", "estilo", "qualidade", "exclusivo", "tendência", "design", "coleção"]
+    };
+  }
+
+  // 🏠 CONSTRUÇÃO E REFORMAS (pedreiros, engenheiros, arquitetos, etc.)
+  if (text.match(/construc|reform|obra|engenheir|arquitet|mestre|pedreiro|eletricist|encanador|pintore|azulejist|gesseiro|marmorari|vidraceiro|soldador|carpinteir|marceneir|serralheri|ferrageir|materiais.construc|ciment|areia|brita|tijolo|bloco|telha|madeira|ferro|aco|alumin|vidro|espelho|portas|janelas|portoes|grades|cancela|cerca|muro|laje|pilare|viga|fundac|alicerce|piso|azulejo|ceramic|porcelanat|granito|marmore|quartz|pedra|marmore|revestiment|tinta|verniz|selador|massa|reboco|chapisco|impermeabi|isolament|termic|acustic|drywall|gesso|forro|sanca|moldura|rodape|batent|fechadur|dobra|puxador|parafuso|prego|buchas|furadei|broca|serra|martelo|chave.fenda|philips|alicate|nivel|esquadro|trena|prumo|regua|esquadri|transfer|escalin|andaim|betonei|vibrador|compactador|rolo|pincel|brocha|pistola|compressor|gerador|solda|esmeril|furadei|parafusadei|plainar|tupia|serra.circular|tico.tico|moto.serra|britadei|construcao|reforma|obra|engenharia|arquitetura|pedreiro|eletricista|encanador|pintor|carpinteiro|serralheria|materiais|construcao|cimento|tijolo|telha|madeira|ferro|aluminio|vidro|porta|janela|piso|azulejo|tinta|massa|gesso|impermeabilizacao/)) {
+    return {
+      category: "construction", 
+      type: "service",
+      sections: ["hero", "services", "projects", "about", "team", "contact", "quote"],
+      keywords: ["obra", "reforma", "construção", "projeto", "qualidade", "experiência", "entrega"]
+    };
+  }
+
+  // 💻 TECNOLOGIA E INFORMÁTICA (desenvolvimento, suporte, hardware, etc.)
+  if (text.match(/tecno|comput|notebook|desktop|pc|laptop|tablet|celular|smartphone|iphone|android|samsung|xiaomi|motorola|lg|sony|apple|microsoft|google|intel|amd|nvidia|software|hardware|programa|app|aplicativ|system|website|site|blog|ecommerce|loja.virtual|marketplace|seo|sem|google.ads|facebook.ads|instagram.ads|linkedin.ads|email.marketing|automac|chatbot|ia|intelige.artific|machine.learning|deep.learning|big.data|analytics|dashboard|api|integrac|cloud|nuvem|aws|azure|google.cloud|server|servidor|hospedagem|dominio|ssl|backup|seguranc|antivirus|firewall|vpn|rede|wifi|bluetooth|ethernet|fibra.optic|internet|banda.larga|4g|5g|satelite|radio|transmiss|recepc|antena|roteador|switch|hub|modem|repetidor|tecnologia|informatica|computador|desenvolvimento|programacao|software|hardware|website|aplicativo|sistema|internet|rede|suporte|manutencao|digital|online/)) {
+    return {
+      category: "technology",
+      type: "service",
+      sections: ["hero", "services", "solutions", "about", "portfolio", "contact", "support"],
+      keywords: ["tecnologia", "inovação", "digital", "solução", "eficiência", "modernização", "expertise"]
+    };
+  }
+
+  // Categoria genérica para outros tipos não detectados
+  return {
+    category: "general",
+    type: "hybrid", 
+    sections: ["hero", "about", "services", "gallery", "contact"],
+    keywords: ["qualidade", "excelência", "confiança", "experiência", "atendimento", "satisfação", "resultado"]
+  };
+}
+
+/**
+ * Busca a estrutura personalizada de um site
+ */
+function get_site_structure(site) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    if (!structureSheet) {
+      return { ok: false, error: "Planilha site_structure não encontrada" };
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+
+    if (siteIdx === -1 || structureIdx === -1) {
+      return { ok: false, error: "Headers obrigatórios não encontrados" };
+    }
+
+    const data = structureSheet.getRange(2, 1, Math.max(1, structureSheet.getLastRow() - 1), structureSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const structureJson = String(data[i][structureIdx] || "");
+        if (structureJson) {
+          try {
+            const structure = JSON.parse(structureJson);
+            return {
+              ok: true,
+              structure: structure
+            };
+          } catch (e) {
+            return { ok: false, error: "Erro ao parsear estrutura JSON: " + e.message };
+          }
+        }
+      }
+    }
+
+    return { ok: false, error: "Estrutura não encontrada para o site" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao buscar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Salva a estrutura personalizada de um site
+ */
+function save_site_structure(site, structure) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    // Cria a planilha se não existir
+    if (!structureSheet) {
+      structureSheet = ss.insertSheet("site_structure");
+      structureSheet.getRange(1, 1, 1, 4).setValues([["siteSlug", "structure", "lastUpdated", "businessType"]]);
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+    const businessIdx = headers.indexOf("businessType");
+
+    const structureJson = JSON.stringify(structure);
+    const now = new Date().toISOString();
+    const businessType = structure.businessType || "service";
+
+    // Verifica se já existe uma linha para o site
+    const data = structureSheet.getRange(2, 1, Math.max(1, structureSheet.getLastRow() - 1), structureSheet.getLastColumn()).getValues();
+    let rowToUpdate = -1;
+
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        rowToUpdate = i + 2; // +2 porque começamos da linha 2
+        break;
+      }
+    }
+
+    if (rowToUpdate !== -1) {
+      // Atualiza linha existente
+      structureSheet.getRange(rowToUpdate, structureIdx + 1).setValue(structureJson);
+      structureSheet.getRange(rowToUpdate, updatedIdx + 1).setValue(now);
+      structureSheet.getRange(rowToUpdate, businessIdx + 1).setValue(businessType);
+    } else {
+      // Adiciona nova linha
+      const newRow = new Array(structureSheet.getLastColumn()).fill("");
+      newRow[siteIdx] = site;
+      newRow[structureIdx] = structureJson;
+      newRow[updatedIdx] = now;
+      newRow[businessIdx] = businessType;
+      
+      structureSheet.appendRow(newRow);
+    }
+
+    return { ok: true, message: "Estrutura salva com sucesso" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao salvar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Valida PIN VIP de um site
+ */
+function validate_vip_pin(site, pin) {
+  try {
+    if (!pin) {
+      return { ok: false, valid: false, error: "PIN não fornecido" };
+    }
+
+    const ss = openSS_();
+    const usuariosSheet = ss.getSheetByName("usuarios");
+    
+    if (!usuariosSheet) {
+      return { ok: false, valid: false, error: "Planilha usuarios não encontrada" };
+    }
+
+    const headers = usuariosSheet.getRange(1, 1, 1, usuariosSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("site");
+    const pinIdx = headers.indexOf("vip_pin");
+    const planoIdx = headers.indexOf("plano");
+
+    if (siteIdx === -1) {
+      return { ok: false, valid: false, error: "Coluna site não encontrada" };
+    }
+
+    const data = usuariosSheet.getRange(2, 1, Math.max(1, usuariosSheet.getLastRow() - 1), usuariosSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const storedPin = String(data[i][pinIdx] || "").trim();
+        const plano = String(data[i][planoIdx] || "").toLowerCase();
+        
+        // Verifica se é VIP e se o PIN confere
+        const isVip = plano.includes("vip") || plano === "premium";
+        const pinValid = storedPin && storedPin === pin;
+        
+        return {
+          ok: true,
+          valid: isVip && pinValid,
+          isVip: isVip,
+          pinMatch: pinValid
+        };
+      }
+    }
+
+    return { ok: false, valid: false, error: "Site não encontrado" };
+    
+  } catch (e) {
+    return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
+  }
+}
+
 // === STATUS API (GET) ========================================================
 // Endpoints:
 //   ?type=validate&siteSlug=SLUG&cpf=XXXXXXXXXXX  -> valida slug/CPF antes do cadastro
@@ -3671,6 +3905,240 @@ function atualizarPreapprovalNosCadastros() {
 
   if (updates > 0) {
     shCad.getRange(primeiraLinhaCad, 1, qtdLinhasCad, qtdColunasCad).setValues(rangeCad);
+  }
+}
+
+/* ========================= SISTEMA UNIVERSAL PARA 100+ TIPOS DE NEGÓCIO ===================================== */
+
+/**
+ * Detecta automaticamente o tipo de negócio baseado em texto/contexto
+ * Sistema preparado para 100+ categorias diferentes
+ */
+function detectBusinessType(businessText) {
+  const text = String(businessText || "").toLowerCase();
+  
+  // 🏥 SAÚDE E MEDICINA (médicos, clínicas, fisioterapia, etc.)
+  if (text.match(/clinic|hospital|medic|dentist|fisio|psico|terapi|farma|opto|veter|nutri|estetic|spa|massag|quiropra|podologi|fonoaudio|acupunt|odonto|dermato|radiolog|laborator|ambulato|upa|pronto.socorro|posto.saude|home.care|pilates|crossfit|academia|ginasti|muscula|orthop|cardio|pneumo|gastro|neuro|urolog|gineco|pediatra|geriatra|anestesi|cirurgi|emergen|uti|cti|saude|medico|doutor|clinica|consulta|tratamento|terapia|fisioterapia|psicologia|odontologia|veterinaria|estetica|massagem|acupuntura|laboratorio|exame|cirurgia|emergencia|ambulatorio/)) {
+    return {
+      category: "health",
+      type: "service",
+      sections: ["hero", "about", "services", "team", "testimonials", "contact", "appointment"],
+      keywords: ["saúde", "médico", "clínica", "tratamento", "consulta", "especialista", "cuidado"]
+    };
+  }
+
+  // 🍽️ ALIMENTAÇÃO E RESTAURANTES (restaurantes, lanchonetes, delivery, etc.)
+  if (text.match(/restauran|lanchon|pizzar|hambur|coffee|cafeter|padari|confeit|doceri|sorvet|açai|sushi|barbec|churrascar|bistro|pub|bar|cantina|food.truck|delivery|ifood|comida|gastrono|chef|culinar|menu|prato|bebida|drink|cocktail|cervej|cacha|vinho|whisky|vodka|tequila|gin|rum|licor|caipirnha|catering|buffet|festa|event|recep|casamen|formatur|aniver|restaurante|lanchonete|pizzaria|hamburger|cafeteria|padaria|confeitaria|doceria|sorveteria|acai|churrascaria|gastronomia|culinaria|cardapio|comida|bebida|entrega|delivery/)) {
+    return {
+      category: "food",
+      type: "hybrid",
+      sections: ["hero", "menu", "about", "gallery", "reviews", "delivery", "contact", "hours"],
+      keywords: ["cardápio", "delivery", "sabor", "comida", "especialidade", "ambiente", "refeição"]
+    };
+  }
+
+  // 🔧 SERVIÇOS AUTOMOTIVOS (borracharia, mecânica, lava-jato, etc.)
+  if (text.match(/auto|car|moto|bicicleta|bike|pneu|borrachar|mecanic|eletric|lava.jato|funilari|pintur|insulfilm|som|alarme|tracker|gps|reboque|guincho|vistoria|despachant|cartorio|detran|licenciament|emplacament|transfer|financiament|seguro|oficina|garage|posto|combusti|gasolin|alcool|diesel|gnv|lubri|oleo|filtro|peca|acessori|tunin|custom|restor|antiqu|classico|modific|turbo|nitro|suspens|freio|embrag|motor|cambio|direcao|alinhament|balancear|geometria|diagnos|scaner|teste|manutenc|prevent|corret|urgent|24h|plantao|automotivo|carro|automovel|veiculo|borracharia|mecanica|eletrica|lavajato|funilaria|pintura|oficina|posto|combustivel|gasolina|oleo|filtro|peca|acessorio|manutencao|conserto|reparo/)) {
+    return {
+      category: "automotive",
+      type: "service", 
+      sections: ["hero", "services", "about", "gallery", "brands", "contact", "emergency"],
+      keywords: ["mecânica", "conserto", "manutenção", "especialista", "qualidade", "confiança", "experiência"]
+    };
+  }
+
+  // 💎 JOIAS E ACESSÓRIOS (joalheria, bijuteria, relógios, etc.)
+  if (text.match(/joia|ouro|prata|diamant|anel|colar|brinco|pulseir|relogio|alianc|noivad|casament|semi.joia|bijuter|acessori|piercing|corrente|pingent|chaveiro|broche|tiara|headband|oculos|bolsa|carteira|cinto|sapato|tenis|sandalia|chinelo|bota|scarpin|salto|rasteirnha|havaina|melissa|nike|adidas|puma|vans|converse|roupas|camisa|blusa|vestido|saia|calca|short|bermud|jaqueta|casaco|moletom|camiso|pijama|roupa.intim|sutia|calcinha|cueca|boxer|meia|underwear|lingerie|maio|biquin|sunga|praia|verao|inverno|outono|primaver|moda|estilo|tendenc|design|griffe|marca|luxo|premium|exclusiv|personalizad|custom|import|nacion|brasile|estrangei|joalheria|bijuteria|acessorio|relojoaria|alianca|noivado|casamento|ouro|prata|diamante|anel|colar|brinco|pulseira|corrente|moda|roupa|calcado|bolsa|oculos/)) {
+    return {
+      category: "fashion",
+      type: "product",
+      sections: ["hero", "products", "collections", "about", "gallery", "testimonials", "contact", "catalog"],
+      keywords: ["elegância", "estilo", "qualidade", "exclusivo", "tendência", "design", "coleção"]
+    };
+  }
+
+  // 🏠 CONSTRUÇÃO E REFORMAS (pedreiros, engenheiros, arquitetos, etc.)
+  if (text.match(/construc|reform|obra|engenheir|arquitet|mestre|pedreiro|eletricist|encanador|pintore|azulejist|gesseiro|marmorari|vidraceiro|soldador|carpinteir|marceneir|serralheri|ferrageir|materiais.construc|ciment|areia|brita|tijolo|bloco|telha|madeira|ferro|aco|alumin|vidro|espelho|portas|janelas|portoes|grades|cancela|cerca|muro|laje|pilare|viga|fundac|alicerce|piso|azulejo|ceramic|porcelanat|granito|marmore|quartz|pedra|marmore|revestiment|tinta|verniz|selador|massa|reboco|chapisco|impermeabi|isolament|termic|acustic|drywall|gesso|forro|sanca|moldura|rodape|batent|fechadur|dobra|puxador|parafuso|prego|buchas|furadei|broca|serra|martelo|chave.fenda|philips|alicate|nivel|esquadro|trena|prumo|regua|esquadri|transfer|escalin|andaim|betonei|vibrador|compactador|rolo|pincel|brocha|pistola|compressor|gerador|solda|esmeril|furadei|parafusadei|plainar|tupia|serra.circular|tico.tico|moto.serra|britadei|construcao|reforma|obra|engenharia|arquitetura|pedreiro|eletricista|encanador|pintor|carpinteiro|serralheria|materiais|construcao|cimento|tijolo|telha|madeira|ferro|aluminio|vidro|porta|janela|piso|azulejo|tinta|massa|gesso|impermeabilizacao/)) {
+    return {
+      category: "construction", 
+      type: "service",
+      sections: ["hero", "services", "projects", "about", "team", "contact", "quote"],
+      keywords: ["obra", "reforma", "construção", "projeto", "qualidade", "experiência", "entrega"]
+    };
+  }
+
+  // 💻 TECNOLOGIA E INFORMÁTICA (desenvolvimento, suporte, hardware, etc.)
+  if (text.match(/tecno|comput|notebook|desktop|pc|laptop|tablet|celular|smartphone|iphone|android|samsung|xiaomi|motorola|lg|sony|apple|microsoft|google|intel|amd|nvidia|software|hardware|programa|app|aplicativ|system|website|site|blog|ecommerce|loja.virtual|marketplace|seo|sem|google.ads|facebook.ads|instagram.ads|linkedin.ads|email.marketing|automac|chatbot|ia|intelige.artific|machine.learning|deep.learning|big.data|analytics|dashboard|api|integrac|cloud|nuvem|aws|azure|google.cloud|server|servidor|hospedagem|dominio|ssl|backup|seguranc|antivirus|firewall|vpn|rede|wifi|bluetooth|ethernet|fibra.optic|internet|banda.larga|4g|5g|satelite|radio|transmiss|recepc|antena|roteador|switch|hub|modem|repetidor|tecnologia|informatica|computador|desenvolvimento|programacao|software|hardware|website|aplicativo|sistema|internet|rede|suporte|manutencao|digital|online/)) {
+    return {
+      category: "technology",
+      type: "service",
+      sections: ["hero", "services", "solutions", "about", "portfolio", "contact", "support"],
+      keywords: ["tecnologia", "inovação", "digital", "solução", "eficiência", "modernização", "expertise"]
+    };
+  }
+
+  // Categoria genérica para outros tipos não detectados
+  return {
+    category: "general",
+    type: "hybrid", 
+    sections: ["hero", "about", "services", "gallery", "contact"],
+    keywords: ["qualidade", "excelência", "confiança", "experiência", "atendimento", "satisfação", "resultado"]
+  };
+}
+
+/**
+ * Busca a estrutura personalizada de um site
+ */
+function get_site_structure(site) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    if (!structureSheet) {
+      return { ok: false, error: "Planilha site_structure não encontrada" };
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+
+    if (siteIdx === -1 || structureIdx === -1) {
+      return { ok: false, error: "Headers obrigatórios não encontrados" };
+    }
+
+    const data = structureSheet.getRange(2, 1, Math.max(1, structureSheet.getLastRow() - 1), structureSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const structureJson = String(data[i][structureIdx] || "");
+        if (structureJson) {
+          try {
+            const structure = JSON.parse(structureJson);
+            return {
+              ok: true,
+              structure: structure
+            };
+          } catch (e) {
+            return { ok: false, error: "Erro ao parsear estrutura JSON: " + e.message };
+          }
+        }
+      }
+    }
+
+    return { ok: false, error: "Estrutura não encontrada para o site" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao buscar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Salva a estrutura personalizada de um site
+ */
+function save_site_structure(site, structure) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    // Cria a planilha se não existir
+    if (!structureSheet) {
+      structureSheet = ss.insertSheet("site_structure");
+      structureSheet.getRange(1, 1, 1, 4).setValues([["siteSlug", "structure", "lastUpdated", "businessType"]]);
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+    const businessIdx = headers.indexOf("businessType");
+
+    const structureJson = JSON.stringify(structure);
+    const now = new Date().toISOString();
+    const businessType = structure.businessType || "service";
+
+    // Verifica se já existe uma linha para o site
+    const data = structureSheet.getRange(2, 1, Math.max(1, structureSheet.getLastRow() - 1), structureSheet.getLastColumn()).getValues();
+    let rowToUpdate = -1;
+
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        rowToUpdate = i + 2; // +2 porque começamos da linha 2
+        break;
+      }
+    }
+
+    if (rowToUpdate !== -1) {
+      // Atualiza linha existente
+      structureSheet.getRange(rowToUpdate, structureIdx + 1).setValue(structureJson);
+      structureSheet.getRange(rowToUpdate, updatedIdx + 1).setValue(now);
+      structureSheet.getRange(rowToUpdate, businessIdx + 1).setValue(businessType);
+    } else {
+      // Adiciona nova linha
+      const newRow = new Array(structureSheet.getLastColumn()).fill("");
+      newRow[siteIdx] = site;
+      newRow[structureIdx] = structureJson;
+      newRow[updatedIdx] = now;
+      newRow[businessIdx] = businessType;
+      
+      structureSheet.appendRow(newRow);
+    }
+
+    return { ok: true, message: "Estrutura salva com sucesso" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao salvar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Valida PIN VIP de um site
+ */
+function validate_vip_pin(site, pin) {
+  try {
+    if (!pin) {
+      return { ok: false, valid: false, error: "PIN não fornecido" };
+    }
+
+    const ss = openSS_();
+    const usuariosSheet = ss.getSheetByName("usuarios");
+    
+    if (!usuariosSheet) {
+      return { ok: false, valid: false, error: "Planilha usuarios não encontrada" };
+    }
+
+    const headers = usuariosSheet.getRange(1, 1, 1, usuariosSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("site");
+    const pinIdx = headers.indexOf("vip_pin");
+    const planoIdx = headers.indexOf("plano");
+
+    if (siteIdx === -1) {
+      return { ok: false, valid: false, error: "Coluna site não encontrada" };
+    }
+
+    const data = usuariosSheet.getRange(2, 1, Math.max(1, usuariosSheet.getLastRow() - 1), usuariosSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const storedPin = String(data[i][pinIdx] || "").trim();
+        const plano = String(data[i][planoIdx] || "").toLowerCase();
+        
+        // Verifica se é VIP e se o PIN confere
+        const isVip = plano.includes("vip") || plano === "premium";
+        const pinValid = storedPin && storedPin === pin;
+        
+        return {
+          ok: true,
+          valid: isVip && pinValid,
+          isVip: isVip,
+          pinMatch: pinValid
+        };
+      }
+    }
+
+    return { ok: false, valid: false, error: "Site não encontrado" };
+    
+  } catch (e) {
+    return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
   }
 }
 
