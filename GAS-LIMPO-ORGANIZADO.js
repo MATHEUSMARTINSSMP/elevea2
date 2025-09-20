@@ -3638,18 +3638,6 @@ function jsonOut(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function safeHeaderIndex(headers, wanted, fallbackIdx) {
-  var i = headers.indexOf(wanted);
-  return (i === -1 ? fallbackIdx : i);
-}
-
-function toMillis(v) {
-  if (v instanceof Date) return v.getTime();
-  var d = new Date(v);
-  var t = d.getTime();
-  return isFinite(t) ? t : -1;
-}
-
 function ensureClientFolderUrl_(site) {
   try {
     site = normalizeSlug_(String(site || ""));
@@ -4086,18 +4074,6 @@ function testeSeparado() {
     email: "admin@elevea.com"
   });
   console.log("POST:", postResult.getContent());
-}
-
-function safeHeaderIndex(headers, wanted, fallbackIdx) {
-  var i = headers.indexOf(wanted);
-  return (i === -1 ? fallbackIdx : i);
-}
-
-function toMillis(v) {
-  if (v instanceof Date) return v.getTime();
-  var d = new Date(v);
-  var t = d.getTime();
-  return isFinite(t) ? t : -1;
 }
 
 /** ============================= ARQUIVO LIMPO E ORGANIZADO ============================= */
