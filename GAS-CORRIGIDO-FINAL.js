@@ -426,6 +426,11 @@ function doPost(e) {
     // **NOVO**: Billing do cliente
     if (data.type === 'client_billing')         { log_(ss,"route_client_billing",{});    return clientBilling_(ss, data); }
 
+    // **NOVO**: Estrutura personalizada de sites
+    if (data.action === 'get_site_structure')   { log_(ss,"route_get_site_structure",{}); return jsonOut_(get_site_structure(data.site)); }
+    if (data.action === 'save_site_structure')  { log_(ss,"route_save_site_structure",{}); return jsonOut_(save_site_structure(data.site, data.structure)); }
+    if (data.action === 'validate_vip_pin')     { log_(ss,"route_validate_vip_pin",{});   return jsonOut_(validate_vip_pin(data.site, data.pin)); }
+
     /* ===================== OVERRIDE (admin) ===================== */
     // aceita também "manual_block" ou "admin_toggle" como aliases de override
     if (data.type === 'override' || data.type === 'manual_block' || data.type === 'admin_toggle') {
@@ -3401,6 +3406,165 @@ function toMillis(v) {
   return isFinite(t) ? t : -1;
 }
 
+/* ========================= SITE STRUCTURE FUNCTIONS ===================================== */
+
+/**
+ * Busca a estrutura personalizada de um site
+ */
+function get_site_structure(site) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    if (!structureSheet) {
+      return { ok: false, error: "Planilha site_structure não encontrada" };
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+
+    if (siteIdx === -1 || structureIdx === -1) {
+      return { ok: false, error: "Headers obrigatórios não encontrados" };
+    }
+
+    const data = structureSheet.getRange(2, 1, structureSheet.getLastRow() - 1, structureSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const structureJson = String(data[i][structureIdx] || "");
+        if (structureJson) {
+          try {
+            const structure = JSON.parse(structureJson);
+            return {
+              ok: true,
+              structure: structure
+            };
+          } catch (e) {
+            return { ok: false, error: "Erro ao parsear estrutura JSON: " + e.message };
+          }
+        }
+      }
+    }
+
+    return { ok: false, error: "Estrutura não encontrada para o site" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao buscar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Salva a estrutura personalizada de um site
+ */
+function save_site_structure(site, structure) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    // Cria a planilha se não existir
+    if (!structureSheet) {
+      structureSheet = ss.insertSheet("site_structure");
+      structureSheet.getRange(1, 1, 1, 4).setValues([["siteSlug", "structure", "lastUpdated", "businessType"]]);
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+    const businessIdx = headers.indexOf("businessType");
+
+    const structureJson = JSON.stringify(structure);
+    const now = new Date().toISOString();
+    const businessType = structure.businessType || "service";
+
+    // Verifica se já existe uma linha para o site
+    const data = structureSheet.getRange(2, 1, Math.max(1, structureSheet.getLastRow() - 1), structureSheet.getLastColumn()).getValues();
+    let rowToUpdate = -1;
+
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        rowToUpdate = i + 2; // +2 porque começamos da linha 2
+        break;
+      }
+    }
+
+    if (rowToUpdate !== -1) {
+      // Atualiza linha existente
+      structureSheet.getRange(rowToUpdate, structureIdx + 1).setValue(structureJson);
+      structureSheet.getRange(rowToUpdate, updatedIdx + 1).setValue(now);
+      structureSheet.getRange(rowToUpdate, businessIdx + 1).setValue(businessType);
+    } else {
+      // Adiciona nova linha
+      const newRow = new Array(structureSheet.getLastColumn()).fill("");
+      newRow[siteIdx] = site;
+      newRow[structureIdx] = structureJson;
+      newRow[updatedIdx] = now;
+      newRow[businessIdx] = businessType;
+      
+      structureSheet.appendRow(newRow);
+    }
+
+    return { ok: true, message: "Estrutura salva com sucesso" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao salvar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Valida PIN VIP de um site
+ */
+function validate_vip_pin(site, pin) {
+  try {
+    if (!pin) {
+      return { ok: false, valid: false, error: "PIN não fornecido" };
+    }
+
+    const ss = openSS_();
+    const usuariosSheet = ss.getSheetByName("usuarios");
+    
+    if (!usuariosSheet) {
+      return { ok: false, valid: false, error: "Planilha usuarios não encontrada" };
+    }
+
+    const headers = usuariosSheet.getRange(1, 1, 1, usuariosSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("site");
+    const pinIdx = headers.indexOf("vip_pin");
+    const planoIdx = headers.indexOf("plano");
+
+    if (siteIdx === -1) {
+      return { ok: false, valid: false, error: "Coluna site não encontrada" };
+    }
+
+    const data = usuariosSheet.getRange(2, 1, usuariosSheet.getLastRow() - 1, usuariosSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const storedPin = String(data[i][pinIdx] || "").trim();
+        const plano = String(data[i][planoIdx] || "").toLowerCase();
+        
+        // Verifica se é VIP e se o PIN confere
+        const isVip = plano.includes("vip") || plano === "premium";
+        const pinValid = storedPin && storedPin === pin;
+        
+        return {
+          ok: true,
+          valid: isVip && pinValid,
+          isVip: isVip,
+          pinMatch: pinValid
+        };
+      }
+    }
+
+    return { ok: false, valid: false, error: "Site não encontrado" };
+    
+  } catch (e) {
+    return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
+  }
+}
+
 function testeLogin() {
   console.log("Testando login com admin@elevea.com...");
 
@@ -3536,4 +3700,163 @@ function toMillis(v) {
   var d = new Date(v);
   var t = d.getTime();
   return isFinite(t) ? t : -1;
+}
+
+/* ========================= SITE STRUCTURE FUNCTIONS ===================================== */
+
+/**
+ * Busca a estrutura personalizada de um site
+ */
+function get_site_structure(site) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    if (!structureSheet) {
+      return { ok: false, error: "Planilha site_structure não encontrada" };
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+
+    if (siteIdx === -1 || structureIdx === -1) {
+      return { ok: false, error: "Headers obrigatórios não encontrados" };
+    }
+
+    const data = structureSheet.getRange(2, 1, structureSheet.getLastRow() - 1, structureSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const structureJson = String(data[i][structureIdx] || "");
+        if (structureJson) {
+          try {
+            const structure = JSON.parse(structureJson);
+            return {
+              ok: true,
+              structure: structure
+            };
+          } catch (e) {
+            return { ok: false, error: "Erro ao parsear estrutura JSON: " + e.message };
+          }
+        }
+      }
+    }
+
+    return { ok: false, error: "Estrutura não encontrada para o site" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao buscar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Salva a estrutura personalizada de um site
+ */
+function save_site_structure(site, structure) {
+  try {
+    const ss = openSS_();
+    let structureSheet = ss.getSheetByName("site_structure");
+    
+    // Cria a planilha se não existir
+    if (!structureSheet) {
+      structureSheet = ss.insertSheet("site_structure");
+      structureSheet.getRange(1, 1, 1, 4).setValues([["siteSlug", "structure", "lastUpdated", "businessType"]]);
+    }
+
+    const headers = structureSheet.getRange(1, 1, 1, structureSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("siteSlug");
+    const structureIdx = headers.indexOf("structure");
+    const updatedIdx = headers.indexOf("lastUpdated");
+    const businessIdx = headers.indexOf("businessType");
+
+    const structureJson = JSON.stringify(structure);
+    const now = new Date().toISOString();
+    const businessType = structure.businessType || "service";
+
+    // Verifica se já existe uma linha para o site
+    const data = structureSheet.getRange(2, 1, Math.max(1, structureSheet.getLastRow() - 1), structureSheet.getLastColumn()).getValues();
+    let rowToUpdate = -1;
+
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        rowToUpdate = i + 2; // +2 porque começamos da linha 2
+        break;
+      }
+    }
+
+    if (rowToUpdate !== -1) {
+      // Atualiza linha existente
+      structureSheet.getRange(rowToUpdate, structureIdx + 1).setValue(structureJson);
+      structureSheet.getRange(rowToUpdate, updatedIdx + 1).setValue(now);
+      structureSheet.getRange(rowToUpdate, businessIdx + 1).setValue(businessType);
+    } else {
+      // Adiciona nova linha
+      const newRow = new Array(structureSheet.getLastColumn()).fill("");
+      newRow[siteIdx] = site;
+      newRow[structureIdx] = structureJson;
+      newRow[updatedIdx] = now;
+      newRow[businessIdx] = businessType;
+      
+      structureSheet.appendRow(newRow);
+    }
+
+    return { ok: true, message: "Estrutura salva com sucesso" };
+    
+  } catch (e) {
+    return { ok: false, error: "Erro ao salvar estrutura: " + e.message };
+  }
+}
+
+/**
+ * Valida PIN VIP de um site
+ */
+function validate_vip_pin(site, pin) {
+  try {
+    if (!pin) {
+      return { ok: false, valid: false, error: "PIN não fornecido" };
+    }
+
+    const ss = openSS_();
+    const usuariosSheet = ss.getSheetByName("usuarios");
+    
+    if (!usuariosSheet) {
+      return { ok: false, valid: false, error: "Planilha usuarios não encontrada" };
+    }
+
+    const headers = usuariosSheet.getRange(1, 1, 1, usuariosSheet.getLastColumn()).getValues()[0];
+    const siteIdx = headers.indexOf("site");
+    const pinIdx = headers.indexOf("vip_pin");
+    const planoIdx = headers.indexOf("plano");
+
+    if (siteIdx === -1) {
+      return { ok: false, valid: false, error: "Coluna site não encontrada" };
+    }
+
+    const data = usuariosSheet.getRange(2, 1, usuariosSheet.getLastRow() - 1, usuariosSheet.getLastColumn()).getValues();
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][siteIdx]).trim() === site) {
+        const storedPin = String(data[i][pinIdx] || "").trim();
+        const plano = String(data[i][planoIdx] || "").toLowerCase();
+        
+        // Verifica se é VIP e se o PIN confere
+        const isVip = plano.includes("vip") || plano === "premium";
+        const pinValid = storedPin && storedPin === pin;
+        
+        return {
+          ok: true,
+          valid: isVip && pinValid,
+          isVip: isVip,
+          pinMatch: pinValid
+        };
+      }
+    }
+
+    return { ok: false, valid: false, error: "Site não encontrado" };
+    
+  } catch (e) {
+    return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
+  }
 }
