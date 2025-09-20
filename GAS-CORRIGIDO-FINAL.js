@@ -121,61 +121,55 @@ function doGet(e) {
     return jsonOut_({ ok:true, siteSlug: site, manual_block: manualBlock });
   }
 
-  /* -------- client_billing (dados de cobrança) -------- */
-  if (type === "client_billing") {
-    const email = String(p.email || "").trim();
-    if (!email) return jsonOut_({ ok: false, error: "missing_email" });
+/* -------- client_billing (dados de cobrança) -------- */
+if (type === "client_billing") {
+  const email = String(p.email || "").trim().toLowerCase(); // ✅ toLowerCase
+  if (!email) return jsonOut_({ ok: false, error: "missing_email" });
+
+  try {
+    // ✅ MUDANÇA: usar planilha "usuarios" em vez de "cadastros"
+    const shUsuarios = ensureUsuariosSheet_(ss);
+    const data = shUsuarios.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idxEmail = headers.indexOf("email");
+    const idxSite = headers.indexOf("siteSlug");
+    const idxPlan = headers.indexOf("plan");
+
+    if (idxEmail === -1) return jsonOut_({ ok: false, error: "missing_email_header" });
+
+    // ✅ BUSCA com toLowerCase para evitar problemas de case
+    const row = data.find(r => String(r[idxEmail] || "").trim().toLowerCase() === email);
+    if (!row) return jsonOut_({ ok: false, error: "user_not_found" });
+
+    const siteSlug = String(row[idxSite] || "");
+    const plan = String(row[idxPlan] || "essential");
+
+    const billing = {
+      ok: true,
+      plan: plan.toLowerCase(),
+      status: "pending",
+      provider: "mercadopago",
+      siteSlug: siteSlug
+    };
 
     try {
-      const shCad = ss.getSheetByName("cadastros");
-      if (!shCad) return jsonOut_({ ok: false, error: "missing_sheet_cadastros" });
+      ensureLogSheet_(ss).appendRow([
+        new Date(), "get_client_billing", "", "", "", "",
+        "client_billing", siteSlug, email, "ok", ""
+      ]);
+    } catch (_) {}
 
-      const data = shCad.getDataRange().getValues();
-      const headers = data[0].map(h => String(h).trim());
-      const idxEmail = headers.indexOf("email");
-      const idxSite = headers.indexOf("siteSlug");
-      const idxPlan = headers.indexOf("plano");
-      const idxPreapproval = headers.indexOf("preapproval_id");
-
-      if (idxEmail === -1) return jsonOut_({ ok: false, error: "missing_email_header" });
-
-      const row = data.find(r => String(r[idxEmail] || "").trim() === email);
-      if (!row) return jsonOut_({ ok: false, error: "site_not_found" });
-
-      const siteSlug = String(row[idxSite] || "");
-      const plan = String(row[idxPlan] || "essential");
-      const preapprovalId = String(row[idxPreapproval] || "");
-
-      // Simular dados de cobrança (ajuste conforme seu sistema de pagamento)
-      const billing = {
-        ok: true,
-        plan: plan.toLowerCase(),
-        status: "active",
-        provider: "mercadopago",
-        next_renewal: new Date(Date.now() + 30*24*60*60*1000).toISOString(),
-        amount: plan.toLowerCase() === "vip" ? 197 : 97,
-        currency: "BRL",
-        preapproval_id: preapprovalId
-      };
-
-      try {
-        ensureLogSheet_(ss).appendRow([
-          new Date(), "get_client_billing", "", "", "", "",
-          "client_billing", siteSlug, email, "ok", ""
-        ]);
-      } catch (_) {}
-
-      return jsonOut_(billing);
-    } catch (e) {
-      try {
-        ensureLogSheet_(ss).appendRow([
-          new Date(), "get_client_billing_fail", "", "", "", "",
-          "client_billing", "", email, "error", String(e)
-        ]);
-      } catch (_) {}
-      return jsonOut_({ ok: false, error: String(e) });
-    }
+    return jsonOut_(billing);
+  } catch (e) {
+    try {
+      ensureLogSheet_(ss).appendRow([
+        new Date(), "get_client_billing_fail", "", "", "", "",
+        "client_billing", "", email, "error", String(e)
+      ]);
+    } catch (_) {}
+    return jsonOut_({ ok: false, error: String(e) });
   }
+}
 
   /* -------- AdminDashboard helpers -------- */
   if (type === "sites") {
@@ -1736,6 +1730,8 @@ function getSiteSlugs_() {
     return [];
   }
 }
+
+
 
 /** Status de cobrança considerado "ativo" (helper único usado em todo o dash) */
 function isActiveStatus_(s) {
@@ -3433,18 +3429,23 @@ function testeLogin() {
   return parsed;
 }
 
-function testeClientBilling() {
-  console.log("Testando client_billing...");
+function testeSeparado() {
+  console.log("1. Testando GET client_billing...");
+  var getResult = doGet({
+    parameter: {
+      type: "client_billing", 
+      email: "admin@elevea.com"
+    }
+  });
+  console.log("GET:", getResult.getContent());
 
-  var result = clientBilling_(openSS_(), {
+  console.log("2. Testando POST clientBilling_...");
+  var postResult = clientBilling_(openSS_(), {
     email: "admin@elevea.com"
   });
+  console.log("POST:", postResult.getContent());
 
-  var content = result.getContent();
-  var data = JSON.parse(content);
-
-  console.log("Dados de billing:", data);
-  return data;
+  return "Testado!";
 }
 
 function atualizarPreapprovalNosCadastros() {
