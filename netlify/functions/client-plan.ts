@@ -56,35 +56,19 @@ export const handler = async (event: any) => {
 
       clearTimeout(timeoutId);
       const statusData = statusRes.status === "fulfilled" ? await statusRes.value.json().catch(() => ({})) : {};
-      const billingData = billingRes.status === "fulfilled" ? await billingRes.value.json().catch(() => ({})) : {};
-    } catch (e: any) {
-      clearTimeout(timeoutId);
-      if (e.name === 'AbortError') {
-        return json(408, { ok: false, error: "timeout_4s" });
-      }
-      throw e;
-    }
+const plan = billingData.plan || "";
+const status = statusData.status || billingData.status || "";
+const nextCharge = billingData.next_renewal || null; // ✅ CORRETO
+const lastPayment = billingData.last_payment || null; // ✅ DIRETO do GAS
 
-    const plan = billingData.plan || "";
-    const status = statusData.status || billingData.status || "";
-    const nextCharge = billingData.next_renewal || null;
-    const lastPayment = billingData.last_payment ? {
-      date: billingData.last_payment,
-      amount: billingData.amount || 0
-    } : null;
+// Determina se é VIP baseado em múltiplas fontes
+const vip = looksVip(plan) || isActiveStatus(status) || statusData.active;
 
-    // Determina se é VIP baseado em múltiplas fontes
-    const vip = looksVip(plan) || isActiveStatus(status) || statusData.active;
-
-    return json(200, {
-      ok: true,
-      vip,
-      plan: vip ? "vip" : (plan || ""),
-      status,
-      nextCharge,
-      lastPayment,
-    });
-  } catch (e: any) {
-    return json(500, { ok: false, error: String(e?.message || e) });
-  }
-};
+return json(200, {
+  ok: true,
+  vip,
+  plan: vip ? "vip" : (plan || ""),
+  status,
+  nextCharge,
+  lastPayment,
+});

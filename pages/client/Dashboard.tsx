@@ -200,10 +200,11 @@ export default function ClientDashboard() {
 
           // Combina dados de ambas as fontes
           const combinedStatus = {
-            ...(statusData || { ok: true, siteSlug: user!.siteSlug! }),
-            status: statusData?.status || planData.status,
-            nextCharge: statusData?.nextCharge || planData.nextCharge,
-            lastPayment: statusData?.lastPayment || planData.lastPayment,
+            ok: true,
+            siteSlug: user!.siteSlug!,
+            status: planData.status,
+            nextCharge: planData.nextCharge,
+            lastPayment: planData.lastPayment,
             plan: resolvedPlan,
           };
           setStatus(combinedStatus);
@@ -217,7 +218,10 @@ export default function ClientDashboard() {
           } catch {}
         }
       } catch (e: any) {
-        if (alive) setPlanErr("Erro ao carregar. Tente novamente.");
+        if (alive) {
+          console.error("Erro ao carregar plano:", e);
+          setPlanErr("Erro ao carregar. Tente novamente.");
+        }
       } finally {
         if (alive) setCheckingPlan(false);
       }
@@ -303,39 +307,33 @@ export default function ClientDashboard() {
       }
     })();
 
-    // FEEDBACKS (usa endpoint seguro com PIN para VIP, público para outros)
+    // FEEDBACKS (Essential vê aprovados, VIP vê todos)
     (async () => {
       try {
         let fb: { ok: boolean; items: Feedback[] };
-        
-        // Se tem PIN VIP, usa endpoint seguro para ver todos os feedbacks
-        if (vipEnabled && vipPin.trim()) {
-          fb = await postJSON<{ ok: boolean; items: Feedback[] }>(
-            "/.netlify/functions/client-api",
-            { 
-              action: "list_feedbacks_secure", 
-              site: user!.siteSlug!, 
-              page: 1, 
-              pageSize: 50,
-              pin: vipPin.trim()
-            },
+
+        if (vipEnabled && vipPin) {
+          // VIP com PIN: vê todos os feedbacks
+          fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
+            `/.netlify/functions/client-api?action=list_feedbacks_secure&site=${encodeURIComponent(user!.siteSlug!)}&pin=${encodeURIComponent(vipPin)}`,
             CARDS_TIMEOUT_MS
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         } else {
-          // Sem PIN ou não-VIP: apenas feedbacks públicos/aprovados
+          // Essential: só feedbacks públicos/aprovados
           fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
             `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
             CARDS_TIMEOUT_MS
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         }
-        
-        if (!alive) return;
+
         setFeedbacks(fb.items || []);
-      } catch {}
-      finally {
-        if (alive) setLoadingFeedbacks(false);
+      } catch (e) {
+        console.error("Erro ao carregar feedbacks:", e);
+        setFeedbacks([]);
+      } finally {
+        setLoadingFeedbacks(false);
       }
-    })();
+    }
 
     return () => { alive = false; };
   }, [canQuery, user?.siteSlug, user?.email, vipEnabled, vipPin]);
