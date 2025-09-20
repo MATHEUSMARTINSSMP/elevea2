@@ -3415,4 +3415,689 @@ function detectBusinessType(businessName, businessDescription, businessCategory)
   return "general";
 }
 
+/** ============================= FUNÇÕES DE CONFIGURAÇÕES E SHEETS ESSENCIAIS ============================= */
+
+function ensureSettingsKVSheet_() {
+  var ss = openSS_();
+  var sh = ss.getSheetByName("settings_kv");
+  if (!sh) sh = ss.insertSheet("settings_kv");
+  if (sh.getLastRow() === 0) sh.appendRow(["siteSlug","updated_at","settings_json"]);
+  return sh;
+}
+
+function getClientSettings_(site) {
+  try {
+    site = normalizeSlug_(site);
+    if (!site) return { ok:false, error:"missing_site" };
+    var sh = ensureSettingsKVSheet_();
+    var last = sh.getLastRow();
+    if (last < 2) return { ok:true, siteSlug: site, settings: {} };
+    var vals = sh.getRange(2,1,last-1,3).getValues();
+    for (var i = vals.length - 1; i >= 0; i--) {
+      var r = vals[i];
+      if (String(r[0]||"").trim().toUpperCase() === site) {
+        var json = String(r[2] || "{}");
+        var obj = {}; try { obj = JSON.parse(json); } catch(_){}
+        if (obj && typeof obj.security==='object' && obj.security && obj.security.vip_pin) {
+          obj = JSON.parse(JSON.stringify(obj));
+          delete obj.security.vip_pin;
+          if (Object.keys(obj.security).length === 0) delete obj.security;
+        }
+        return { ok:true, siteSlug: site, settings: obj };
+      }
+    }
+    return { ok:true, siteSlug: site, settings: {} };
+  } catch (e) {
+    return { ok:false, error:String(e) };
+  }
+}
+
+function saveClientSettings_(ss, data) {
+  try {
+    var site = normalizeSlug_(String(data.site || ""));
+    if (!site) return jsonOut_({ ok:false, error: "missing_site" });
+
+    var settings = data.settings && typeof data.settings === "object" ? data.settings : {};
+    var pin = String(data.pin || data.vipPin || "");
+
+    var shKV = ensureSettingsKVSheet_();
+    var last = shKV.getLastRow();
+    var savedPin = "";
+    if (last >= 2) {
+      var vals = shKV.getRange(2, 1, last - 1, 3).getValues();
+      for (var i = vals.length - 1; i >= 0; i--) {
+        if (String(vals[i][0] || "").trim().toUpperCase() === site) {
+          try {
+            var obj = JSON.parse(String(vals[i][2] || "{}"));
+            savedPin = String((obj.security && obj.security.vip_pin) || "");
+          } catch (_) {}
+          break;
+        }
+      }
+    }
+
+    if (savedPin && (!pin || pin !== savedPin)) {
+      return jsonOut_({ ok:false, error: "unauthorized" });
+    }
+
+    mergeSettingsKV_(site, settings);
+    return jsonOut_({ ok:true });
+  } catch (e) {
+    return jsonOut_({ ok:false, error:String(e) });
+  }
+}
+
+function mergeSettingsKV_(site, partialObj) {
+  site = normalizeSlug_(site);
+  var sh = ensureSettingsKVSheet_();
+  var last = sh.getLastRow();
+
+  var current = {};
+  if (last >= 2) {
+    var vals = sh.getRange(2,1,last-1,3).getValues();
+    for (var i = vals.length - 1; i >= 0; i--) {
+      if (String(vals[i][0]||"").trim().toUpperCase() === site) {
+        try { current = JSON.parse(String(vals[i][2]||"{}")); } catch(_){}
+        break;
+      }
+    }
+  }
+  function deepMerge(a,b){
+    if (!a || typeof a!=='object') a={};
+    if (!b || typeof b!=='object') return a;
+    var out = JSON.parse(JSON.stringify(a));
+    Object.keys(b).forEach(function(k){
+      if (b[k] && typeof b[k]==='object' && !Array.isArray(b[k])) {
+        out[k] = deepMerge(out[k]||{}, b[k]);
+      } else {
+        out[k] = b[k];
+      }
+    });
+    return out;
+  }
+  var merged = deepMerge(current, partialObj);
+  sh.appendRow([ site, new Date(), JSON.stringify(merged) ]);
+}
+
+function readLatestSettingsRow_(site) {
+  site = normalizeSlug_(site);
+  var ss = openSS_();
+  var sh = ss.getSheetByName("settings");
+  if (!sh) return null;
+  var last = sh.getLastRow(); if (last < 2) return null;
+  var h = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+  var iSite = h.indexOf("siteSlug");
+  var rIdx = -1;
+  for (var r = last; r >= 2; r--) {
+    var s = String(sh.getRange(r, iSite+1).getValue() || '').trim().toUpperCase();
+    if (s === site) { rIdx = r; break; }
+  }
+  if (rIdx === -1) return null;
+
+  function G(colName) {
+    var i = h.indexOf(colName);
+    return i === -1 ? "" : String(sh.getRange(rIdx, i+1).getValue() || "");
+  }
+  var empresa = G("empresa");
+  var historia = G("historia");
+  var produtos = G("produtos");
+  var fundacao = G("fundacao");
+  var email = G("email");
+  var whatsapp = G("whatsapp");
+  var endereco = G("endereco");
+  var businessCategory = G("businessCategory");
+  return { empresa, historia, produtos, fundacao, email, whatsapp, endereco, businessCategory };
+}
+
+function ensureFaturamentoSheet_() {
+  var ss = openSS_();
+  var sh = ss.getSheetByName('faturamento');
+  if (!sh) sh = ss.insertSheet('faturamento');
+  if (sh.getLastRow() === 0) {
+    sh.appendRow([
+      'preapproval_id','email','siteSlug','plano','status','amount','currency','provider',
+      'last_payment','next_renewal','overdue','days_overdue','updated_at'
+    ]);
+  }
+  return sh;
+}
+
+function ensureShareAndGetViewUrl_(file) {
+  try {
+    if (file && file.getId) {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      return "https://drive.google.com/uc?export=view&id=" + file.getId();
+    }
+  } catch (e) {
+    console.error("Error in ensureShareAndGetViewUrl_:", e);
+  }
+  return "";
+}
+
+function extractDriveFolderId_(folderUrl) {
+  if (!folderUrl) return null;
+  var url = String(folderUrl).trim();
+  var m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function ensureSitesHooksSheet_() {
+  var ss = openSS_();
+  var sh = ss.getSheetByName("sites_hooks");
+  if (!sh) sh = ss.insertSheet("sites_hooks");
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(["siteSlug","hookUrl","lastTriggered","lastStatus","errors"]);
+  }
+  return sh;
+}
+
+function createFeedback_(ss, data) {
+  try {
+    var site = normalizeSlug_(String(data.site || data.siteSlug || ""));
+    if (!site) return jsonOut_({ ok:false, error:"missing_site" });
+
+    var name    = String(data.name || "");
+    var rating  = Math.max(1, Math.min(5, parseInt(String(data.rating || "0"), 10) || 0));
+    var comment = String(data.comment || "");
+    var email   = String(data.email || "").trim().toLowerCase();
+    var phone   = String(data.phone || "");
+
+    var sh = ensureFeedbacksSheet_();
+    var id = Utilities.getUuid().replace(/-/g, "");
+    sh.appendRow([ id, new Date(), site, name, rating, comment, email, phone, "" ]);
+
+    return jsonOut_({ ok:true, id });
+  } catch (e) {
+    return jsonOut_({ ok:false, error:String(e) });
+  }
+}
+
+function createLead_(ss, data) {
+  try {
+    var site = normalizeSlug_(String(data.site || data.siteSlug || ""));
+    if (!site) return jsonOut_({ ok:false, error:"missing_site" });
+
+    var name   = String(data.name || "");
+    var email  = String(data.email || "").trim().toLowerCase();
+    var phone  = String(data.phone || "");
+    var source = String(data.source || "site");
+
+    var sh = ensureLeadsSheet_();
+    sh.appendRow([ new Date(), site, name, email, phone, source ]);
+
+    return jsonOut_({ ok:true });
+  } catch (e) {
+    return jsonOut_({ ok:false, error:String(e) });
+  }
+}
+
+/** ============================= FUNÇÕES UTILITÁRIAS EXTRAS ============================= */
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function safeHeaderIndex(headers, wanted, fallbackIdx) {
+  var i = headers.indexOf(wanted);
+  return (i === -1 ? fallbackIdx : i);
+}
+
+function toMillis(v) {
+  if (v instanceof Date) return v.getTime();
+  var d = new Date(v);
+  var t = d.getTime();
+  return isFinite(t) ? t : -1;
+}
+
+function ensureClientFolderUrl_(site) {
+  try {
+    site = normalizeSlug_(String(site || ""));
+    if (!site) return "";
+
+    var it = DriveApp.getFoldersByName("Elevea Sites");
+    var parent = it.hasNext() ? it.next() : DriveApp.createFolder("Elevea Sites");
+
+    var folderName = "SITE-" + site;
+    var it2 = parent.getFoldersByName(folderName);
+    var folder = it2.hasNext() ? it2.next() : parent.createFolder(folderName);
+
+    function ensureSub(name) {
+      try {
+        var it = folder.getFoldersByName(name);
+        return it.hasNext() ? it.next() : folder.createFolder(name);
+      } catch (e) {
+        console.error("Error ensuring sub folder " + name + ":", e);
+        return null;
+      }
+    }
+
+    ensureSub("logo");
+    ensureSub("fotos");
+
+    return "https://drive.google.com/drive/folders/" + folder.getId();
+  } catch (e) {
+    console.error("Error in ensureClientFolderUrl_:", e);
+    return "";
+  }
+}
+
+function onlyDigits_(v) { return String(v || '').replace(/\D+/g, ''); }
+
+function isValidCPF_(cpf) {
+  cpf = onlyDigits_(cpf); if (!cpf || cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+  var soma = 0, resto;
+  for (var i = 1; i <= 9; i++) soma += parseInt(cpf.substring(i-1, i), 10) * (11 - i);
+  resto = (soma * 10) % 11; if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(cpf.substring(9, 10), 10)) return false;
+  soma = 0;
+  for (var j = 1; j <= 10; j++) soma += parseInt(cpf.substring(j-1, j), 10) * (12 - j);
+  resto = (soma * 10) % 11; if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(cpf.substring(10, 11), 10)) return false;
+  return true;
+}
+
+function getOrCreateSub_(root, name) {
+  try {
+    var it = root.getFoldersByName(name);
+    return it.hasNext() ? it.next() : root.createFolder(name);
+  } catch (e) {
+    console.error("Error in getOrCreateSub_:", e);
+    return null;
+  }
+}
+
+function slugExiste_(slug) {
+  const ss = openSS_();
+  const shCad = ss.getSheetByName('cadastros'); if (!shCad) return false;
+  const last = shCad.getLastRow(); if (last < 2) return false;
+  const headers = shCad.getRange(1,1,1,shCad.getLastColumn()).getValues()[0].map(String);
+  const idxSite = headers.indexOf('siteSlug'); if (idxSite === -1) return false;
+  const vals = shCad.getRange(2, idxSite+1, last-1, 1).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    const s = String(vals[i][0] || '').trim().toUpperCase();
+    if (s === slug) return true;
+  }
+  return false;
+}
+
+function log_(ss, stage, obj) {
+  try {
+    var sh = ensureLogSheet_(ss);
+    sh.appendRow([
+      new Date(),
+      stage || "",
+      String(obj && obj.contentType || ""),
+      String(obj && obj.isMultipart || ""),
+      String(obj && obj.hasPD || ""),
+      String(obj && obj.rawLen || ""),
+      String(obj && obj.type || ""),
+      String(obj && obj.event || ""),
+      String(obj && obj.keys || ""),
+      String(obj && obj.note || ""),
+      String(obj && obj.error || "")
+    ]);
+  } catch (e) {
+    console.error("Error in log_:", e);
+  }
+}
+
+function getSiteSlugs_() {
+  try {
+    const ss = openSS_();
+    const shCad = ss.getSheetByName("cadastros");
+    if (!shCad) return [];
+
+    const data = shCad.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idxSite = headers.indexOf("siteSlug");
+
+    if (idxSite === -1) return [];
+
+    return data.slice(1)
+      .map(row => String(row[idxSite] || "").trim())
+      .filter(slug => slug.length > 0);
+  } catch (e) {
+    console.error("getSiteSlugs_ error:", e);
+    return [];
+  }
+}
+
+function recomputeBillingAll_() {
+  var ss = openSS_();
+  var shDados = ss.getSheetByName('dados');
+  var shCad   = ss.getSheetByName('cadastros');
+  var shUsers = ss.getSheetByName('usuarios');
+  var shFat   = ensureFaturamentoSheet_();
+
+  var map = {};
+
+  if (shCad) {
+    var cad = shCad.getDataRange().getValues();
+    if (cad.length >= 2) {
+      var hc = cad[0].map(String), rows = cad.slice(1);
+      var iEmail = hc.indexOf('email');
+      var iSite  = hc.indexOf('siteSlug');
+      var iPlan  = hc.indexOf('plan');
+      var iPre   = hc.indexOf('preapproval_id');
+      for (var i=0;i<rows.length;i++){
+        var r = rows[i];
+        var pre = String(r[iPre]||'').trim();
+        if (!pre) continue;
+        map[pre] = {
+          email: String(r[iEmail]||''),
+          siteSlug: String(r[iSite]||''),
+          plano: String(r[iPlan]||''),
+          status: '',
+          amount: 0,
+          currency: 'BRL',
+          provider: 'mercadopago',
+          last_payment: null
+        };
+      }
+    }
+  }
+
+  if (shDados) {
+    var dados = shDados.getDataRange().getValues();
+    if (dados.length >= 2) {
+      var hd = dados[0].map(String), rowsD = dados.slice(1);
+      var iPre2   = hd.indexOf('preapproval_id');
+      var iStatus = hd.indexOf('status');
+      var iAmount = hd.indexOf('transaction_amount');
+      var iCurr   = hd.indexOf('currency_id');
+      var iTs     = hd.indexOf('timestamp');
+      for (var j=0;j<rowsD.length;j++){
+        var rd = rowsD[j];
+        var pre2 = String(rd[iPre2]||'').trim();
+        if (!pre2 || !map[pre2]) continue;
+        var st = String(rd[iStatus]||'');
+        if (isActiveStatus_(st)) {
+          map[pre2].status = st;
+          map[pre2].amount = Number(rd[iAmount]||0)||0;
+          map[pre2].currency = String(rd[iCurr]||'BRL');
+          map[pre2].last_payment = rd[iTs] ? new Date(rd[iTs]) : null;
+        }
+      }
+    }
+  }
+
+  shFat.clear();
+  shFat.appendRow([
+    'preapproval_id','email','siteSlug','plano','status','amount','currency','provider',
+    'last_payment','next_renewal','overdue','days_overdue','updated_at'
+  ]);
+  Object.keys(map).forEach(function(pre){
+    var m = map[pre];
+    var next = null;
+    if (m.last_payment) {
+      next = addDays_(clampToMidnight_(m.last_payment), RENEWAL_INTERVAL_DAYS);
+    }
+    var overdue = false, daysOver = 0;
+    if (next) {
+      var now = clampToMidnight_(new Date());
+      var grace = addDays_(next, GRACE_DAYS);
+      if (now.getTime() > grace.getTime()) {
+        overdue = true;
+        daysOver = Math.floor((now.getTime() - next.getTime()) / (24*60*60*1000));
+      }
+    }
+    shFat.appendRow([
+      pre, m.email, m.siteSlug, m.plano, m.status,
+      m.amount, m.currency, m.provider,
+      m.last_payment, next, overdue, daysOver, new Date()
+    ]);
+  });
+}
+
+function recomputeBillingOne_(preId) {
+  if (!preId) return;
+  recomputeBillingAll_();
+}
+
+function recomputeBillingAll() { return recomputeBillingAll_(); }
+function recomputeBillingOne() { return recomputeBillingOne_(''); }
+function sincronizarStatusDiario() { return recomputeBillingAll_(); }
+
+function handleAssetsList_(site) {
+  site = normalizeSlug_(String(site || ""));
+  if (!site) return jsonOut_({ ok:false, error: "missing_site" });
+
+  var folderUrl = ensureClientFolderUrl_(site);
+  if (!folderUrl) return jsonOut_({ ok:false, error: "no_drive_folder" });
+
+  try {
+    var folderId = extractDriveFolderId_(folderUrl);
+    var root = DriveApp.getFolderById(folderId);
+
+    function findSub(name) {
+      var it = root.getFoldersByName(name);
+      return it.hasNext() ? it.next() : null;
+    }
+    var logo  = findSub("logo");
+    var fotos = findSub("fotos");
+
+    function getFiles(folder) {
+      if (!folder) return [];
+      var files = [];
+      var it = folder.getFiles();
+      while (it.hasNext()) {
+        var f = it.next();
+        files.push({
+          name: f.getName(),
+          id: f.getId(),
+          url: ensureShareAndGetViewUrl_(f),
+          size: f.getSize(),
+          type: f.getBlob().getContentType()
+        });
+      }
+      return files;
+    }
+
+    return jsonOut_({
+      ok: true,
+      logo: getFiles(logo),
+      fotos: getFiles(fotos)
+    });
+  } catch (e) {
+    return jsonOut_({ ok:false, error: String(e) });
+  }
+}
+
+function readSiteBuildHook_(slug) {
+  slug = normalizeSlug_(slug);
+  if (!slug) return '';
+  var sh = ensureSitesHooksSheet_();
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return '';
+  var head = vals[0].map(String);
+  var iSlug = head.indexOf('siteSlug');
+  var iUrl  = head.indexOf('build_hook_url');
+  for (var i = 1; i < vals.length; i++) {
+    var r = vals[i];
+    if (normalizeSlug_(String(r[iSlug] || '')) === slug) {
+      return String(r[iUrl] || '').trim();
+    }
+  }
+  return '';
+}
+
+function upsertSiteBuildHook_(slug, url) {
+  slug = normalizeSlug_(slug);
+  var sh = ensureSitesHooksSheet_();
+  var vals = sh.getDataRange().getValues();
+  var head = vals[0].map(String);
+  var iSlug = head.indexOf('siteSlug');
+  var iUrl  = head.indexOf('build_hook_url');
+  var iUpd  = head.indexOf('updated_at');
+
+  for (var i = 1; i < vals.length; i++) {
+    if (normalizeSlug_(String(vals[i][iSlug] || '')) === slug) {
+      sh.getRange(i + 1, iUrl + 1).setValue(url);
+      if (iUpd >= 0) sh.getRange(i + 1, iUpd + 1).setValue(new Date());
+      return { ok: true, updated: true };
+    }
+  }
+  sh.appendRow([slug, url, '', new Date()]);
+  return { ok: true, created: true };
+}
+
+function sectionsBootstrapFromOnboarding_(ss, site) {
+  site = normalizeSlug_(site);
+
+  var shKV = ensureSettingsKVSheet_();
+  var last = shKV.getLastRow(); if (last < 2) return { error: "no_kv" };
+  var defs = [];
+  var current = {};
+  var vals = shKV.getRange(2,1,last-1,3).getValues();
+  for (var i = vals.length-1; i>=0; i--) {
+    if (String(vals[i][0]||"").trim().toUpperCase() === site) {
+      try { current = JSON.parse(String(vals[i][2]||"{}")); } catch(_){}
+      break;
+    }
+  }
+  defs = (current && current.sections && Array.isArray(current.sections.defs))
+    ? current.sections.defs : [];
+
+  if (!defs.length) return { error: "no_defs" };
+
+  var onbData = readLatestSettingsRow_(site);
+  if (!onbData) return { error: "no_onboarding" };
+
+  var data = {};
+  defs.forEach(function(def){
+    var id = def.id;
+    if (id === "hero") {
+      data[id] = { fields: {
+        title: (onbData.empresa||site) + " - " + getBusinessTitle(detectBusinessType(onbData.empresa, onbData.historia, onbData.businessCategory)),
+        subtitle: onbData.historia || getBusinessSubtitle(detectBusinessType(onbData.empresa, onbData.historia, onbData.businessCategory)),
+        cta_whatsapp: onbData.whatsapp || ""
+      }, slots: {} };
+    } else if (id === "contato") {
+      data[id] = { fields: {
+        email: onbData.email || "",
+        whatsapp: onbData.whatsapp || "",
+        address: onbData.endereco || "",
+        maps_url: "",
+        instagram: "",
+        facebook: "",
+        tiktok: ""
+      }, slots: {} };
+    } else {
+      data[id] = { fields: {}, slots: {} };
+    }
+  });
+
+  mergeSettingsKV_(site, { sections: { data: data } });
+  return { ok: true, populated: Object.keys(data).length };
+}
+
+function atualizarPreapprovalNosCadastros() {
+  const ss = SpreadsheetApp.getActive();
+  const shCad   = ss.getSheetByName('cadastros');
+  const shDados = ss.getSheetByName('dados');
+  if (!shCad || !shDados) return;
+
+  const lastDados = shDados.getLastRow();
+  const lastCad   = shCad.getLastRow();
+
+  if (lastDados < 2 || lastCad < 2) {
+    return;
+  }
+
+  const rangeDados = shDados.getRange(1, 1, lastDados, shDados.getLastColumn()).getValues();
+  const rangeCad   = shCad.getRange(1, 1, lastCad, shCad.getLastColumn()).getValues();
+
+  const headersDados = rangeDados[0].map(String);
+  const headersCad   = rangeCad[0].map(String);
+
+  const idxEmailDados = headersDados.indexOf('payer_email');
+  const idxPreapprovalDados = headersDados.indexOf('preapproval_id');
+
+  const idxEmailCad = headersCad.indexOf('email');
+  const idxPreapprovalCad = headersCad.indexOf('preapproval_id');
+
+  if (idxEmailDados === -1 || idxPreapprovalDados === -1 || idxEmailCad === -1 || idxPreapprovalCad === -1) {
+    return;
+  }
+
+  var updates = 0;
+  rangeCad.forEach((rowCad, indexCad) => {
+    if (indexCad === 0) return;
+
+    const emailCad = String(rowCad[idxEmailCad] || '').trim().toLowerCase();
+    const preapprovalCad = String(rowCad[idxPreapprovalCad] || '').trim();
+
+    if (!emailCad) return;
+
+    rangeDados.forEach((rowDados, indexDados) => {
+      if (indexDados === 0) return;
+
+      const emailDados = String(rowDados[idxEmailDados] || '').trim().toLowerCase();
+      const preapprovalDados = String(rowDados[idxPreapprovalDados] || '').trim();
+
+      if (emailDados === emailCad && preapprovalDados && !preapprovalCad) {
+        rangeCad[indexCad][idxPreapprovalCad] = preapprovalDados;
+        updates++;
+      }
+    });
+  });
+
+  if (updates > 0) {
+    shCad.getRange(1, 1, lastCad, rangeCad[0].length).setValues(rangeCad);
+  }
+}
+
+function testeLogin() {
+  console.log("Testando login com admin@elevea.com...");
+
+  var result = userLogin_(openSS_(), {
+    email: "admin@elevea.com",
+    password: "admin123"
+  });
+
+  var jsonContent = result.getContent();
+  var parsed = JSON.parse(jsonContent);
+
+  console.log("Resultado do login:", parsed);
+
+  if (parsed && parsed.ok) {
+    console.log("Login OK, testando userMe...");
+    var meResult = userMe_(openSS_(), {
+      token: parsed.token
+    });
+    console.log("userMe:", meResult.getContent());
+  }
+}
+
+function testeSeparado() {
+  console.log("1. Testando GET client_billing...");
+  var getResult = doGet({
+    parameter: {
+      type: "client_billing", 
+      email: "admin@elevea.com"
+    }
+  });
+  console.log("GET:", getResult.getContent());
+
+  console.log("2. Testando POST clientBilling_...");
+  var postResult = clientBilling_(openSS_(), {
+    email: "admin@elevea.com"
+  });
+  console.log("POST:", postResult.getContent());
+}
+
+function safeHeaderIndex(headers, wanted, fallbackIdx) {
+  var i = headers.indexOf(wanted);
+  return (i === -1 ? fallbackIdx : i);
+}
+
+function toMillis(v) {
+  if (v instanceof Date) return v.getTime();
+  var d = new Date(v);
+  var t = d.getTime();
+  return isFinite(t) ? t : -1;
+}
+
 /** ============================= ARQUIVO LIMPO E ORGANIZADO ============================= */
