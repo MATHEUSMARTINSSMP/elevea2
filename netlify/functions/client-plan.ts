@@ -35,21 +35,35 @@ export const handler = async (event: any) => {
       return json(500, { ok: false, error: "missing_gas_url" });
     }
 
-    // Chama diretamente o GAS para obter status e billing
-    const [statusRes, billingRes] = await Promise.allSettled([
-      fetch(`${GAS_BASE_URL}?type=status&site=${encodeURIComponent(site)}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      }),
-      fetch(GAS_BASE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "client_billing", email }),
-      }),
-    ]);
+    // OTIMIZADO: Timeout de 4 segundos com AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    const statusData = statusRes.status === "fulfilled" ? await statusRes.value.json().catch(() => ({})) : {};
-    const billingData = billingRes.status === "fulfilled" ? await billingRes.value.json().catch(() => ({})) : {};
+    try {
+      const [statusRes, billingRes] = await Promise.allSettled([
+        fetch(`${GAS_BASE_URL}?type=status&site=${encodeURIComponent(site)}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+        }),
+        fetch(GAS_BASE_URL, {
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "client_billing", email }),
+          signal: controller.signal,
+        }),
+      ]);
+
+      clearTimeout(timeoutId);
+      const statusData = statusRes.status === "fulfilled" ? await statusRes.value.json().catch(() => ({})) : {};
+      const billingData = billingRes.status === "fulfilled" ? await billingRes.value.json().catch(() => ({})) : {};
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        return json(408, { ok: false, error: "timeout_4s" });
+      }
+      throw e;
+    }
 
     const plan = billingData.plan || "";
     const status = statusData.status || billingData.status || "";

@@ -1,3 +1,4 @@
+
 const BUILD = 'debug-2025-09-11';
 
 /** === Spreadsheet opener (sempre a planilha certa) === */

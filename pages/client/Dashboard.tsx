@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSession } from "../../src/hooks/useSession";
 
 /* ================= CONFIG ================= */
-const PLAN_TIMEOUT_MS = 7000;         // descobrir VIP
-const CARDS_TIMEOUT_MS = 15000;       // cards paralelo
+const PLAN_TIMEOUT_MS = 3000;         // descobrir VIP - OTIMIZADO
+const CARDS_TIMEOUT_MS = 5000;        // cards paralelo - OTIMIZADO
 const UPGRADE_URL =
   import.meta.env.VITE_UPGRADE_URL ||
   "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=99dceb0e108a4f238a84fbef3e91bab8";
@@ -142,53 +142,82 @@ export default function ClientDashboard() {
     if (user?.role === "admin") window.location.replace("/admin/dashboard");
   }, [user?.role]);
 
-  /* 1) Usa cache para abrir rápido, depois valida no backend (client-plan) */
+  /* 1) OTIMIZADO: Cache inteligente + carregamento paralelo */
   useEffect(() => {
     if (!canQuery) return;
 
-    // abre com último plano conhecido (se existir)
+    // Cache com TTL de 2 minutos
+    const getCached = () => {
+      try {
+        const cached = localStorage.getItem(`dashboard:${user!.siteSlug}`);
+        if (!cached) return null;
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp > 120000) return null; // 2min TTL
+        return data;
+      } catch { return null; }
+    };
+
+    // Carrega cache primeiro se disponível
     if (!onceRef.current) {
       onceRef.current = true;
-      try {
-        const last = sessionStorage.getItem(cacheKey);
-        if (last) setPlan(last);
-      } catch {}
+      const cached = getCached();
+      if (cached) {
+        setPlan(cached.plan);
+        setStatus(cached.status);
+      }
     }
 
     let alive = true;
     (async () => {
       setCheckingPlan(true);
       setPlanErr(null);
+
       try {
-        const r = await getJSON<{
-          ok: boolean;
-          vip: boolean;
-          plan: string;
-          status?: string;
-          nextCharge?: string | null;
-          lastPayment?: { date: string; amount: number } | null;
-        }>(
-          `/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}&email=${encodeURIComponent(
-            user!.email
-          )}`,
-          PLAN_TIMEOUT_MS
-        );
+        // PARALELO: Plano + Status juntos
+        const [planRes, statusRes] = await Promise.allSettled([
+          getJSON<{
+            ok: boolean; vip: boolean; plan: string; status?: string;
+            nextCharge?: string | null; lastPayment?: { date: string; amount: number } | null;
+          }>(
+            `/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}&email=${encodeURIComponent(user!.email)}`,
+            PLAN_TIMEOUT_MS
+          ),
+          getJSON<StatusResp>(
+            `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
+            PLAN_TIMEOUT_MS
+          )
+        ]);
 
         if (!alive) return;
-        const resolvedPlan = r.vip ? "vip" : (r.plan || "");
-        setPlan(resolvedPlan);
-        try { sessionStorage.setItem(cacheKey, resolvedPlan); } catch {}
 
-        // hidrata cards com o que já veio
-        setStatus((prev) => ({
-          ...(prev || { ok: true, siteSlug: user!.siteSlug! }),
-          status: r.status || prev?.status,
-          nextCharge: r.nextCharge ?? prev?.nextCharge ?? null,
-          lastPayment: r.lastPayment ?? prev?.lastPayment ?? null,
-          plan: resolvedPlan,
-        }));
+        // Processa resultado do plano
+        const planData = planRes.status === 'fulfilled' ? planRes.value : null;
+        const statusData = statusRes.status === 'fulfilled' ? statusRes.value : null;
+
+        if (planData) {
+          const resolvedPlan = planData.vip ? "vip" : (planData.plan || "");
+          setPlan(resolvedPlan);
+
+          // Combina dados de ambas as fontes
+          const combinedStatus = {
+            ...(statusData || { ok: true, siteSlug: user!.siteSlug! }),
+            status: statusData?.status || planData.status,
+            nextCharge: statusData?.nextCharge || planData.nextCharge,
+            lastPayment: statusData?.lastPayment || planData.lastPayment,
+            plan: resolvedPlan,
+          };
+          setStatus(combinedStatus);
+
+          // Cache otimizado
+          try {
+            localStorage.setItem(`dashboard:${user!.siteSlug}`, JSON.stringify({
+              data: { plan: resolvedPlan, status: combinedStatus },
+              timestamp: Date.now()
+            }));
+          } catch {}
+        }
       } catch (e: any) {
-        setPlanErr("Não foi possível validar sua assinatura agora.");
+        if (alive) setPlanErr("Erro ao carregar. Tente novamente.");
       } finally {
         if (alive) setCheckingPlan(false);
       }
