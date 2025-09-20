@@ -1464,7 +1464,12 @@ function ensureResetColumns_(sh){
 function ensureBillingColumns_(sh){
   var headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
 
-/* DUPLICATE REMOVED: function ensure (smaller copy) */
+  function ensure(name){
+    if (!headers.includes(name)) {
+      sh.getRange(1, sh.getLastColumn()+1).setValue(name);
+      headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+    }
+  }
 
   ensure('plan');
   ensure('billing_status');
