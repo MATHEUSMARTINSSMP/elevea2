@@ -97,7 +97,8 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "password_reset_request",
-          email: forgotEmail.trim().toLowerCase()
+          email: forgotEmail.trim().toLowerCase(),
+          siteSlug: import.meta.env.VITE_SITE_SLUG || ""
         }),
       });
       const data: ApiResp = await r.json().catch(() => ({} as any));
