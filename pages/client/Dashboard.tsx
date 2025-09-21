@@ -10,6 +10,7 @@ import SEOOptimizer from "./components/SEOOptimizer";
 import WhatsAppManager from "./components/WhatsAppManager";
 import LeadScoring from "./components/LeadScoring";
 import MultiLanguageManager from "./components/MultiLanguageManager";
+import AppointmentScheduling from "./components/AppointmentScheduling";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -651,6 +652,16 @@ export default function ClientDashboard() {
         {vipEnabled && vipPin && (
           <section className="space-y-6">
             <MultiLanguageManager 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* APPOINTMENT SCHEDULING VIP */}
+        {vipEnabled && vipPin && (
+          <section className="space-y-6">
+            <AppointmentScheduling 
               siteSlug={user.siteSlug || ''} 
               vipPin={vipPin}
             />
