@@ -67,6 +67,13 @@ exports.handler = async (event) => {
       const email = String(body.email || "");
       const siteSlug = String(body.siteSlug || "");
       const token = gdata.token || "";
+      
+      // DEBUG: Logs para diagnosticar
+      console.log("🔍 DEBUG RESET SENHA:");
+      console.log("- Email:", email);
+      console.log("- SiteSlug recebido:", siteSlug);
+      console.log("- Token:", token ? "✅ Presente" : "❌ Ausente");
+      
       if (!email || !token) {
         return resp(500, { ok: false, error: "missing_email_or_token" });
       }
@@ -74,6 +81,9 @@ exports.handler = async (event) => {
       // Construir URL dinamicamente baseada no siteSlug
       const SITE_BASE_URL = buildSiteUrl(siteSlug);
       const link = `${SITE_BASE_URL}/reset?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+      
+      console.log("- URL construída:", SITE_BASE_URL);
+      console.log("- Link completo:", link);
 
       if (RESEND_API_KEY && RESEND_FROM) {
         const r = await fetch("https://api.resend.com/emails", {
