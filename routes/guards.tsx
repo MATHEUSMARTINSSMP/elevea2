@@ -11,8 +11,15 @@ export function WaitSession({ children }: { children: React.ReactNode }) {
   const { ready } = useSession();
   if (!ready) {
     return (
-      <div className="min-h-screen grid place-items-center bg-[#0B1220] text-white/70">
-        Carregando…
+      <div className="min-h-screen grid place-items-center bg-[#0B1220]">
+        <div className="space-y-4">
+          <div className="flex space-x-2 justify-center">
+            <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce"></div>
+            <div className="w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-3 h-3 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+          </div>
+          <div className="text-white/70 text-sm text-center">Preparando sessão...</div>
+        </div>
       </div>
     );
   }

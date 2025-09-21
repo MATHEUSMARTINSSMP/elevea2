@@ -152,7 +152,14 @@ export default function ClientDashboard() {
   if (loading && !user?.siteSlug) {
     return (
       <div className="min-h-screen grid place-items-center bg-gray-50">
-        <div className="text-gray-500 animate-pulse">Carregando sua área…</div>
+        <div className="space-y-4">
+          <div className="flex space-x-2 justify-center">
+            <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce"></div>
+            <div className="w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-3 h-3 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+          </div>
+          <div className="text-gray-500 text-sm text-center">Preparando sua área...</div>
+        </div>
       </div>
     );
   }

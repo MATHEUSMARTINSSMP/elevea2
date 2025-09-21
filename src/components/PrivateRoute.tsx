@@ -9,13 +9,20 @@ type Props = {
 };
 
 export default function PrivateRoute({ roles, children }: Props) {
-  const { user, loading } = useSession();
+  const { user, ready } = useSession();
   const location = useLocation();
 
-  if (loading) {
+  if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-gray-500">Carregando…</div>
+        <div className="space-y-3">
+          <div className="flex space-x-2 justify-center">
+            <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce"></div>
+            <div className="w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-3 h-3 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+          </div>
+          <div className="text-gray-500 text-sm text-center">Verificando permissões...</div>
+        </div>
       </div>
     );
   }

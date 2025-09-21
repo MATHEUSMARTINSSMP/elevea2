@@ -5,6 +5,7 @@ import AIChat from "./components/AIChat";
 import AIContentGenerator from "./components/AIContentGenerator";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import BusinessInsights from "./components/BusinessInsights";
+import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
 /* ================= CONFIG ================= */
 const PLAN_TIMEOUT_MS = 3000;         // descobrir VIP - OTIMIZADO
@@ -724,7 +725,11 @@ export default function ClientDashboard() {
                 </div>
 
                 {loadingStructure ? (
-                  <div className="text-slate-500 text-sm">Carregando estrutura do site...</div>
+                  <div className="space-y-3">
+                    <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4"></div>
+                    <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
+                  </div>
                 ) : !siteStructure ? (
                   <div className="text-slate-500 text-sm">Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.</div>
                 ) : (
@@ -849,7 +854,10 @@ export default function ClientDashboard() {
               <div className="text-xs text-white/60">E-mail e telefone ficam **somente aqui** (não são publicados).</div>
 
               {loadingFeedbacks ? (
-                <div className="text-white/60 text-sm">Carregando…</div>
+                <div className="space-y-2">
+                  <div className="h-3 bg-white/20 rounded animate-pulse"></div>
+                  <div className="h-3 bg-white/20 rounded animate-pulse w-2/3"></div>
+                </div>
               ) : feedbacks.length === 0 ? (
                 <div className="text-white/60 text-sm">Nenhum feedback ainda.</div>
               ) : (

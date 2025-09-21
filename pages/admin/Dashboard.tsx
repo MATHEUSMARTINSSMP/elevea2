@@ -1,5 +1,6 @@
 // src/admin/AdminDashboard.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { DashboardCardSkeleton, TableRowSkeleton } from "@/components/ui/loading-skeletons";
 
 /** Endpoints (Netlify Functions do PAINEL Elevea) */
 const APPS_ENDPOINT = "/.netlify/functions/sheets-proxy";
@@ -431,7 +432,15 @@ export default function AdminDashboard() {
               {filtered.length === 0 && (
                 <tr>
                   <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>
-                    {loading ? "Carregando..." : "Nenhum resultado."}
+                    {loading ? (
+                      <div className="p-4">
+                        <TableRowSkeleton columns={8} />
+                        <TableRowSkeleton columns={8} />
+                        <TableRowSkeleton columns={8} />
+                      </div>
+                    ) : (
+                      "Nenhum resultado."
+                    )}
                   </td>
                 </tr>
               )}
@@ -499,7 +508,11 @@ function RowDetails({
           </button>
         </div>
         {!billing ? (
-          <div className="text-sm text-slate-500 mt-2">Carregando...</div>
+          <div className="mt-3 space-y-2">
+            <div className="h-3 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4"></div>
+            <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2"></div>
+          </div>
         ) : billing.ok ? (
           <ul className="mt-3 space-y-1 text-sm">
             <li>
