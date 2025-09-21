@@ -4,6 +4,7 @@ import { useAuth } from "../../src/hooks/useAuth";
 import AIChat from "./components/AIChat";
 import AIContentGenerator from "./components/AIContentGenerator";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
+import BusinessInsights from "./components/BusinessInsights";
 
 /* ================= CONFIG ================= */
 const PLAN_TIMEOUT_MS = 3000;         // descobrir VIP - OTIMIZADO
@@ -573,6 +574,39 @@ export default function ClientDashboard() {
         {vipEnabled && vipPin && (
           <section className="space-y-6">
             <AnalyticsDashboard siteSlug={user.siteSlug || ''} vipPin={vipPin} />
+          </section>
+        )}
+
+        {/* BUSINESS INSIGHTS VIP */}
+        {vipEnabled && vipPin && siteStructure && (
+          <section className="space-y-6">
+            <BusinessInsights 
+              siteSlug={user.siteSlug || ''} 
+              businessType={siteStructure?.category || 'geral'}
+              businessName={user?.siteSlug || 'seu negócio'}
+              vipPin={vipPin}
+              analytics={{
+                totalVisits: 2500,
+                conversionRate: 3.2,
+                bounceRate: 35.8,
+                avgSessionDuration: '2:34',
+                topPages: [
+                  { page: '/', visits: 1250 },
+                  { page: '/servicos', visits: 850 }
+                ],
+                deviceTypes: [
+                  { name: 'Mobile', value: 65 },
+                  { name: 'Desktop', value: 35 }
+                ]
+              }}
+              feedback={{
+                avgRating: 4.2,
+                recentFeedbacks: [
+                  { rating: 5, comment: 'Excelente atendimento!', sentiment: 'positive' },
+                  { rating: 4, comment: 'Muito bom serviço', sentiment: 'positive' }
+                ]
+              }}
+            />
           </section>
         )}
 

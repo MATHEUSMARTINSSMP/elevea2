@@ -300,4 +300,27 @@ Use tom profissional mas amigável, linguagem brasileira e foque na conversão.`
   }
 }
 
+// Geração de insights avançados de negócio
+export async function generateAIInsights(prompt: string): Promise<{success: boolean; content?: string; error?: string}> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+      max_tokens: 2000,
+    });
+
+    return {
+      success: true,
+      content: response.choices[0].message.content?.trim() || ''
+    };
+  } catch (error) {
+    console.error('Erro na geração de insights:', error);
+    return {
+      success: false,
+      error: error.message || 'Erro ao gerar insights'
+    };
+  }
+}
+
 export default openai;
