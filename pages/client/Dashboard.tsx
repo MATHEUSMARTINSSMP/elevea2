@@ -3,6 +3,7 @@ import { useSession } from "../../src/hooks/useSession";
 import { useAuth } from "../../src/hooks/useAuth";
 import AIChat from "./components/AIChat";
 import AIContentGenerator from "./components/AIContentGenerator";
+import AnalyticsDashboard from "./components/AnalyticsDashboard";
 
 /* ================= CONFIG ================= */
 const PLAN_TIMEOUT_MS = 3000;         // descobrir VIP - OTIMIZADO
@@ -567,6 +568,13 @@ export default function ClientDashboard() {
               status?.lastPayment ? `${fmtDateTime(status.lastPayment.date)} • R$ ${status.lastPayment.amount.toFixed(2)}` : "—"
           }/>
         </section>
+
+        {/* ANALYTICS DASHBOARD VIP */}
+        {vipEnabled && vipPin && (
+          <section className="space-y-6">
+            <AnalyticsDashboard siteSlug={user.siteSlug || ''} vipPin={vipPin} />
+          </section>
+        )}
 
         {/* CONTEÚDO PRINCIPAL */}
         <div className="grid lg:grid-cols-3 gap-8">
