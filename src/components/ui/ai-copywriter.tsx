@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,6 +10,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Wand2, Copy, CheckCircle } from 'lucide-react';
 import { generateSiteContent, generateSEOSuggestions, generateMarketingEmail, ContentSuggestion } from '@/lib/openai';
 import { useToast } from '@/hooks/use-toast';
+
+// Interfaces para type safety
+interface SEOSuggestions {
+  title: string;
+  description: string;
+  keywords: string[];
+  suggestions: string[];
+}
+
+interface EmailResult {
+  subject: string;
+  content: string;
+  callToAction: string;
+}
 
 interface AICopywriterProps {
   businessName?: string;
@@ -37,21 +52,38 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
   });
 
   const handleGenerateContent = async () => {
-    if (!formData.businessName || !formData.businessType) {
+    // Validação com foco no primeiro campo inválido
+    if (!formData.businessName.trim()) {
+      const field = document.getElementById('businessName') as HTMLInputElement;
+      field?.focus();
       toast({
-        title: "Campos obrigatórios",
-        description: "Preencha o nome e tipo do negócio",
+        title: "Campo obrigatório",
+        description: "Preencha o nome do negócio",
         variant: "destructive"
       });
       return;
     }
 
-    setIsGenerating(true);
+    if (!formData.businessType.trim()) {
+      const field = document.getElementById('businessType') as HTMLInputElement;
+      field?.focus();
+      toast({
+        title: "Campo obrigatório", 
+        description: "Preencha o tipo do negócio",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsGeneratingContent(true);
     try {
+      // Limitar tamanho da entrada para controle de custo
+      const limitedDescription = formData.businessDescription.slice(0, 500);
+      
       const content = await generateSiteContent(
-        formData.businessType,
-        formData.businessName,
-        formData.businessDescription
+        formData.businessType.trim(),
+        formData.businessName.trim(),
+        limitedDescription
       );
       setGeneratedContent(content);
       
@@ -60,90 +92,152 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
         description: "IA criou sugestões personalizadas para seu site",
       });
     } catch (error) {
+      console.error('Erro na geração:', error);
       toast({
         title: "Erro",
         description: "Falha ao gerar conteúdo. Tente novamente.",
         variant: "destructive"
       });
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingContent(false);
     }
   };
 
   const handleGenerateSEO = async () => {
-    if (!formData.businessName || !formData.businessType || !formData.currentContent) {
+    // Validação com foco nos campos
+    if (!formData.businessName.trim()) {
+      const field = document.getElementById('seoBusinessName') as HTMLInputElement;
+      field?.focus();
       toast({
-        title: "Campos obrigatórios",
-        description: "Preencha todos os campos para gerar SEO",
+        title: "Campo obrigatório",
+        description: "Preencha o nome do negócio",
         variant: "destructive"
       });
       return;
     }
 
-    setIsGenerating(true);
-    try {
-      const seo = await generateSEOSuggestions(
-        formData.businessType,
-        formData.businessName,
-        formData.currentContent,
-        formData.location
-      );
-      setSeoSuggestions(seo);
-      
+    if (!formData.currentContent.trim()) {
+      const field = document.getElementById('currentContent') as HTMLTextAreaElement;
+      field?.focus();
       toast({
-        title: "SEO otimizado!",
-        description: "Sugestões de SEO prontas para implementar",
+        title: "Campo obrigatório",
+        description: "Preencha o conteúdo atual para otimização",
+        variant: "destructive"
       });
+      return;
+    }
+
+    setIsGeneratingSEO(true);
+    try {
+      // Limitar conteúdo atual para controle de custo
+      const limitedContent = formData.currentContent.slice(0, 1000);
+      
+      const seo = await generateSEOSuggestions(
+        formData.businessType.trim() || 'negócio',
+        formData.businessName.trim(),
+        limitedContent,
+        formData.location.trim()
+      );
+      
+      // Validar shape do retorno
+      if (seo && typeof seo === 'object' && 'title' in seo) {
+        setSeoSuggestions(seo as SEOSuggestions);
+        toast({
+          title: "SEO otimizado!",
+          description: "Sugestões de SEO prontas para implementar",
+        });
+      } else {
+        throw new Error('Formato de resposta inválido');
+      }
     } catch (error) {
+      console.error('Erro na geração SEO:', error);
       toast({
         title: "Erro",
         description: "Falha ao gerar SEO. Tente novamente.",
         variant: "destructive"
       });
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingSEO(false);
     }
   };
 
   const handleGenerateEmail = async () => {
-    if (!formData.businessName || !formData.businessType) {
+    if (!formData.businessName.trim()) {
+      const field = document.getElementById('emailBusinessName') as HTMLInputElement;
+      field?.focus();
       toast({
-        title: "Campos obrigatórios",
-        description: "Preencha nome e tipo do negócio",
+        title: "Campo obrigatório",
+        description: "Preencha o nome do negócio",
         variant: "destructive"
       });
       return;
     }
 
-    setIsGenerating(true);
+    setIsGeneratingEmail(true);
     try {
       const email = await generateMarketingEmail(formData.emailType, {
-        name: formData.businessName,
-        type: formData.businessType,
-        clientName: formData.clientName,
-        service: formData.service
+        name: formData.businessName.trim(),
+        type: formData.businessType.trim() || 'negócio',
+        clientName: formData.clientName.trim(),
+        service: formData.service.trim()
       });
-      setEmailContent(email);
       
-      toast({
-        title: "Email criado!",
-        description: "Template de email personalizado pronto",
-      });
+      // Validar shape e sanitizar HTML
+      if (email && typeof email === 'object' && 'content' in email) {
+        const sanitizedEmail: EmailResult = {
+          subject: email.subject || 'Assunto',
+          content: DOMPurify.sanitize(email.content || 'Conteúdo indisponível', {
+            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u'],
+            ALLOWED_ATTR: []
+          }),
+          callToAction: email.callToAction || 'Clique aqui'
+        };
+        
+        setEmailContent(sanitizedEmail);
+        toast({
+          title: "Email criado!",
+          description: "Template de email personalizado pronto",
+        });
+      } else {
+        throw new Error('Formato de resposta inválido');
+      }
     } catch (error) {
+      console.error('Erro na geração de email:', error);
       toast({
         title: "Erro",
         description: "Falha ao gerar email. Tente novamente.",
         variant: "destructive"
       });
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingEmail(false);
     }
   };
 
   const copyToClipboard = async (text: string, index?: number) => {
     try {
-      await navigator.clipboard.writeText(text);
-      setCopiedIndex(index || 0);
+      // Tentar navigator.clipboard primeiro (moderno)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback para navegadores antigos/HTTP
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        
+        if (!document.execCommand('copy')) {
+          throw new Error('execCommand copy falhou');
+        }
+        
+        document.body.removeChild(textarea);
+      }
+      
+      // Corrigir bug do índice
+      setCopiedIndex(index ?? null);
       
       toast({
         title: "Copiado!",
@@ -152,6 +246,7 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
 
       setTimeout(() => setCopiedIndex(null), 2000);
     } catch (error) {
+      console.error('Erro ao copiar:', error);
       toast({
         title: "Erro",
         description: "Falha ao copiar texto",
@@ -220,10 +315,10 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
 
               <Button 
                 onClick={handleGenerateContent} 
-                disabled={isGenerating}
+                disabled={isGeneratingContent}
                 className="w-full"
               >
-                {isGenerating ? (
+                {isGeneratingContent ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gerando conteúdo...</>
                 ) : (
                   <><Wand2 className="h-4 w-4 mr-2" /> Gerar Conteúdo</>
@@ -327,10 +422,10 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
 
               <Button 
                 onClick={handleGenerateSEO} 
-                disabled={isGenerating}
+                disabled={isGeneratingSEO}
                 className="w-full"
               >
-                {isGenerating ? (
+                {isGeneratingSEO ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Otimizando SEO...</>
                 ) : (
                   <><Wand2 className="h-4 w-4 mr-2" /> Otimizar SEO</>
@@ -445,10 +540,10 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
 
               <Button 
                 onClick={handleGenerateEmail} 
-                disabled={isGenerating}
+                disabled={isGeneratingEmail}
                 className="w-full"
               >
-                {isGenerating ? (
+                {isGeneratingEmail ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Criando email...</>
                 ) : (
                   <><Wand2 className="h-4 w-4 mr-2" /> Criar Email</>
