@@ -14,6 +14,7 @@ import AppointmentScheduling from "./components/AppointmentScheduling";
 import FeatureManager from "./components/FeatureManager";
 import { EcommerceDashboard } from "./components/EcommerceDashboard";
 import TemplateMarketplace from "./components/TemplateMarketplace";
+import AuditLogs from "./components/AuditLogs";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -727,6 +728,16 @@ export default function ClientDashboard() {
         {vipEnabled && vipPin && isFeatureEnabled('premium-templates') && (
           <section className="space-y-6">
             <TemplateMarketplace 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* AUDIT LOGS VIP */}
+        {vipEnabled && vipPin && isFeatureEnabled('audit-logs') && (
+          <section className="space-y-6">
+            <AuditLogs 
               siteSlug={user.siteSlug || ''} 
               vipPin={vipPin}
             />
