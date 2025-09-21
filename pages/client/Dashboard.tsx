@@ -712,7 +712,7 @@ export default function ClientDashboard() {
         )}
 
         {/* SEO OPTIMIZER VIP */}
-        {vipEnabled && vipPin && (
+        {vipEnabled && vipPin && isFeatureEnabled('auto-seo') && (
           <section className="space-y-6">
             <SEOOptimizer 
               siteSlug={user.siteSlug || ''} 
@@ -723,6 +723,17 @@ export default function ClientDashboard() {
                 location: 'Brasil',
                 description: siteStructure?.description || ''
               }}
+            />
+          </section>
+        )}
+
+        {/* FEATURE MANAGER */}
+        {vipEnabled && (
+          <section className="space-y-6">
+            <FeatureManager 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+              userPlan={userPlan}
             />
           </section>
         )}
