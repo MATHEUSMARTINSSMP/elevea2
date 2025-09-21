@@ -12,6 +12,7 @@ import LeadScoring from "./components/LeadScoring";
 import MultiLanguageManager from "./components/MultiLanguageManager";
 import AppointmentScheduling from "./components/AppointmentScheduling";
 import FeatureManager from "./components/FeatureManager";
+import { EcommerceDashboard } from "./components/EcommerceDashboard";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -705,6 +706,16 @@ export default function ClientDashboard() {
         {vipEnabled && vipPin && isFeatureEnabled('appointment-scheduling') && (
           <section className="space-y-6">
             <AppointmentScheduling 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* E-COMMERCE VIP */}
+        {vipEnabled && vipPin && isFeatureEnabled('ecommerce') && (
+          <section className="space-y-6">
+            <EcommerceDashboard 
               siteSlug={user.siteSlug || ''} 
               vipPin={vipPin}
             />
