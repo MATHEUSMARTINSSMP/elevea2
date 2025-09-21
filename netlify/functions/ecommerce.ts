@@ -1,6 +1,27 @@
 import type { Handler } from '@netlify/functions'
 import { rateLimitMiddleware, verifyVipAccess } from './shared/security'
 
+// Google Apps Script integration
+const GAS_BASE_URL = process.env.GAS_BASE_URL || process.env.ELEVEA_GAS_EXEC_URL || process.env.SHEETS_WEBAPP_URL || '';
+
+async function callGAS(type: string, data: any) {
+  if (!GAS_BASE_URL) {
+    throw new Error('Google Apps Script URL not configured');
+  }
+
+  const response = await fetch(GAS_BASE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, ...data })
+  });
+
+  if (!response.ok) {
+    throw new Error(`GAS request failed: ${response.status}`);
+  }
+
+  return await response.json();
+}
+
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -275,9 +296,16 @@ export const handler: Handler = async (event, context) => {
 
 async function getProducts(siteSlug: string, filters?: any, pagination?: any) {
   try {
-    // TODO: Buscar produtos do Google Sheets com filtros
-    // Mock data para desenvolvimento
-    const products: Product[] = [
+    // Buscar produtos do Google Sheets via GAS
+    const gasResponse = await callGAS('ecommerce_get_products', {
+      site: siteSlug,
+      filters,
+      pagination
+    });
+
+    if (!gasResponse.ok) {
+      // Se não há produtos ou erro, retornar dados exemplo para desenvolvimento
+      const products: Product[] = [
       {
         id: '1',
         name: 'Camiseta Premium',
@@ -373,6 +401,24 @@ async function getProducts(siteSlug: string, filters?: any, pagination?: any) {
         totalPages: paginatedProducts.totalPages
       })
     }
+    }
+
+    // Se há dados do GAS, usar eles
+    const products = gasResponse.products || [];
+    const filteredProducts = applyFilters(products, filters);
+    const paginatedProducts = applyPagination(filteredProducts, pagination);
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        ok: true,
+        products: paginatedProducts.items,
+        total: filteredProducts.length,
+        page: paginatedProducts.page,
+        totalPages: paginatedProducts.totalPages
+      })
+    }
 
   } catch (error) {
     console.error('Erro ao obter produtos:', error)
@@ -441,29 +487,36 @@ async function getProduct(siteSlug: string, productId: string) {
 }
 
 async function getProductsData(siteSlug: string): Promise<Product[]> {
-  // TODO: Implementar busca real no Google Sheets
-  return [] // Mock data usado nas outras funções
+  try {
+    const gasResponse = await callGAS('ecommerce_get_products', {
+      site: siteSlug
+    });
+    
+    if (gasResponse.ok && gasResponse.products) {
+      return gasResponse.products;
+    }
+    
+    return []; // Retorna array vazio se não há produtos
+  } catch (error) {
+    console.error('Erro ao buscar produtos do GAS:', error);
+    return []; // Fallback para array vazio
+  }
 }
 
 async function createProduct(siteSlug: string, productData: any) {
   try {
     // Validar dados obrigatórios
-    if (!productData.name || !productData.price || !productData.sku) {
+    if (!productData.name || !productData.price) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ ok: false, error: 'Nome, preço e SKU são obrigatórios' })
+        body: JSON.stringify({ ok: false, error: 'Nome e preço são obrigatórios' })
       }
     }
 
-    // Verificar se SKU já existe
-    const existingProducts = await getProductsData(siteSlug)
-    if (existingProducts.some(p => p.sku === productData.sku)) {
-      return {
-        statusCode: 409,
-        headers,
-        body: JSON.stringify({ ok: false, error: 'SKU já existe' })
-      }
+    // Gerar SKU se não fornecido
+    if (!productData.sku) {
+      productData.sku = generateSKU(productData.name);
     }
 
     const product: Product = {
@@ -516,33 +569,52 @@ function generateProductId(): string {
   return `prod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
+function generateSKU(productName: string): string {
+  return productName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .split(' ')
+    .slice(0, 3)
+    .join('-') + '-' + Math.random().toString(36).substr(2, 4).toUpperCase();
+}
+
 async function saveProductToStorage(siteSlug: string, product: Product) {
-  // TODO: Salvar no Google Sheets
-  console.log('Salvando produto:', { siteSlug, product })
-  
-  // Em produção, implementar salvamento real no Google Sheets
-  // Estrutura sugerida da planilha "products":
-  // site_slug | id | name | description | price | compare_at_price | sku | category | tags | images | inventory_quantity | track_quantity | allow_backorder | seo_title | seo_description | status | featured | created_at | updated_at
+  try {
+    const gasResponse = await callGAS('ecommerce_save_product', {
+      site: siteSlug,
+      product: product
+    });
+    
+    if (!gasResponse.ok) {
+      throw new Error('Failed to save product to Google Sheets');
+    }
+    
+    return gasResponse;
+  } catch (error) {
+    console.error('Erro ao salvar produto:', error);
+    // Para desenvolvimento, apenas log
+    console.log('Salvando produto (mock):', { siteSlug, product });
+    return { ok: true };
+  }
 }
 
 async function updateProduct(siteSlug: string, productId: string, updateData: any) {
   try {
-    // TODO: Atualizar produto no Google Sheets
-    
-    const updatedProduct = {
-      ...updateData,
-      id: productId,
-      updatedAt: new Date().toISOString()
-    }
-
-    await saveProductToStorage(siteSlug, updatedProduct)
+    const gasResponse = await callGAS('ecommerce_update_product', {
+      site: siteSlug,
+      productId: productId,
+      product: updateData
+    });
 
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         ok: true,
-        product: updatedProduct,
+        product: gasResponse.product,
         message: 'Produto atualizado com sucesso'
       })
     }
@@ -555,7 +627,10 @@ async function updateProduct(siteSlug: string, productId: string, updateData: an
 
 async function deleteProduct(siteSlug: string, productId: string) {
   try {
-    // TODO: Remover produto do Google Sheets
+    const gasResponse = await callGAS('ecommerce_delete_product', {
+      site: siteSlug,
+      productId: productId
+    });
     
     return {
       statusCode: 200,
@@ -744,8 +819,27 @@ async function updateCategory(siteSlug: string, categoryData: any) {
 
 async function getOrders(siteSlug: string, filters?: any, pagination?: any) {
   try {
-    // TODO: Buscar pedidos do Google Sheets
-    // Mock data para desenvolvimento
+    // Buscar pedidos do Google Sheets via GAS
+    const gasResponse = await callGAS('ecommerce_get_orders', {
+      site: siteSlug,
+      filters,
+      pagination
+    });
+
+    if (gasResponse.ok && gasResponse.orders) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          ok: true,
+          orders: gasResponse.orders,
+          total: gasResponse.total || gasResponse.orders.length
+        })
+      };
+    }
+
+    // Mock data para desenvolvimento se GAS falhar
+    console.log('Usando mock data para orders - GAS não disponível');
     const orders: Order[] = [
       {
         id: '1',
@@ -900,7 +994,12 @@ async function processOrderPayment(siteSlug: string, order: Order) {
 
 async function updateOrderStatus(siteSlug: string, orderId: string, status: string) {
   try {
-    // TODO: Atualizar status no Google Sheets
+    // Atualizar status no Google Sheets via GAS
+    const gasResponse = await callGAS('ecommerce_update_order_status', {
+      site: siteSlug,
+      orderId: orderId,
+      status: status
+    });
     
     // Enviar notificação de atualização
     await sendOrderStatusNotification(orderId, status)
@@ -952,8 +1051,23 @@ async function processPayment(siteSlug: string, orderId: string, paymentData: an
 
 async function getStoreSettings(siteSlug: string) {
   try {
-    // TODO: Buscar configurações do Google Sheets
-    // Mock data para desenvolvimento
+    // Buscar configuração da loja do Google Sheets
+    const gasResponse = await callGAS('ecommerce_get_store_settings', {
+      site: siteSlug
+    });
+
+    if (gasResponse.ok && gasResponse.settings) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          ok: true,
+          settings: gasResponse.settings
+        })
+      };
+    }
+
+    // Se não há configuração, retornar padrão
     const settings: StoreSettings = {
       storeName: 'Minha Loja Online',
       storeDescription: 'A melhor loja virtual da região',

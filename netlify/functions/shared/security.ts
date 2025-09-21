@@ -38,6 +38,16 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
     windowMs: 60 * 1000,      // 1 minuto
     maxRequests: 15,          // 15 gerações por minuto
     keyGenerator: (event) => `copy:${getClientIdentifier(event)}`
+  },
+  'white-label': {
+    windowMs: 60 * 1000,      // 1 minuto
+    maxRequests: 30,          // 30 operações por minuto
+    keyGenerator: (event) => `white-label:${getClientIdentifier(event)}`
+  },
+  'ecommerce': {
+    windowMs: 60 * 1000,      // 1 minuto
+    maxRequests: 50,          // 50 operações por minuto
+    keyGenerator: (event) => `ecommerce:${getClientIdentifier(event)}`
   }
 }
 

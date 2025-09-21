@@ -11,11 +11,25 @@ interface Product {
   name: string;
   description: string;
   price: number;
-  currency: string;
+  compareAtPrice?: number;
+  sku: string;
   category: string;
-  stock: number;
+  tags: string[];
+  images: string[];
+  inventory: {
+    quantity: number;
+    trackQuantity: boolean;
+    allowBackorder: boolean;
+  };
+  seo: {
+    title: string;
+    description: string;
+    keywords: string[];
+  };
+  status: 'active' | 'draft' | 'archived';
   featured: boolean;
-  image?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Order {
@@ -32,16 +46,16 @@ interface Order {
 }
 
 interface StoreConfig {
-  name: string;
-  description: string;
+  storeName: string;
+  storeDescription: string;
   currency: string;
-  language: string;
-  paymentMethods: string[];
-  theme: {
-    primaryColor: string;
-    accentColor: string;
-    layout: string;
-  };
+  taxRate: number;
+  shippingRates: any[];
+  paymentMethods: any[];
+  notificationEmails: string[];
+  termsAndConditions: string;
+  privacyPolicy: string;
+  returnPolicy: string;
 }
 
 export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps) {
@@ -80,15 +94,15 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'get_store_config',
+          action: 'get_store_settings',
           siteSlug,
           vipPin
         })
       });
       
       const data = await response.json();
-      if (data.success) {
-        setStoreConfig(data.config);
+      if (data.ok) {
+        setStoreConfig(data.settings);
       }
     } catch (error) {
       console.error('Erro ao carregar configuração:', error);
@@ -108,7 +122,7 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.ok) {
         setProducts(data.products);
       }
     } catch (error) {
@@ -129,7 +143,7 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.ok) {
         setOrders(data.orders);
       }
     } catch (error) {
@@ -143,15 +157,14 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'get_analytics',
+          action: 'get_store_analytics',
           siteSlug,
-          vipPin,
-          period: '30d'
+          vipPin
         })
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.ok) {
         setAnalytics(data.analytics);
       }
     } catch (error) {
@@ -162,7 +175,7 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
   async function saveProduct(productData: Partial<Product>) {
     try {
       setLoading(true);
-      const action = editingProduct ? 'update_product' : 'add_product';
+      const action = editingProduct ? 'update_product' : 'create_product';
       
       const response = await fetch('/.netlify/functions/ecommerce', {
         method: 'POST',
@@ -177,7 +190,7 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.ok) {
         await loadProducts();
         setShowProductForm(false);
         setEditingProduct(null);
@@ -206,7 +219,7 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.ok) {
         await loadProducts();
       }
     } catch (error) {
@@ -227,12 +240,12 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
           siteSlug,
           vipPin,
           orderId,
-          status
+          order: { status }
         })
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.ok) {
         await loadOrders();
       }
     } catch (error) {
@@ -393,8 +406,8 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
               {products.map((product) => (
                 <div key={product.id} className="border border-slate-200 rounded-lg p-4">
                   <div className="aspect-video bg-slate-100 rounded-lg mb-3 flex items-center justify-center">
-                    {product.image ? (
-                      <img src={product.image} alt={product.name} className="w-full h-full object-cover rounded-lg" />
+                    {product.images?.[0] ? (
+                      <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover rounded-lg" />
                     ) : (
                       <Package className="w-8 h-8 text-slate-400" />
                     )}
@@ -405,10 +418,10 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
                   
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-lg font-bold text-green-600">
-                      {product.currency} {product.price.toFixed(2)}
+                      R$ {product.price.toFixed(2)}
                     </span>
                     <span className="text-sm text-slate-600">
-                      Estoque: {product.stock}
+                      Estoque: {product.inventory.quantity}
                     </span>
                   </div>
 
@@ -514,8 +527,8 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
                 <label className="block text-sm font-medium mb-1">Nome da Loja</label>
                 <input
                   type="text"
-                  value={storeConfig.name}
-                  onChange={(e) => setStoreConfig({ ...storeConfig, name: e.target.value })}
+                  value={storeConfig.storeName}
+                  onChange={(e) => setStoreConfig({ ...storeConfig, storeName: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 />
               </div>
@@ -523,8 +536,8 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
               <div>
                 <label className="block text-sm font-medium mb-1">Descrição</label>
                 <textarea
-                  value={storeConfig.description}
-                  onChange={(e) => setStoreConfig({ ...storeConfig, description: e.target.value })}
+                  value={storeConfig.storeDescription}
+                  onChange={(e) => setStoreConfig({ ...storeConfig, storeDescription: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg h-20"
                 />
               </div>
@@ -604,10 +617,10 @@ export function EcommerceDashboard({ siteSlug, vipPin }: EcommerceDashboardProps
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  action: 'update_store_config',
+                  action: 'update_store_settings',
                   siteSlug,
                   vipPin,
-                  config: storeConfig
+                  settings: storeConfig
                 })
               });
             }}
@@ -648,9 +661,21 @@ function ProductForm({
       name: '',
       description: '',
       price: 0,
-      currency: 'BRL',
+      sku: '',
       category: '',
-      stock: 0,
+      tags: [],
+      images: [],
+      inventory: {
+        quantity: 0,
+        trackQuantity: false,
+        allowBackorder: false
+      },
+      seo: {
+        title: '',
+        description: '',
+        keywords: []
+      },
+      status: 'draft',
       featured: false
     }
   );
@@ -700,8 +725,14 @@ function ProductForm({
               <label className="block text-sm font-medium mb-1">Estoque</label>
               <input
                 type="number"
-                value={formData.stock || 0}
-                onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) })}
+                value={formData.inventory?.quantity || 0}
+                onChange={(e) => setFormData({ 
+                  ...formData, 
+                  inventory: { 
+                    ...formData.inventory || { quantity: 0, trackQuantity: false, allowBackorder: false },
+                    quantity: parseInt(e.target.value) 
+                  }
+                })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg"
               />
             </div>
