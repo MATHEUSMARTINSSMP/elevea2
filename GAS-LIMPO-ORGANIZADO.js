@@ -800,7 +800,7 @@ function get_site_structure(site) {
   try {
     const ss = openSS_();
     let structureSheet = ss.getSheetByName("site_structure");
-    
+
     if (!structureSheet) {
       return { ok: false, error: "Planilha site_structure não encontrada" };
     }
@@ -815,7 +815,7 @@ function get_site_structure(site) {
     }
 
     const data = structureSheet.getRange(2, 1, structureSheet.getLastRow() - 1, structureSheet.getLastColumn()).getValues();
-    
+
     for (let i = 0; i < data.length; i++) {
       if (String(data[i][siteIdx]).trim() === site) {
         const structureJson = String(data[i][structureIdx] || "");
@@ -834,7 +834,7 @@ function get_site_structure(site) {
     }
 
     return { ok: false, error: "Estrutura não encontrada para o site" };
-    
+
   } catch (e) {
     return { ok: false, error: "Erro ao buscar estrutura: " + e.message };
   }
@@ -847,7 +847,7 @@ function save_site_structure(site, structure) {
   try {
     const ss = openSS_();
     let structureSheet = ss.getSheetByName("site_structure");
-    
+
     // Cria a planilha se não existir
     if (!structureSheet) {
       structureSheet = ss.insertSheet("site_structure");
@@ -887,12 +887,12 @@ function save_site_structure(site, structure) {
       newRow[structureIdx] = structureJson;
       newRow[updatedIdx] = now;
       newRow[businessIdx] = businessType;
-      
+
       structureSheet.appendRow(newRow);
     }
 
     return { ok: true, message: "Estrutura salva com sucesso" };
-    
+
   } catch (e) {
     return { ok: false, error: "Erro ao salvar estrutura: " + e.message };
   }
@@ -909,7 +909,7 @@ function validate_vip_pin(site, pin) {
 
     const ss = openSS_();
     const usuariosSheet = ss.getSheetByName("usuarios");
-    
+
     if (!usuariosSheet) {
       return { ok: false, valid: false, error: "Planilha usuarios não encontrada" };
     }
@@ -924,16 +924,16 @@ function validate_vip_pin(site, pin) {
     }
 
     const data = usuariosSheet.getRange(2, 1, usuariosSheet.getLastRow() - 1, usuariosSheet.getLastColumn()).getValues();
-    
+
     for (let i = 0; i < data.length; i++) {
       if (String(data[i][siteIdx]).trim() === site) {
         const storedPin = String(data[i][pinIdx] || "").trim();
         const plano = String(data[i][planoIdx] || "").toLowerCase();
-        
+
         // Verifica se é VIP e se o PIN confere
         const isVip = plano.includes("vip") || plano === "premium";
         const pinValid = storedPin && storedPin === pin;
-        
+
         return {
           ok: true,
           valid: isVip && pinValid,
@@ -944,7 +944,7 @@ function validate_vip_pin(site, pin) {
     }
 
     return { ok: false, valid: false, error: "Site não encontrado" };
-    
+
   } catch (e) {
     return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
   }
@@ -960,7 +960,7 @@ function createSiteStructureByType(site, businessCategory, onboardingData) {
     lastUpdated: new Date().toISOString(),
     sections: []
   };
-  
+
   // Seções comuns para todos os tipos
   const commonSections = [
     {
@@ -989,7 +989,7 @@ function createSiteStructureByType(site, businessCategory, onboardingData) {
 
   // Seções específicas por categoria de negócio
   let specificSections = [];
-  
+
   switch (businessCategory) {
     case "health":
       specificSections = [
@@ -1023,7 +1023,7 @@ function createSiteStructureByType(site, businessCategory, onboardingData) {
         }
       ];
       break;
-      
+
     case "food":
       specificSections = [
         {
@@ -1056,7 +1056,7 @@ function createSiteStructureByType(site, businessCategory, onboardingData) {
         }
       ];
       break;
-      
+
     case "automotive":
       specificSections = [
         {
@@ -1089,7 +1089,7 @@ function createSiteStructureByType(site, businessCategory, onboardingData) {
         }
       ];
       break;
-      
+
     default:
       specificSections = [
         {
@@ -1144,7 +1144,7 @@ function createSiteStructureByType(site, businessCategory, onboardingData) {
   ];
 
   baseStructure.sections = [...commonSections, ...specificSections, ...finalSections];
-  
+
   return baseStructure;
 }
 
@@ -1277,7 +1277,7 @@ function getBusinessTitle(category) {
     jewelry: "Joias e Acessórios",
     general: "Qualidade e Excelência"
   };
-  
+
   return titles[category] || titles.general;
 }
 
@@ -1295,7 +1295,7 @@ function getBusinessSubtitle(category) {
     jewelry: "Peças únicas para momentos especiais",
     general: "Comprometimento com a satisfação do cliente"
   };
-  
+
   return subtitles[category] || subtitles.general;
 }
 
@@ -1304,7 +1304,7 @@ function getBusinessSubtitle(category) {
  */
 function generateSectionsForBusiness_(businessCategory, context) {
   // Lista de campos personalizados para cada seção baseada no tipo de negócio
-  
+
   var baseFields = [
     {
       "id": "hero",
@@ -1330,7 +1330,7 @@ function generateSectionsForBusiness_(businessCategory, context) {
   ];
 
   var specificFields = [];
-  
+
   // Campos específicos por categoria
   if (businessCategory === "health") {
     specificFields = [
@@ -1815,13 +1815,13 @@ function buildLovablePrompt_(ctx) {
   var businessText = [historia, produtos].filter(Boolean).join(" ");
   var businessDetection = detectBusinessType(businessText);
   var businessCategory = businessDetection.category;
-  
+
   L.push("TIPO DE NEGÓCIO DETECTADO: " + businessCategory.toUpperCase());
   L.push("Palavras-chave: " + businessDetection.keywords.join(", "));
-  
+
   /* — Mapa de sessões personalizadas por tipo de negócio */
   var sectionsConfig = generateSectionsForBusiness_(businessCategory, { historia: historia, produtos: produtos });
-  
+
   L.push("Gere um arquivo **src/elevea.sections.json** com um array de sessões personalizadas para " + businessCategory + ":");
   L.push(JSON.stringify(sectionsConfig, null, 2));
 
@@ -2049,9 +2049,9 @@ function handleSaveOnboarding_(ss, data) {
       produtos: produtos,
       endereco: endereco
     });
-    
+
     var businessCategory = businessDetection.category;
-    
+
     // ===== CRIAÇÃO AUTOMÁTICA DA ESTRUTURA DO SITE =====
     var siteStructure = createSiteStructureByType(site, businessCategory, {
       empresa: empresa,
@@ -2061,7 +2061,7 @@ function handleSaveOnboarding_(ss, data) {
       historia: historia,
       produtos: produtos
     });
-    
+
     // ===== SALVAR ESTRUTURA NA PLANILHA site_structure =====
     try {
       var result = save_site_structure(site, siteStructure);
@@ -2238,7 +2238,7 @@ function getPlanForUser_(ss, emailLc, siteSlug) {
     var idxSite  = headers.indexOf('siteSlug');
     var idxPlan  = headers.indexOf('plan');
     if (idxPlan === -1) return '';
-    
+
     var data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
     for (var i=0;i<data.length;i++) {
       var rowEmail = String(data[i][idxEmail]||'').trim().toLowerCase();
@@ -2282,19 +2282,19 @@ function onlyDigits_(v) { return String(v || '').replace(/\D+/g, ''); }
 function isValidCPF_(cpf) {
   if (!cpf || cpf.length !== 11) return false;
   if (/^(\d)\1{10}$/.test(cpf)) return false;
-  
+
   var sum = 0, remainder;
   for (var i = 1; i <= 9; i++) sum += parseInt(cpf.substring(i-1, i)) * (11 - i);
   remainder = (sum * 10) % 11;
   if (remainder === 10 || remainder === 11) remainder = 0;
   if (remainder !== parseInt(cpf.substring(9, 10))) return false;
-  
+
   sum = 0;
   for (var i = 1; i <= 10; i++) sum += parseInt(cpf.substring(i-1, i)) * (12 - i);
   remainder = (sum * 10) % 11;
   if (remainder === 10 || remainder === 11) remainder = 0;
   if (remainder !== parseInt(cpf.substring(10, 11))) return false;
-  
+
   return true;
 }
 
@@ -2313,14 +2313,14 @@ function slugExiste_(slug) {
     var ss = openSS_();
     var sh = ss.getSheetByName('cadastros');
     if (!sh) return false;
-    
+
     var last = sh.getLastRow();
     if (last < 2) return false;
-    
+
     var headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
     var idx = headers.indexOf('siteSlug');
     if (idx === -1) return false;
-    
+
     var values = sh.getRange(2, idx+1, last-1, 1).getValues();
     for (var i=0; i<values.length; i++) {
       if (normalizeSlug_(String(values[i][0] || '')) === slug) return true;
@@ -2395,13 +2395,13 @@ function upsertCadastroAndUser_(ss, data) {
     if (idxEmailCad !== -1 && idxSiteCad !== -1) {
       var lastCad = shCad.getLastRow();
       var foundCad = false;
-      
+
       if (lastCad >= 2) {
         var dataCad = shCad.getRange(2,1,lastCad-1,shCad.getLastColumn()).getValues();
         for (var i=0; i<dataCad.length; i++) {
           var rowEmail = String(dataCad[i][idxEmailCad] || '').trim().toLowerCase();
           var rowSite = normalizeSlug_(String(dataCad[i][idxSiteCad] || ''));
-          
+
           if (rowEmail === email && rowSite === site) {
             // Atualiza linha existente
             if (idxPhoneCad !== -1) shCad.getRange(i+2, idxPhoneCad+1).setValue(whatsapp);
@@ -2439,7 +2439,7 @@ function upsertCadastroAndUser_(ss, data) {
         var dataUser = shUser.getRange(2,1,lastUser-1,shUser.getLastColumn()).getValues();
         for (var j=0; j<dataUser.length; j++) {
           var userEmail = String(dataUser[j][idxEmailUser] || '').trim().toLowerCase();
-          
+
           if (userEmail === email) {
             // Atualiza linha existente
             if (idxSiteUser !== -1) shUser.getRange(j+2, idxSiteUser+1).setValue(site);
@@ -3392,7 +3392,7 @@ function detectBusinessType(businessName, businessDescription, businessCategory)
   if (businessCategory) return businessCategory;
 
   var combined = (businessName + " " + businessDescription).toLowerCase();
-  
+
   if (combined.match(/(medic|doutor|doutora|clinic|psicolog|fisioter|odonto|dent|saude|health)/)) {
     return "health";
   }
@@ -3411,7 +3411,7 @@ function detectBusinessType(businessName, businessDescription, businessCategory)
   if (combined.match(/(tech|software|site|app|sistem|program|desenvol)/)) {
     return "technology";
   }
-  
+
   return "general";
 }
 
@@ -3946,28 +3946,6 @@ function atualizarPreapprovalNosCadastros() {
   }
 }
 
-function testeLogin() {
-  console.log("Testando login com admin@elevea.com...");
-
-  var result = userLogin_(openSS_(), {
-    email: "admin@elevea.com",
-    password: "admin123"
-  });
-
-  var jsonContent = result.getContent();
-  var parsed = JSON.parse(jsonContent);
-
-  console.log("Resultado do login:", parsed);
-
-  if (parsed && parsed.ok) {
-    console.log("Login OK, testando userMe...");
-    var meResult = userMe_(openSS_(), {
-      token: parsed.token
-    });
-    console.log("userMe:", meResult.getContent());
-  }
-}
-
 function testeSeparado() {
   console.log("1. Testando GET client_billing...");
   var getResult = doGet({
@@ -3983,6 +3961,205 @@ function testeSeparado() {
     email: "admin@elevea.com"
   });
   console.log("POST:", postResult.getContent());
+}
+
+function criarUsuariosTeste() {
+  const ss = openSS_();
+  const shUsuarios = ss.getSheetByName("usuarios");
+
+  if (!shUsuarios) {
+    console.log("❌ Aba 'usuarios' não encontrada!");
+    return;
+  }
+
+  // Verificar se já tem headers
+  if (shUsuarios.getLastRow() === 0) {
+    shUsuarios.appendRow([
+      "email", "siteSlug", "role", "password_hash", 
+      "salt", "last_login", "reset_token", "res"
+    ]);
+  }
+
+  // USUÁRIOS DE TESTE
+  const usuarios = [
+    {
+      email: "admin@elevea.com",
+      siteSlug: "",
+      role: "admin",  
+      password: "admin123"
+    },
+    {
+      email: "cliente@teste.com", 
+      siteSlug: "MRITSCH",
+      role: "client",
+      password: "123456"
+    },
+    {
+      email: "demo@elevea.com",
+      siteSlug: "DEMO-SITE", 
+      role: "client",
+      password: "demo123"
+    }
+  ];
+
+  console.log("🔄 Criando usuários de teste...");
+
+  usuarios.forEach(user => {
+    // Hash simples da senha (você pode melhorar isso)
+    const salt = "salt123";
+    const passwordHash = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.SHA_256, 
+      user.password + salt
+    ).map(e => (e < 0 ? e + 256 : e).toString(16).padStart(2, '0')).join('');
+
+    shUsuarios.appendRow([
+      user.email,
+      user.siteSlug, 
+      user.role,
+      passwordHash,
+      salt,
+      "", // last_login
+      "", // reset_token
+      ""  // res
+    ]);
+
+    console.log(`✅ Criado: ${user.email} (${user.role})`);
+  });
+
+  console.log("🎉 Usuários criados com sucesso!");
+  console.log("📝 Credenciais:");
+  console.log("   admin@elevea.com / admin123");
+  console.log("   cliente@teste.com / 123456"); 
+  console.log("   demo@elevea.com / demo123");
+}
+
+function testeUsuariosExistem() {
+  const ss = openSS_();
+  const shUsuarios = ss.getSheetByName("usuarios");
+
+  if (!shUsuarios) {
+    console.log("❌ Aba 'usuarios' não encontrada!");
+    return;
+  }
+
+  console.log("📋 Verificando usuários na planilha:");
+  const data = shUsuarios.getDataRange().getValues();
+  const headers = data[0];
+
+  console.log("🔍 Headers:", headers.join(" | "));
+  console.log("📊 Total de linhas:", data.length - 1, "usuários");
+
+  // Mostrar todos os usuários
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    console.log(`👤 ${i}: ${row[0]} | ${row[1]} | ${row[2]}`); // email | siteSlug | role
+  }
+}
+
+function testeLoginReal() {
+  console.log("🔐 Testando login com admin@elevea.com...");
+
+  const result = userLogin_(openSS_(), {
+    email: "admin@elevea.com",
+    password: "admin123"
+  });
+
+  try {
+    const parsed = JSON.parse(result.getContent());
+    console.log("📤 Resultado do login:", parsed);
+
+    if (parsed.ok) {
+      console.log("✅ LOGIN FUNCIONOU!");
+      console.log("🎯 Token:", parsed.token ? "✅ Presente" : "❌ Ausente");
+    } else {
+      console.log("❌ LOGIN FALHOU:", parsed.error);
+    }
+  } catch (e) {
+    console.log("❌ Erro ao parsear resposta:", e);
+    console.log("📄 Resposta bruta:", result.getContent());
+  }
+}
+
+function testeLoginTodosUsuarios() {
+  const credenciais = [
+    { email: "admin@elevea.com", password: "admin123" },
+    { email: "cliente@teste.com", password: "123456" },
+    { email: "demo@elevea.com", password: "demo123" }
+  ];
+
+  credenciais.forEach(cred => {
+    console.log(`\n🔐 Testando: ${cred.email}`);
+
+    try {
+      const result = userLogin_(openSS_(), cred);
+      const parsed = JSON.parse(result.getContent());
+
+      if (parsed.ok) {
+        console.log(`✅ ${cred.email}: LOGIN OK`);
+      } else {
+        console.log(`❌ ${cred.email}: ${parsed.error}`);
+      }
+    } catch (e) {
+      console.log(`❌ ${cred.email}: ERRO - ${e}`);
+    }
+  });
+}
+
+function limparDuplicatasAdmin() {
+  const ss = openSS_();
+  const shUsuarios = ss.getSheetByName("usuarios");
+
+  console.log("🧹 Removendo duplicatas do admin@elevea.com...");
+
+  const data = shUsuarios.getDataRange().getValues();
+  const headers = data[0];
+  const newData = [headers]; // Manter headers
+
+  let adminAdicionado = false;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const email = String(row[0]).trim().toLowerCase();
+
+    // Se for admin@elevea.com, adicionar apenas UMA vez
+    if (email === "admin@elevea.com") {
+      if (!adminAdicionado) {
+        console.log("✅ Mantendo apenas 1 entrada do admin@elevea.com");
+        newData.push(row);
+        adminAdicionado = true;
+      } else {
+        console.log("❌ Removendo duplicata do admin@elevea.com");
+      }
+    } else {
+      // Outros usuários, manter normalmente
+      newData.push(row);
+    }
+  }
+
+  // Limpar planilha e reescrever dados limpos
+  shUsuarios.clear();
+  shUsuarios.getRange(1, 1, newData.length, headers.length).setValues(newData);
+
+  console.log("🎉 Duplicatas removidas!");
+  console.log("📊 Total de usuários agora:", newData.length - 1);
+}
+
+function testeAdminDepoisLimpeza() {
+  console.log("🔐 Testando admin@elevea.com após limpeza...");
+
+  const result = userLogin_(openSS_(), {
+    email: "admin@elevea.com",
+    password: "admin123"
+  });
+
+  const parsed = JSON.parse(result.getContent());
+  console.log("📤 Resultado:", parsed);
+
+  if (parsed.ok) {
+    console.log("🎉 LOGIN ADMIN FUNCIONOU!");
+  } else {
+    console.log("❌ Ainda falhou:", parsed.error);
+  }
 }
 
 /** ============================= ARQUIVO LIMPO E ORGANIZADO ============================= */

@@ -11,8 +11,16 @@
 
 const APPS_URL =
   process.env.VITE_APPS_WEBAPP_URL || process.env.SHEETS_WEBAPP_URL || "";
-const SITE_BASE_URL =
-  process.env.SITE_BASE_URL || "https://eleveaagencia.netlify.app";
+
+// Função para construir URL baseada no siteSlug do cliente
+function buildSiteUrl(siteSlug) {
+  if (!siteSlug) {
+    // Fallback para URL da agência se não houver siteSlug
+    return process.env.SITE_BASE_URL || "https://eleveaagencia.netlify.app";
+  }
+  // Construir URL dinâmica: SITELUG.netlify.app
+  return `https://${siteSlug.toLowerCase()}.netlify.app`;
+}
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const RESEND_FROM = process.env.RESEND_FROM || "";
 const IS_PROD =
@@ -57,11 +65,14 @@ exports.handler = async (event) => {
     // solicitar reset → gera token e envia e-mail
     if (type === "password_reset_request") {
       const email = String(body.email || "");
+      const siteSlug = String(body.siteSlug || "");
       const token = gdata.token || "";
       if (!email || !token) {
         return resp(500, { ok: false, error: "missing_email_or_token" });
       }
 
+      // Construir URL dinamicamente baseada no siteSlug
+      const SITE_BASE_URL = buildSiteUrl(siteSlug);
       const link = `${SITE_BASE_URL}/reset?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
 
       if (RESEND_API_KEY && RESEND_FROM) {
