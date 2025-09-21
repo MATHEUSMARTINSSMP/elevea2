@@ -25,15 +25,85 @@ export const handler: Handler = async (event, context) => {
     const body = JSON.parse(event.body || '{}')
     const { action, siteSlug, vipPin } = body
 
-    // Validação VIP
+    // Validação básica
     if (!siteSlug || !vipPin) {
       return {
-        statusCode: 401,
+        statusCode: 400,
         headers,
         body: JSON.stringify({ 
           ok: false, 
           error: 'Site e PIN VIP são obrigatórios' 
         })
+      }
+    }
+
+    // Verificar se o PIN VIP está correto para este site
+    try {
+      const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
+      const settingsResponse = await fetch(`${baseUrl}/.netlify/functions/client-api`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_settings', siteSlug })
+      })
+      
+      if (!settingsResponse.ok) {
+        console.error('Falha ao verificar settings:', settingsResponse.status)
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ ok: false, error: 'Erro interno: falha na validação' })
+        }
+      }
+      
+      const settingsData = await settingsResponse.json()
+      if (!settingsData.settings || settingsData.settings.vipPin !== vipPin) {
+        return {
+          statusCode: 401,
+          headers,
+          body: JSON.stringify({ ok: false, error: 'PIN VIP inválido' })
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao verificar PIN VIP:', error)
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ ok: false, error: 'Erro interno do servidor' })
+      }
+    }
+
+    // Verificar se o plano é VIP
+    try {
+      const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
+      const planResponse = await fetch(`${baseUrl}/.netlify/functions/client-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteSlug })
+      })
+      
+      if (!planResponse.ok) {
+        console.error('Falha ao verificar plano:', planResponse.status)
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ ok: false, error: 'Erro interno: falha na verificação do plano' })
+        }
+      }
+      
+      const planData = await planResponse.json()
+      if (!planData.ok || planData.plan !== 'vip') {
+        return {
+          statusCode: 403,
+          headers,
+          body: JSON.stringify({ ok: false, error: 'Acesso negado: plano VIP necessário' })
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao verificar plano:', error)
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ ok: false, error: 'Erro interno do servidor' })
       }
     }
 

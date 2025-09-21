@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../src/components/ui/card';
-import { Button } from '../../../src/components/ui/button';
-import { Badge } from '../../../src/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { StarIcon, ExternalLinkIcon, RefreshCwIcon, TrendingUpIcon, UserIcon } from 'lucide-react';
-import { DashboardCardSkeleton } from '../../../src/components/ui/loading-skeletons';
+import { DashboardCardSkeleton } from '@/components/ui/loading-skeletons';
 
 interface Review {
   id: string;
@@ -40,6 +40,31 @@ export default function GoogleReviews({ siteSlug, vipPin }: GoogleReviewsProps) 
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewsData, setReviewsData] = useState<ReviewsData | null>(null);
+
+  // Guarda de segurança - verificar se props VIP estão presentes
+  if (!siteSlug || !vipPin) {
+    return (
+      <Card className="rounded-2xl border border-white/10 bg-white/5 text-white">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <UserIcon className="w-5 h-5" />
+            Google Reviews
+          </CardTitle>
+          <CardDescription className="text-slate-400">
+            Acesso restrito: Recurso VIP não disponível
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <p className="text-slate-400 mb-4">Este recurso requer acesso VIP.</p>
+            <Button variant="outline" disabled>
+              Acesso Bloqueado
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const fetchReviews = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
