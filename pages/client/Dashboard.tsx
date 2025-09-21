@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSession } from "../../src/hooks/useSession";
 import { useAuth } from "../../src/hooks/useAuth";
 import AIChat from "./components/AIChat";
+import AIContentGenerator from "./components/AIContentGenerator";
 
 /* ================= CONFIG ================= */
 const PLAN_TIMEOUT_MS = 3000;         // descobrir VIP - OTIMIZADO
@@ -36,6 +37,12 @@ type Feedback = {
   approved?: boolean;
   email?: string;
   phone?: string;
+  sentiment?: {
+    rating: number;
+    confidence: number;
+    emotion: string;
+    summary: string;
+  };
 };
 
 type ClientSettings = {
@@ -134,6 +141,9 @@ export default function ClientDashboard() {
 
   /* Chat AI */
   const [showAIChat, setShowAIChat] = useState(false);
+  
+  /* Gerador de Conteúdo IA */
+  const [showContentGenerator, setShowContentGenerator] = useState(false);
 
   /* Estrutura do site (personalização VIP) */
   const [siteStructure, setSiteStructure] = useState<any>(null);
@@ -303,7 +313,46 @@ export default function ClientDashboard() {
         }
 
         if (!alive) return;
-        setFeedbacks(fb.items || []);
+        const feedbacks = fb.items || [];
+        setFeedbacks(feedbacks);
+        
+        // Análise automática de sentimentos para feedbacks VIP
+        if (vipEnabled && feedbacks.length > 0) {
+          (async () => {
+            try {
+              const feedbacksToAnalyze = feedbacks
+                .filter(f => !f.sentiment && f.message?.trim())
+                .slice(0, 10); // Limita análise para não sobrecarregar API
+                
+              if (feedbacksToAnalyze.length > 0) {
+                const response = await fetch('/.netlify/functions/ai-sentiment', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    batch: feedbacksToAnalyze.map(f => ({
+                      id: f.id,
+                      feedback: f.message,
+                      clientName: f.name
+                    }))
+                  })
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data.ok && data.results) {
+                    setFeedbacks(prev => prev.map(f => {
+                      const analysis = data.results.find((r: any) => r.id === f.id && r.success);
+                      return analysis ? { ...f, sentiment: analysis.analysis } : f;
+                    }));
+                  }
+                }
+              }
+            } catch (error) {
+              console.log('Análise de sentimento indisponível:', error);
+            }
+          })();
+        }
       } catch {}
       finally {
         if (alive) setLoadingFeedbacks(false);
@@ -421,6 +470,28 @@ export default function ClientDashboard() {
       setSavingStructure(false);
     }
   }
+
+  // Aplicar conteúdo gerado pela IA
+  const handleContentGenerated = (content: any[]) => {
+    if (!siteStructure || !content.length) return;
+    
+    const updatedStructure = { ...siteStructure };
+    
+    // Mapear conteúdo gerado para seções existentes
+    content.forEach((item, index) => {
+      if (updatedStructure.sections && updatedStructure.sections[index]) {
+        updatedStructure.sections[index] = {
+          ...updatedStructure.sections[index],
+          title: item.title || updatedStructure.sections[index].title,
+          subtitle: item.subtitle || updatedStructure.sections[index].subtitle,
+          description: item.description || updatedStructure.sections[index].description,
+        };
+      }
+    });
+    
+    setSiteStructure(updatedStructure);
+    saveSiteStructure(updatedStructure);
+  };
 
   function updateSectionField(sectionId: string, field: string, value: any) {
     if (!siteStructure) return;
@@ -596,9 +667,18 @@ export default function ClientDashboard() {
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Personalizar Seções do Site</h2>
-                  {savingStructure && (
-                    <span className="text-xs text-blue-600">Salvando...</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowContentGenerator(true)}
+                      className="px-3 py-1 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 transition-colors"
+                      title="Gerar conteúdo com IA"
+                    >
+                      🤖 IA
+                    </button>
+                    {savingStructure && (
+                      <span className="text-xs text-blue-600">Salvando...</span>
+                    )}
+                  </div>
                 </div>
 
                 {loadingStructure ? (
@@ -741,8 +821,24 @@ export default function ClientDashboard() {
                             <span>•</span>
                             <span>{fmtDateTime(f.timestamp)}</span>
                             {f.approved && <span className="text-emerald-400">✓ Aprovado</span>}
+                            {/* Análise de Sentimento */}
+                            {f.sentiment && (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                f.sentiment.rating >= 4 ? 'bg-emerald-500/20 text-emerald-300' :
+                                f.sentiment.rating >= 3 ? 'bg-yellow-500/20 text-yellow-300' :
+                                'bg-red-500/20 text-red-300'
+                              }`}>
+                                {f.sentiment.emotion} ({f.sentiment.rating}/5)
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm text-white mt-1 break-words">{f.message}</p>
+                          {/* Resumo da IA */}
+                          {f.sentiment?.summary && (
+                            <p className="text-xs text-blue-300 mt-1 italic">
+                              💡 {f.sentiment.summary}
+                            </p>
+                          )}
                           {(f.email || f.phone) && (
                             <div className="text-xs text-white/50 mt-1">
                               {f.email && <span>📧 {f.email}</span>}
@@ -797,6 +893,17 @@ export default function ClientDashboard() {
           businessType={siteStructure?.category || "geral"}
           businessName={user?.siteSlug || "seu negócio"}
           onClose={() => setShowAIChat(false)}
+        />
+      )}
+
+      {/* Gerador de Conteúdo IA Modal */}
+      {showContentGenerator && vipEnabled && (
+        <AIContentGenerator
+          businessType={siteStructure?.category || "geral"}
+          businessName={user?.siteSlug || "seu negócio"}
+          businessDescription={siteStructure?.description}
+          onContentGenerated={handleContentGenerated}
+          onClose={() => setShowContentGenerator(false)}
         />
       )}
     </div>
