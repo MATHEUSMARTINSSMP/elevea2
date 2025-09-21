@@ -2,9 +2,10 @@ import type { Handler } from '@netlify/functions'
 import { generateSiteContent } from '../../src/lib/openai'
 
 const headers = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Credentials': 'true',
   'Content-Type': 'application/json'
 }
 
