@@ -2,6 +2,7 @@
 import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { WaitSession, RequireAuth, RequireClient, RedirectIfAuthed } from "../routes/guards";
+import PWAHandler from "@/components/PWAHandler";
 
 // ✅ Páginas (atenção ao caminho/case do Login!)
 const IndexPage       = lazy(() => import("../pages/Index"));              // home pública em "/"
@@ -32,50 +33,52 @@ function Loader() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <WaitSession>
-        <Suspense fallback={<Loader />}>
-          <Routes>
-            {/* HOME PÚBLICA EM "/" */}
-            <Route path="/" element={<IndexPage />} />
+    <PWAHandler>
+      <BrowserRouter>
+        <WaitSession>
+          <Suspense fallback={<Loader />}>
+            <Routes>
+              {/* HOME PÚBLICA EM "/" */}
+              <Route path="/" element={<IndexPage />} />
 
-            {/* Login (se já estiver logado, manda para a área correta) */}
-            <Route
-              path="/login"
-              element={
-                <RedirectIfAuthed>
-                  <LoginPage />
-                </RedirectIfAuthed>
-              }
-            />
+              {/* Login (se já estiver logado, manda para a área correta) */}
+              <Route
+                path="/login"
+                element={
+                  <RedirectIfAuthed>
+                    <LoginPage />
+                  </RedirectIfAuthed>
+                }
+              />
 
-            {/* Área do cliente (protegida) */}
-            <Route
-              path="/client/dashboard"
-              element={
-                <RequireAuth>
-                  <RequireClient>
-                    <ClientDashboard />
-                  </RequireClient>
-                </RequireAuth>
-              }
-            />
+              {/* Área do cliente (protegida) */}
+              <Route
+                path="/client/dashboard"
+                element={
+                  <RequireAuth>
+                    <RequireClient>
+                      <ClientDashboard />
+                    </RequireClient>
+                  </RequireAuth>
+                }
+              />
 
-            {/* Área do admin (protegida) */}
-            <Route
-              path="/admin/dashboard"
-              element={
-                <RequireAuth>
-                  <AdminDashboard />
-                </RequireAuth>
-              }
-            />
+              {/* Área do admin (protegida) */}
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <RequireAuth>
+                    <AdminDashboard />
+                  </RequireAuth>
+                }
+              />
 
-            {/* Qualquer coisa desconhecida → home */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </WaitSession>
-    </BrowserRouter>
+              {/* Qualquer coisa desconhecida → home */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </WaitSession>
+      </BrowserRouter>
+    </PWAHandler>
   );
 }
