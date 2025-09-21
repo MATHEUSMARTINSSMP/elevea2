@@ -6,6 +6,7 @@ import AIContentGenerator from "./components/AIContentGenerator";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import BusinessInsights from "./components/BusinessInsights";
 import GoogleReviews from "./components/GoogleReviews";
+import SEOOptimizer from "./components/SEOOptimizer";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -619,6 +620,22 @@ export default function ClientDashboard() {
             <GoogleReviews 
               siteSlug={user.siteSlug || ''} 
               vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* SEO OPTIMIZER VIP */}
+        {vipEnabled && vipPin && (
+          <section className="space-y-6">
+            <SEOOptimizer 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+              businessData={{
+                name: user.siteSlug || 'seu negócio',
+                type: siteStructure?.category || 'negócio',
+                location: 'Brasil',
+                description: siteStructure?.description || ''
+              }}
             />
           </section>
         )}
