@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions'
+import { rateLimitMiddleware } from './rate-limiter'
 
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
@@ -22,8 +23,11 @@ export const handler: Handler = async (event, context) => {
   }
 
   try {
+    // Verificar rate limiting
+    await rateLimitMiddleware('auto-seo', event)
+    
     const body = JSON.parse(event.body || '{}')
-    const { businessData, siteContent, action = 'generate' } = body
+    const { businessData, siteContent, action = 'generate', siteSlug, vipPin } = body
 
     if (!businessData?.name || !businessData?.type) {
       return {
@@ -33,6 +37,27 @@ export const handler: Handler = async (event, context) => {
           ok: false, 
           error: 'Nome e tipo do negócio são obrigatórios' 
         })
+      }
+    }
+
+    // Verificar acesso VIP
+    if (!siteSlug || !vipPin) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          ok: false, 
+          error: 'Site e PIN VIP são obrigatórios para auto-SEO' 
+        })
+      }
+    }
+
+    const isVipValid = await verifyVipAccess(siteSlug, vipPin)
+    if (!isVipValid) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ ok: false, error: 'Acesso VIP inválido' })
       }
     }
 
@@ -432,4 +457,26 @@ function generateSEORecommendations(seoScore: any, businessData: any): string[] 
   }
   
   return recommendations
+}
+
+async function verifyVipAccess(siteSlug: string, vipPin: string): Promise<boolean> {
+  try {
+    if (!siteSlug || !vipPin) return false
+    
+    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
+    const response = await fetch(`${baseUrl}/.netlify/functions/client-api`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get_settings', siteSlug })
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return data.settings?.vipPin === vipPin
+    }
+    return false
+  } catch (error) {
+    console.error('Erro ao verificar VIP:', error)
+    return false
+  }
 }

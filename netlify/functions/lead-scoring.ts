@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions'
+import { rateLimitMiddleware } from './rate-limiter'
 
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
@@ -51,6 +52,9 @@ export const handler: Handler = async (event, context) => {
   }
 
   try {
+    // Verificar rate limiting
+    await rateLimitMiddleware('lead-scoring', event)
+    
     const body = JSON.parse(event.body || '{}')
     const { action, siteSlug, vipPin, leadData, leadId } = body
 

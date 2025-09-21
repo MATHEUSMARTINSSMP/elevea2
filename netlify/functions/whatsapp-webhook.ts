@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions'
+import { rateLimitMiddleware } from './rate-limiter'
 
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
@@ -38,6 +39,17 @@ export const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === 'POST') {
+      // Verificar assinatura do webhook para segurança
+      const signature = event.headers['x-hub-signature-256']
+      if (signature && !verifyWebhookSignature(event.body || '', signature)) {
+        console.warn('Webhook signature inválida')
+        return {
+          statusCode: 401,
+          headers,
+          body: JSON.stringify({ error: 'Signature inválida' })
+        }
+      }
+
       const body = JSON.parse(event.body || '{}')
       
       // Processar mensagens recebidas do WhatsApp
@@ -58,6 +70,9 @@ export const handler: Handler = async (event, context) => {
       }
 
       // API para envio de mensagens (uso interno)
+      // Verificar rate limiting para APIs internas
+      await rateLimitMiddleware('whatsapp-webhook', event)
+      
       const { action, siteSlug, vipPin, phoneNumber, message, templateName } = body
 
       if (!siteSlug || !vipPin) {
@@ -337,20 +352,64 @@ async function sendWhatsAppTemplate(phoneNumber: string, templateName: string, s
 }
 
 async function saveConversation(conversation: any) {
-  // Salvar no storage do Netlify ou banco de dados
-  console.log('Salvando conversação:', conversation)
-  // Implementar conforme necessário
+  try {
+    // Simular salvamento (em produção usar Netlify Blobs ou DB)
+    const conversationKey = `whatsapp_${conversation.phoneNumber}_${Date.now()}`
+    console.log('Salvando conversação:', conversationKey, conversation)
+    
+    // TODO: Implementar persistência real
+    // await netlifyBlobs.store(conversationKey, JSON.stringify(conversation))
+    return true
+  } catch (error) {
+    console.error('Erro ao salvar conversação:', error)
+    return false
+  }
 }
 
 async function getConversations(siteSlug: string) {
-  // Buscar conversações do storage
-  return {
-    statusCode: 200,
-    headers,
-    body: JSON.stringify({
-      ok: true,
-      conversations: [] // Implementar busca real
-    })
+  try {
+    // TODO: Buscar conversações reais do storage
+    // const conversations = await netlifyBlobs.list(`whatsapp_${siteSlug}_*`)
+    
+    // Dados mock para desenvolvimento
+    const mockConversations = [
+      {
+        id: '1',
+        phoneNumber: '+5596991234567',
+        contactName: 'Maria Silva',
+        message: 'Olá! Gostaria de saber mais sobre seus serviços.',
+        timestamp: new Date(Date.now() - 300000).toISOString(),
+        type: 'received'
+      },
+      {
+        id: '2',
+        phoneNumber: '+5596991234567', 
+        contactName: 'Sistema',
+        message: '👋 Olá! Obrigado por entrar em contato. Como posso ajudá-lo hoje?',
+        timestamp: new Date(Date.now() - 290000).toISOString(),
+        type: 'auto_response',
+        status: 'delivered'
+      }
+    ]
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        ok: true,
+        conversations: mockConversations
+      })
+    }
+  } catch (error) {
+    console.error('Erro ao buscar conversações:', error)
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        ok: false,
+        error: 'Erro ao buscar conversações'
+      })
+    }
   }
 }
 
@@ -378,4 +437,36 @@ async function verifyVipAccess(siteSlug: string, vipPin: string): Promise<boolea
     console.error('Erro ao verificar VIP:', error)
     return false
   }
+}
+
+function verifyWebhookSignature(body: string, signature: string): boolean {
+  try {
+    const appSecret = process.env.WHATSAPP_APP_SECRET
+    if (!appSecret) {
+      console.warn('WHATSAPP_APP_SECRET não configurado')
+      return true // Permitir em desenvolvimento
+    }
+
+    const crypto = require('crypto')
+    const expectedSignature = 'sha256=' + crypto
+      .createHmac('sha256', appSecret)
+      .update(body)
+      .digest('hex')
+
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    )
+  } catch (error) {
+    console.error('Erro na verificação de assinatura:', error)
+    return false
+  }
+}
+
+function normalizePhoneNumber(phone: string): string {
+  // Normalizar para formato E.164
+  return phone
+    .replace(/\D/g, '') // Remover caracteres não numéricos
+    .replace(/^55/, '+55') // Adicionar + se não tiver
+    .replace(/^(?!\+)/, '+55') // Adicionar +55 se não começar com +
 }
