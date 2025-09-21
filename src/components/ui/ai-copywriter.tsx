@@ -8,12 +8,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Wand2, Copy, CheckCircle } from 'lucide-react';
-// Removido import inseguro do OpenAI - agora usa funções Netlify
+// Interfaces corrigidas para match com API real
 interface ContentSuggestion {
-  section: string;
   title: string;
-  content: string;
-  confidence: number;
+  subtitle: string;
+  description: string;
+  callToAction: string;
+  keywords: string[];
+  section?: string;
 }
 import { useToast } from '@/hooks/use-toast';
 
@@ -376,7 +378,8 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
                         variant="outline"
                         size="sm"
                         onClick={() => copyToClipboard(
-                          `${content.title}\n\n${content.subtitle}\n\n${content.description}\n\nCTA: ${content.callToAction}`
+                          `${content.title}\n\n${content.subtitle}\n\n${content.description}\n\nCTA: ${content.callToAction}`,
+                          index
                         )}
                       >
                         {copiedIndex === index ? (
@@ -480,7 +483,8 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
                     variant="outline"
                     size="sm"
                     onClick={() => copyToClipboard(
-                      `Título SEO: ${seoSuggestions.title}\n\nDescrição: ${seoSuggestions.description}\n\nPalavras-chave: ${seoSuggestions.keywords.join(', ')}\n\nSugestões:\n${seoSuggestions.suggestions.join('\n')}`
+                      `Título SEO: ${seoSuggestions.title}\n\nDescrição: ${seoSuggestions.description}\n\nPalavras-chave: ${seoSuggestions.keywords.join(', ')}\n\nSugestões:\n${seoSuggestions.suggestions.join('\n')}`,
+                      999 // Índice único para SEO
                     )}
                   >
                     <Copy className="h-4 w-4" />
@@ -598,7 +602,8 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
                     variant="outline"
                     size="sm"
                     onClick={() => copyToClipboard(
-                      `Assunto: ${emailContent.subject}\n\n${emailContent.content}\n\nCTA: ${emailContent.callToAction}`
+                      `Assunto: ${emailContent.subject}\n\n${emailContent.content}\n\nCTA: ${emailContent.callToAction}`,
+                      998 // Índice único para email
                     )}
                   >
                     <Copy className="h-4 w-4" />
