@@ -88,13 +88,15 @@ export default function SEOOptimizer({ siteSlug, vipPin, businessData }: SEOOpti
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          siteSlug,
+          vipPin,
           action: 'analyze',
           businessData: businessData || { 
             name: siteSlug, 
             type: 'Negócio Local',
             location: 'Brasil'
           },
-          siteContent: { siteSlug, vipPin }
+          siteContent: {}
         })
       });
 

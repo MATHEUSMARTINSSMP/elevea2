@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions'
-import { rateLimitMiddleware } from './rate-limiter'
+import { rateLimitMiddleware, verifyVipAccess } from './shared/security'
 
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
@@ -436,22 +436,3 @@ function generateLeadId(): string {
   return 'lead_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
 }
 
-async function verifyVipAccess(siteSlug: string, vipPin: string): Promise<boolean> {
-  try {
-    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
-    const response = await fetch(`${baseUrl}/.netlify/functions/client-api`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_settings', siteSlug })
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      return data.settings?.vipPin === vipPin
-    }
-    return false
-  } catch (error) {
-    console.error('Erro ao verificar VIP:', error)
-    return false
-  }
-}

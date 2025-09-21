@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions'
-import { rateLimitMiddleware } from './rate-limiter'
+import { rateLimitMiddleware, verifyVipAccess, verifyWebhookSignature, processWhatsAppMessage, normalizePhoneNumber, saveConversation } from './shared/security'
 
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
@@ -41,12 +41,12 @@ export const handler: Handler = async (event, context) => {
     if (event.httpMethod === 'POST') {
       // Verificar assinatura do webhook para segurança
       const signature = event.headers['x-hub-signature-256']
-      if (signature && !verifyWebhookSignature(event.body || '', signature)) {
-        console.warn('Webhook signature inválida')
+      if (!verifyWebhookSignature(event.body || '', signature)) {
+        console.warn('Webhook signature inválida ou ausente')
         return {
           statusCode: 401,
           headers,
-          body: JSON.stringify({ error: 'Signature inválida' })
+          body: JSON.stringify({ error: 'Signature inválida ou ausente' })
         }
       }
 
@@ -136,48 +136,6 @@ export const handler: Handler = async (event, context) => {
   }
 }
 
-async function processWhatsAppMessage(messageData: any) {
-  const messages = messageData.messages || []
-  const contacts = messageData.contacts || []
-
-  for (const message of messages) {
-    const phoneNumber = message.from
-    const messageText = message.text?.body || ''
-    const messageType = message.type
-    
-    // Buscar contato
-    const contact = contacts.find((c: any) => c.wa_id === phoneNumber)
-    const contactName = contact?.profile?.name || 'Cliente'
-
-    console.log(`Mensagem recebida de ${contactName} (${phoneNumber}): ${messageText}`)
-
-    // Determinar resposta automática baseada na mensagem
-    const autoResponse = generateAutoResponse(messageText)
-    
-    if (autoResponse) {
-      // Salvar conversação no banco/storage
-      await saveConversation({
-        phoneNumber,
-        contactName,
-        messageIn: messageText,
-        messageOut: autoResponse.text,
-        timestamp: new Date().toISOString(),
-        type: 'auto_response'
-      })
-
-      // Enviar resposta automática
-      await sendWhatsAppMessage(phoneNumber, autoResponse.text, 'auto')
-    }
-
-    // Notificar administradores VIP sobre nova mensagem
-    await notifyVipAdmins({
-      phoneNumber,
-      contactName,
-      message: messageText,
-      timestamp: new Date().toISOString()
-    })
-  }
-}
 
 function generateAutoResponse(messageText: string): { text: string; type: string } | null {
   const text = messageText.toLowerCase()
@@ -351,20 +309,6 @@ async function sendWhatsAppTemplate(phoneNumber: string, templateName: string, s
   }
 }
 
-async function saveConversation(conversation: any) {
-  try {
-    // Simular salvamento (em produção usar Netlify Blobs ou DB)
-    const conversationKey = `whatsapp_${conversation.phoneNumber}_${Date.now()}`
-    console.log('Salvando conversação:', conversationKey, conversation)
-    
-    // TODO: Implementar persistência real
-    // await netlifyBlobs.store(conversationKey, JSON.stringify(conversation))
-    return true
-  } catch (error) {
-    console.error('Erro ao salvar conversação:', error)
-    return false
-  }
-}
 
 async function getConversations(siteSlug: string) {
   try {
@@ -416,57 +360,5 @@ async function getConversations(siteSlug: string) {
 async function notifyVipAdmins(messageData: any) {
   // Notificar administradores VIP sobre nova mensagem
   console.log('Notificando admins VIP:', messageData)
-  // Implementar notificação
-}
-
-async function verifyVipAccess(siteSlug: string, vipPin: string): Promise<boolean> {
-  try {
-    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
-    const response = await fetch(`${baseUrl}/.netlify/functions/client-api`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_settings', siteSlug })
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      return data.settings?.vipPin === vipPin
-    }
-    return false
-  } catch (error) {
-    console.error('Erro ao verificar VIP:', error)
-    return false
-  }
-}
-
-function verifyWebhookSignature(body: string, signature: string): boolean {
-  try {
-    const appSecret = process.env.WHATSAPP_APP_SECRET
-    if (!appSecret) {
-      console.warn('WHATSAPP_APP_SECRET não configurado')
-      return true // Permitir em desenvolvimento
-    }
-
-    const crypto = require('crypto')
-    const expectedSignature = 'sha256=' + crypto
-      .createHmac('sha256', appSecret)
-      .update(body)
-      .digest('hex')
-
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    )
-  } catch (error) {
-    console.error('Erro na verificação de assinatura:', error)
-    return false
-  }
-}
-
-function normalizePhoneNumber(phone: string): string {
-  // Normalizar para formato E.164
-  return phone
-    .replace(/\D/g, '') // Remover caracteres não numéricos
-    .replace(/^55/, '+55') // Adicionar + se não tiver
-    .replace(/^(?!\+)/, '+55') // Adicionar +55 se não começar com +
+  // TODO: Implementar notificação real
 }
