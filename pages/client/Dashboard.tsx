@@ -7,6 +7,7 @@ import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import BusinessInsights from "./components/BusinessInsights";
 import GoogleReviews from "./components/GoogleReviews";
 import SEOOptimizer from "./components/SEOOptimizer";
+import WhatsAppManager from "./components/WhatsAppManager";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -618,6 +619,16 @@ export default function ClientDashboard() {
         {vipEnabled && vipPin && (
           <section className="space-y-6">
             <GoogleReviews 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* WHATSAPP MANAGER VIP */}
+        {vipEnabled && vipPin && (
+          <section className="space-y-6">
+            <WhatsAppManager 
               siteSlug={user.siteSlug || ''} 
               vipPin={vipPin}
             />
