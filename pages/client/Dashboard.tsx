@@ -13,6 +13,7 @@ import MultiLanguageManager from "./components/MultiLanguageManager";
 import AppointmentScheduling from "./components/AppointmentScheduling";
 import FeatureManager from "./components/FeatureManager";
 import { EcommerceDashboard } from "./components/EcommerceDashboard";
+import TemplateMarketplace from "./components/TemplateMarketplace";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -716,6 +717,16 @@ export default function ClientDashboard() {
         {vipEnabled && vipPin && isFeatureEnabled('ecommerce') && (
           <section className="space-y-6">
             <EcommerceDashboard 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* TEMPLATE MARKETPLACE VIP */}
+        {vipEnabled && vipPin && isFeatureEnabled('premium-templates') && (
+          <section className="space-y-6">
+            <TemplateMarketplace 
               siteSlug={user.siteSlug || ''} 
               vipPin={vipPin}
             />

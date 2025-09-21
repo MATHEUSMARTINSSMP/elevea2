@@ -48,6 +48,11 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
     windowMs: 60 * 1000,      // 1 minuto
     maxRequests: 50,          // 50 operações por minuto
     keyGenerator: (event) => `ecommerce:${getClientIdentifier(event)}`
+  },
+  'template-marketplace': {
+    windowMs: 60 * 1000,      // 1 minuto
+    maxRequests: 20,          // 20 operações por minuto
+    keyGenerator: (event) => `marketplace:${getClientIdentifier(event)}`
   }
 }
 
