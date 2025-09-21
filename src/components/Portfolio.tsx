@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+import { OptimizedImage } from '@/components/ui/optimized-image';
 
 type Item = {
   id: string;
@@ -19,14 +20,13 @@ const items: Item[] = [
     url: "https://sacadaohboyamapa.netlify.app",
   },
   {
-    {
-  id: "intima",
-  title: "Moda Íntima Feminina",
-  image: "/lojaloungerie.png", // ← substitui pelo arquivo local
-  description:
-    "Showcase para Loungerie com abordagem elegante: apresentação de linhas, chamadas para WhatsApp e mapa integrado para visita à loja.",
-  url: "https://loungerieamapagarden.netlify.app",
-},
+    id: "intima",
+    title: "Moda Íntima Feminina",
+    image: "/lojaloungerie.png", // ← substitui pelo arquivo local
+    description:
+      "Showcase para Loungerie com abordagem elegante: apresentação de linhas, chamadas para WhatsApp e mapa integrado para visita à loja.",
+    url: "https://loungerieamapagarden.netlify.app",
+  },
   {
     id: "masculina",
     title: "Moda Masculina",
@@ -61,11 +61,13 @@ const Portfolio = () => {
               className="bg-card rounded-2xl overflow-hidden shadow-[var(--elegant-shadow)] hover:shadow-lg transition"
             >
               <div className="aspect-[4/3]">
-                <img
+                <OptimizedImage
                   src={w.image}
                   alt={w.title}
-                  loading="lazy"
                   className="w-full h-full object-cover"
+                  width={400}
+                  height={300}
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                 />
               </div>
 

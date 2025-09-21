@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { WHATSAPP_URL } from '@/lib/whatsapp';
+import { OptimizedHeroImage } from '@/components/ui/optimized-image';
 import heroMockup from '@/assets/hero-mockup.jpg';
 
 const Hero = () => {
@@ -63,10 +64,12 @@ const Hero = () => {
           {/* Mockup */}
           <div className="relative animate-float">
             <div className="relative">
-              <img
+              <OptimizedHeroImage
                 src={heroMockup}
                 alt="Mockup de site em notebook e celular"
                 className="w-full h-auto rounded-xl shadow-card"
+                width={600}
+                height={400}
               />
               <div className="absolute inset-0 bg-gradient-primary opacity-10 rounded-xl"></div>
             </div>
