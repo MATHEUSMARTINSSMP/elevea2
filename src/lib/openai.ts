@@ -45,10 +45,9 @@ Forneça uma análise em JSON com:
 Responda APENAS com o JSON válido.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-      temperature: 0.3,
     });
 
     const result = JSON.parse(response.choices[0].message.content!);
@@ -92,10 +91,9 @@ Para cada seção, forneça:
 Responda em JSON com array de objetos. Use linguagem brasileira, persuasiva e profissional.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-      temperature: 0.7,
     });
 
     const result = JSON.parse(response.choices[0].message.content!);
@@ -124,10 +122,9 @@ Forneça uma resposta útil, profissional e empática que:
 Responda apenas com a mensagem de suporte, sem formatação extra.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
-      max_tokens: 500,
+      max_completion_tokens: 500,
     });
 
     return response.choices[0].message.content?.trim() || "Desculpe, não consegui processar sua pergunta. Entre em contato conosco diretamente.";
@@ -173,10 +170,9 @@ Foque em ações práticas que o negócio pode tomar para melhorar resultados.
 Responda APENAS com JSON válido.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-      temperature: 0.4,
     });
 
     const result = JSON.parse(response.choices[0].message.content!);
@@ -220,10 +216,9 @@ Forneça em JSON:
 Foque em SEO local brasileiro e otimização para pequenos negócios.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-      temperature: 0.5,
     });
 
     const result = JSON.parse(response.choices[0].message.content!);
@@ -278,10 +273,9 @@ Gere em JSON:
 Use tom profissional mas amigável, linguagem brasileira e foque na conversão.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-      temperature: 0.6,
     });
 
     const result = JSON.parse(response.choices[0].message.content!);
@@ -304,10 +298,9 @@ Use tom profissional mas amigável, linguagem brasileira e foque na conversão.`
 export async function generateAIInsights(prompt: string): Promise<{success: boolean; content?: string; error?: string}> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
-      max_tokens: 2000,
+      max_completion_tokens: 2000,
     });
 
     return {
