@@ -564,6 +564,12 @@ function RowDetails({
         <SchemaEditor slug={slug} />
       </section>
 
+      {/* Controle de Funcionalidades VIP */}
+      <section className="rounded-xl border bg-white p-4">
+        <h3 className="font-semibold">Controle de Funcionalidades</h3>
+        <FeatureControl slug={slug} />
+      </section>
+
       {/* Feedbacks + Tráfego */}
       <section className="rounded-xl border bg-white p-4">
         <div className="flex items-center justify-between">
@@ -601,6 +607,148 @@ function TrafficBars({ points }: { points: TrafficPoint[] }) {
           <div className="bg-black w-full rounded-sm" style={{ height: `${Math.max(6, (p.hits / max) * 100)}%` }} />
         </div>
       ))}
+    </div>
+  );
+}
+
+function FeatureControl({ slug }: { slug: string }) {
+  const [features, setFeatures] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const loadFeatures = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/.netlify/functions/admin-feature-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-elevea-internal': process.env.ADMIN_DASH_TOKEN || process.env.ADMIN_TOKEN || ''
+        },
+        body: JSON.stringify({
+          action: 'get_client_features',
+          siteSlug: slug
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFeatures(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar features:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleFeature = async (featureId: string, enabled: boolean) => {
+    try {
+      const response = await fetch('/.netlify/functions/admin-feature-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-elevea-internal': process.env.ADMIN_DASH_TOKEN || process.env.ADMIN_TOKEN || ''
+        },
+        body: JSON.stringify({
+          action: 'toggle_feature',
+          siteSlug: slug,
+          featureId: featureId,
+          enabled: enabled
+        })
+      });
+
+      if (response.ok) {
+        loadFeatures(); // Recarregar features
+      }
+    } catch (error) {
+      console.error('Erro ao alterar feature:', error);
+    }
+  };
+
+  const updatePlan = async (plan: 'essential' | 'vip') => {
+    try {
+      const response = await fetch('/.netlify/functions/admin-feature-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-elevea-internal': process.env.ADMIN_DASH_TOKEN || process.env.ADMIN_TOKEN || ''
+        },
+        body: JSON.stringify({
+          action: 'update_plan',
+          siteSlug: slug,
+          plan: plan
+        })
+      });
+
+      if (response.ok) {
+        loadFeatures(); // Recarregar features
+      }
+    } catch (error) {
+      console.error('Erro ao alterar plano:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadFeatures();
+  }, [slug]);
+
+  if (loading || !features) {
+    return <div className="text-sm text-slate-500">Carregando funcionalidades...</div>;
+  }
+
+  const { settings, availableFeatures } = features;
+  const vipFeatures = availableFeatures.filter((f: any) => f.plan === 'vip' && !f.isCore);
+
+  return (
+    <div className="space-y-4">
+      {/* Controle de Plano */}
+      <div className="flex items-center gap-4">
+        <span className="text-sm font-medium">Plano atual:</span>
+        <select
+          value={settings.plan}
+          onChange={(e) => updatePlan(e.target.value as 'essential' | 'vip')}
+          className="border rounded px-2 py-1 text-sm"
+        >
+          <option value="essential">Essential</option>
+          <option value="vip">VIP</option>
+        </select>
+      </div>
+
+      {/* Lista de Funcionalidades VIP */}
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">Funcionalidades VIP:</h4>
+        <div className="space-y-1">
+          {vipFeatures.map((feature: any) => {
+            const isEnabled = settings.enabledFeatures.includes(feature.id);
+            return (
+              <div key={feature.id} className="flex items-center justify-between py-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{feature.icon}</span>
+                  <span className="text-sm">{feature.name}</span>
+                </div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={isEnabled}
+                    onChange={(e) => toggleFeature(feature.id, e.target.checked)}
+                    className="h-4 w-4"
+                    disabled={settings.plan !== 'vip'}
+                  />
+                  <span className="text-xs text-slate-500">
+                    {isEnabled ? 'Ativo' : 'Inativo'}
+                  </span>
+                </label>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {settings.plan !== 'vip' && (
+        <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+          ⚠️ Cliente precisa do plano VIP para acessar funcionalidades avançadas
+        </div>
+      )}
     </div>
   );
 }

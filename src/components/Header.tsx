@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 import { WHATSAPP_URL } from '@/lib/whatsapp';
+import LanguageSelector from './LanguageSelector';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -50,9 +51,15 @@ const Header = () => {
           </nav>
 
           {/* CTA Desktop */}
-          <div className="hidden md:flex items-center">
+          <div className="hidden md:flex items-center gap-3">
+            <LanguageSelector variant="header" />
+            <Button asChild size="sm" variant="outline">
+              <a href="/auth/login" data-translate="member-area">
+                Área de Membros
+              </a>
+            </Button>
             <Button asChild size="sm" className="btn-gold">
-              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
+              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" data-translate="contact-button">
                 Falar Conosco
               </a>
             </Button>
@@ -84,9 +91,17 @@ const Header = () => {
                 {item.name}
               </a>
             ))}
-            <div className="pt-4">
+            <div className="pt-4 space-y-3">
+              <div className="mb-3">
+                <LanguageSelector variant="dashboard" />
+              </div>
+              <Button asChild size="sm" variant="outline" className="w-full">
+                <a href="/auth/login" data-translate="member-area">
+                  Área de Membros
+                </a>
+              </Button>
               <Button asChild size="sm" className="w-full btn-gold">
-                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
+                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" data-translate="contact-button">
                   Falar Conosco
                 </a>
               </Button>
