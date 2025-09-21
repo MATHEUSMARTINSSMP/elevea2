@@ -11,6 +11,7 @@ import WhatsAppManager from "./components/WhatsAppManager";
 import LeadScoring from "./components/LeadScoring";
 import MultiLanguageManager from "./components/MultiLanguageManager";
 import AppointmentScheduling from "./components/AppointmentScheduling";
+import FeatureManager from "./components/FeatureManager";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -149,6 +150,11 @@ export default function ClientDashboard() {
   const [vipPin, setVipPin] = useState("");
   const [saving, setSaving] = useState(false);
 
+  /* Gerenciamento de Funcionalidades */
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
+  const [userPlan, setUserPlan] = useState<'essential' | 'vip'>('essential');
+  const [featuresLoaded, setFeaturesLoaded] = useState(false);
+
   /* Chat AI */
   const [showAIChat, setShowAIChat] = useState(false);
   
@@ -165,6 +171,38 @@ export default function ClientDashboard() {
     looksVip(plan || undefined) ||
     looksVip(status?.plan) ||
     isActiveStatus(status?.status);
+
+  // Funções auxiliares para verificar funcionalidades habilitadas
+  const isFeatureEnabled = (featureId: string) => {
+    return enabledFeatures.includes(featureId);
+  };
+
+  const loadUserFeatures = async () => {
+    if (!canQuery) return;
+    
+    try {
+      const response = await fetch('/.netlify/functions/feature-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_user_features',
+          siteSlug: user?.siteSlug
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.ok) {
+          setEnabledFeatures(result.userSettings.enabledFeatures);
+          setUserPlan(result.userSettings.plan);
+          setFeaturesLoaded(true);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar funcionalidades:', error);
+      setFeaturesLoaded(true); // Marcar como carregado mesmo com erro
+    }
+  };
 
   const planLabel = plan === null ? "—" : (vipEnabled ? "vip" : (plan || "—"));
 
@@ -276,6 +314,11 @@ export default function ClientDashboard() {
       finally {
         if (alive) setLoadingSettings(false);
       }
+    })();
+
+    // FUNCIONALIDADES DO USUÁRIO
+    (async () => {
+      await loadUserFeatures();
     })();
 
     // ASSETS
@@ -629,7 +672,7 @@ export default function ClientDashboard() {
         )}
 
         {/* WHATSAPP MANAGER VIP */}
-        {vipEnabled && vipPin && (
+        {vipEnabled && vipPin && isFeatureEnabled('whatsapp-chatbot') && (
           <section className="space-y-6">
             <WhatsAppManager 
               siteSlug={user.siteSlug || ''} 
@@ -639,7 +682,7 @@ export default function ClientDashboard() {
         )}
 
         {/* LEAD SCORING VIP */}
-        {vipEnabled && vipPin && (
+        {vipEnabled && vipPin && isFeatureEnabled('lead-scoring') && (
           <section className="space-y-6">
             <LeadScoring 
               siteSlug={user.siteSlug || ''} 
@@ -649,7 +692,7 @@ export default function ClientDashboard() {
         )}
 
         {/* MULTI-LANGUAGE VIP */}
-        {vipEnabled && vipPin && (
+        {vipEnabled && vipPin && isFeatureEnabled('multi-language') && (
           <section className="space-y-6">
             <MultiLanguageManager 
               siteSlug={user.siteSlug || ''} 
@@ -659,7 +702,7 @@ export default function ClientDashboard() {
         )}
 
         {/* APPOINTMENT SCHEDULING VIP */}
-        {vipEnabled && vipPin && (
+        {vipEnabled && vipPin && isFeatureEnabled('appointment-scheduling') && (
           <section className="space-y-6">
             <AppointmentScheduling 
               siteSlug={user.siteSlug || ''} 
