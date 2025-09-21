@@ -33,5 +33,9 @@ waitForPort = 5000
 localPort = 8080
 externalPort = 80
 
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
 [agent]
 integrations = ["javascript_openai:1.0.0"]

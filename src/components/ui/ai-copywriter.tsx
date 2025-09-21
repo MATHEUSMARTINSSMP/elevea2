@@ -8,7 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Wand2, Copy, CheckCircle } from 'lucide-react';
-import { generateSiteContent, generateSEOSuggestions, generateMarketingEmail, ContentSuggestion } from '@/lib/openai';
+// Removido import inseguro do OpenAI - agora usa funções Netlify
+interface ContentSuggestion {
+  section: string;
+  title: string;
+  content: string;
+  confidence: number;
+}
 import { useToast } from '@/hooks/use-toast';
 
 // Interfaces para type safety
@@ -32,10 +38,15 @@ interface AICopywriterProps {
 }
 
 export function AICopywriter({ businessName = '', businessType = '', businessDescription = '' }: AICopywriterProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  // Estados separados para não bloquear tudo
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [isGeneratingSEO, setIsGeneratingSEO] = useState(false);
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
+  
+  // Estados tipados para segurança
   const [generatedContent, setGeneratedContent] = useState<ContentSuggestion[]>([]);
-  const [seoSuggestions, setSeoSuggestions] = useState<any>(null);
-  const [emailContent, setEmailContent] = useState<any>(null);
+  const [seoSuggestions, setSeoSuggestions] = useState<SEOSuggestions | null>(null);
+  const [emailContent, setEmailContent] = useState<EmailResult | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const { toast } = useToast();
 
@@ -80,12 +91,21 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
       // Limitar tamanho da entrada para controle de custo
       const limitedDescription = formData.businessDescription.slice(0, 500);
       
-      const content = await generateSiteContent(
-        formData.businessType.trim(),
-        formData.businessName.trim(),
-        limitedDescription
-      );
-      setGeneratedContent(content);
+      // Chamada segura via função Netlify
+      const response = await fetch('/.netlify/functions/ai-content-generator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessType: formData.businessType.trim(),
+          businessName: formData.businessName.trim(),
+          businessDescription: limitedDescription
+        })
+      });
+      
+      if (!response.ok) throw new Error('Falha na geração');
+      
+      const result = await response.json();
+      setGeneratedContent(result.content || []);
       
       toast({
         title: "Conteúdo gerado!",
@@ -132,16 +152,23 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
       // Limitar conteúdo atual para controle de custo
       const limitedContent = formData.currentContent.slice(0, 1000);
       
-      const seo = await generateSEOSuggestions(
-        formData.businessType.trim() || 'negócio',
-        formData.businessName.trim(),
-        limitedContent,
-        formData.location.trim()
-      );
+      // Chamada segura via função Netlify
+      const response = await fetch('/.netlify/functions/ai-seo-generator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessType: formData.businessType.trim() || 'negócio',
+          businessName: formData.businessName.trim(),
+          currentContent: limitedContent,
+          location: formData.location.trim()
+        })
+      });
       
-      // Validar shape do retorno
-      if (seo && typeof seo === 'object' && 'title' in seo) {
-        setSeoSuggestions(seo as SEOSuggestions);
+      if (!response.ok) throw new Error('Falha na geração');
+      
+      const result = await response.json();
+      if (result.ok && result.seo) {
+        setSeoSuggestions(result.seo);
         toast({
           title: "SEO otimizado!",
           description: "Sugestões de SEO prontas para implementar",
@@ -175,22 +202,32 @@ export function AICopywriter({ businessName = '', businessType = '', businessDes
 
     setIsGeneratingEmail(true);
     try {
-      const email = await generateMarketingEmail(formData.emailType, {
-        name: formData.businessName.trim(),
-        type: formData.businessType.trim() || 'negócio',
-        clientName: formData.clientName.trim(),
-        service: formData.service.trim()
+      // Chamada segura via função Netlify
+      const response = await fetch('/.netlify/functions/ai-email-generator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailType: formData.emailType,
+          businessData: {
+            name: formData.businessName.trim(),
+            type: formData.businessType.trim() || 'negócio',
+            clientName: formData.clientName.trim(),
+            service: formData.service.trim()
+          }
+        })
       });
       
-      // Validar shape e sanitizar HTML
-      if (email && typeof email === 'object' && 'content' in email) {
+      if (!response.ok) throw new Error('Falha na geração');
+      
+      const result = await response.json();
+      if (result.ok && result.email) {
         const sanitizedEmail: EmailResult = {
-          subject: email.subject || 'Assunto',
-          content: DOMPurify.sanitize(email.content || 'Conteúdo indisponível', {
+          subject: result.email.subject || 'Assunto',
+          content: DOMPurify.sanitize(result.email.content || 'Conteúdo indisponível', {
             ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u'],
             ALLOWED_ATTR: []
           }),
-          callToAction: email.callToAction || 'Clique aqui'
+          callToAction: result.email.callToAction || 'Clique aqui'
         };
         
         setEmailContent(sanitizedEmail);
