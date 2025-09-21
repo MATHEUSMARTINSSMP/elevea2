@@ -9,6 +9,7 @@ import GoogleReviews from "./components/GoogleReviews";
 import SEOOptimizer from "./components/SEOOptimizer";
 import WhatsAppManager from "./components/WhatsAppManager";
 import LeadScoring from "./components/LeadScoring";
+import MultiLanguageManager from "./components/MultiLanguageManager";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -640,6 +641,16 @@ export default function ClientDashboard() {
         {vipEnabled && vipPin && (
           <section className="space-y-6">
             <LeadScoring 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* MULTI-LANGUAGE VIP */}
+        {vipEnabled && vipPin && (
+          <section className="space-y-6">
+            <MultiLanguageManager 
               siteSlug={user.siteSlug || ''} 
               vipPin={vipPin}
             />
