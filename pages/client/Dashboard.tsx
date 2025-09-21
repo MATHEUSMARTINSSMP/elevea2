@@ -5,6 +5,7 @@ import AIChat from "./components/AIChat";
 import AIContentGenerator from "./components/AIContentGenerator";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import BusinessInsights from "./components/BusinessInsights";
+import GoogleReviews from "./components/GoogleReviews";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
@@ -609,6 +610,29 @@ export default function ClientDashboard() {
                 ]
               }}
             />
+          </section>
+        )}
+
+        {/* GOOGLE REVIEWS VIP */}
+        {vipEnabled && vipPin && (
+          <section className="space-y-6">
+            <GoogleReviews 
+              siteSlug={user.siteSlug || ''} 
+              vipPin={vipPin}
+            />
+          </section>
+        )}
+
+        {/* AI COPYWRITER VIP */}
+        {vipEnabled && vipPin && (
+          <section className="space-y-6">
+            <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6">
+              <AICopywriter 
+                businessName={user.siteSlug || 'seu negócio'}
+                businessType={siteStructure?.category || 'negócio'}
+                businessDescription={siteStructure?.description || ''}
+              />
+            </div>
           </section>
         )}
 
