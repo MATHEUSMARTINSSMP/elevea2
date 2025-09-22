@@ -1,20 +1,4 @@
 // netlify/functions/sheets-proxy.js
-// CommonJS – evita o erro de "import fora de módulo"
-const ALLOWED_METHODS = new Set(["GET", "POST"]);
-
-export const handler = async function (event) {
-  try {
-    if (!ALLOWED_METHODS.has(event.httpMethod)) {
-      return { statusCode: 405, body: "Method Not Allowed" };
-    }
-
-    const gasBase = process.env.ELEVEA_GAS_URL;
-    const adminToken = process.env.ADMIN_DASH_TOKEN;
-    if (!gasBase || !adminToken) {
-      return { statusCode: 500, body: "Missing ELEVEA_GAS_URL or ADMIN_DASH_TOKEN env" };
-    }
-
-    const headers = {// netlify/functions/sheets-proxy.js
 // Proxy para o GAS com endpoints administrativos
 const ALLOWED_METHODS = new Set(["GET", "POST"]);
 
@@ -64,61 +48,25 @@ export const handler = async function (event) {
     if (event.httpMethod === "GET") {
       const qs = event.rawQuery ? `?${event.rawQuery}` : "";
       url = `${gasBase}${qs}`;
-    } else {
-      init.body = event.body || "{}";
+    } else if (event.httpMethod === "POST") {
+      init.body = event.body;
     }
 
-    const r = await fetch(url, init);
-    const text = await r.text();
-    const contentType = r.headers.get("content-type") || (text.startsWith("{") ? "application/json" : "text/plain");
+    const response = await fetch(url, init);
+    const data = await response.text();
 
     return {
-      statusCode: r.status,
-      headers: { 
-        "content-type": contentType, 
-        "Cache-Control": "no-store",
-        "Access-Control-Allow-Origin": "*"
-      },
-      body: text,
-    };
-  } catch (e) {
-    return {
-      statusCode: 502,
+      statusCode: response.status,
       headers,
-      body: JSON.stringify({ ok: false, error: `sheets-proxy error: ${e && e.message ? e.message : String(e)}` }),
-    };
-  }
-};
-      "Content-Type": "application/json",
-      "X-Admin-Token": adminToken, // cabeçalho que o GAS valida
-      // CORS é desnecessário por ser mesma origem, mas não atrapalha:
-      "Cache-Control": "no-store",
+      body: data,
     };
 
-    let url = gasBase;
-    const init = { method: event.httpMethod, headers };
-
-    if (event.httpMethod === "GET") {
-      const qs = event.rawQuery ? `?${event.rawQuery}` : "";
-      url = `${gasBase}${qs}`;
-    } else {
-      init.body = event.body || "{}";
-    }
-
-    const r = await fetch(url, init);
-    const text = await r.text();
-    const contentType =
-      r.headers.get("content-type") || (text.startsWith("{") ? "application/json" : "text/plain");
-
+  } catch (error) {
+    console.error("Sheets proxy error:", error);
     return {
-      statusCode: r.status,
-      headers: { "content-type": contentType, "Cache-Control": "no-store" },
-      body: text,
-    };
-  } catch (e) {
-    return {
-      statusCode: 502,
-      body: `sheets-proxy error: ${e && e.message ? e.message : String(e)}`,
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ ok: false, error: "proxy_error", details: error.message }),
     };
   }
 };
