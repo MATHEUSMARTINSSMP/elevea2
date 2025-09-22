@@ -545,18 +545,14 @@ function doPost(e) {
     data = {};
   }
 
-  // ✅ COMPATIBILIDADE: Normalizar 'type'/'action' e 'site'/'siteSlug'
+  // ✅ COMPATIBILIDADE: Normalizar 'type'/'action'
   const type = data.type || data.action;
-  const site = data.site || data.siteSlug;
-  const normalizedData = { ...data, type, site };
+  const normalizedData = { ...data, type };
   
   log_(ss, "normalized", {
     originalType: data.type || "",
     originalAction: data.action || "",
-    normalizedType: type || "",
-    originalSite: data.site || "",
-    originalSiteSlug: data.siteSlug || "",
-    normalizedSite: site || ""
+    normalizedType: type || ""
   });
 
 
