@@ -11,8 +11,8 @@
     <meta name="theme-color" content="#D4AF37" />
     <meta name="content-language" content="pt-BR" />
     <meta name="keywords" content="site para pequenos negócios, site profissional, Google Meu Negócio, SEO local, chatbot WhatsApp, landing page, hospedagem com SSL, agência digital em Macapá, Amapá, Elevea" />
-    
-    <!-- PWA Manifest -->
+
+    <!-- PWA Manifest (se estiver depurando tela branca por SW, pode remover temporariamente) -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -43,14 +43,17 @@
       <input type="hidden" name="form-name" value="pos-onboarding" />
     </form>
 
+    <!-- ÚNICO root da aplicação -->
     <div id="root"></div>
-    <div id="root"></div>
-<pre id="boot-error" style="
-position:fixed;left:8px;bottom:8px;z-index:99999;
-max-width:90vw;max-height:40vh;overflow:auto;padding:8px 10px;
-border:1px solid #ccc;border-radius:8px;background:#fff;
-box-shadow:0 2px 10px rgba(0,0,0,.1);font:12px/1.4 monospace;color:#b00020;">
-</pre>
+
+    <!-- Fallback de debug: mostra erros de boot (remover após depuração) -->
+    <pre id="boot-error" style="
+      position:fixed;left:8px;bottom:8px;z-index:99999;
+      max-width:90vw;max-height:40vh;overflow:auto;padding:8px 10px;
+      border:1px solid #ccc;border-radius:8px;background:#fff;
+      box-shadow:0 2px 10px rgba(0,0,0,.1);font:12px/1.4 monospace;color:#b00020;
+    "></pre>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
