@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../src/components/ui/card';
-import { Button } from '../../../src/components/ui/button';
-import { Input } from '../../../src/components/ui/input';
-import { Badge } from '../../../src/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { 
   ShoppingCart, 
   Star, 
@@ -15,7 +15,7 @@ import {
   CreditCard,
   CheckCircle
 } from 'lucide-react';
-import { Alert, AlertDescription } from '../../../src/components/ui/alert';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Template {
   id: string;
