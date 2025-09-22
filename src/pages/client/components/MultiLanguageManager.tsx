@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../src/components/ui/card';
-import { Button } from '../../../src/components/ui/button';
-import { Badge } from '../../../src/components/ui/badge';
-import { Input } from '../../../src/components/ui/input';
-import { Textarea } from '../../../src/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   GlobeIcon, 
   LanguagesIcon,
@@ -16,7 +16,7 @@ import {
   BarChart3Icon,
   ZapIcon
 } from 'lucide-react';
-import { DashboardCardSkeleton } from '../../../src/components/ui/loading-skeletons';
+import { DashboardCardSkeleton } from '@/components/ui/loading-skeletons';
 
 interface Language {
   code: string;

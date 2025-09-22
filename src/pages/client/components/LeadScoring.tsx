@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../src/components/ui/card';
-import { Button } from '../../../src/components/ui/button';
-import { Badge } from '../../../src/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { 
   TargetIcon, 
   TrendingUpIcon,
@@ -15,7 +15,7 @@ import {
   RefreshCwIcon,
   StarIcon
 } from 'lucide-react';
-import { DashboardCardSkeleton } from '../../../src/components/ui/loading-skeletons';
+import { DashboardCardSkeleton } from '@/components/ui/loading-skeletons';
 
 interface Lead {
   id: string;

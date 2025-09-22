@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useSession } from "../../src/hooks/useSession";
-import { useAuth } from "../../src/hooks/useAuth";
+import { useSession } from "@/hooks/useSession";
+import { useAuth } from "@/hooks/useAuth";
 import AIChat from "./components/AIChat";
 import AIContentGenerator from "./components/AIContentGenerator";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useSession } from '../../../src/hooks/useSession';
+import { useSession } from '@/hooks/useSession';
 
 interface Message {
   id: string;

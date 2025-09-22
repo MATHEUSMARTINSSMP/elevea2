@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../src/components/ui/card';
-import { Button } from '../../../src/components/ui/button';
-import { Badge } from '../../../src/components/ui/badge';
-import { Switch } from '../../../src/components/ui/switch';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { 
   SettingsIcon, 
   ZapIcon,
@@ -15,7 +15,7 @@ import {
   LockIcon,
   UnlockIcon
 } from 'lucide-react';
-import { DashboardCardSkeleton } from '../../../src/components/ui/loading-skeletons';
+import { DashboardCardSkeleton } from '@/components/ui/loading-skeletons';
 
 interface FeatureConfig {
   id: string;
