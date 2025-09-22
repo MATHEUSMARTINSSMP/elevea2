@@ -1,26 +1,12 @@
 // netlify/functions/sheets-proxy.js
 // Proxy para o GAS com endpoints administrativos
+import { withCors } from './_cors.ts';
+
 const ALLOWED_METHODS = new Set(["GET", "POST"]);
 
-function cors() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-elevea-internal",
-    "Cache-Control": "no-store",
-    "Content-Type": "application/json",
-  };
-}
-
-export const handler = async function (event) {
-  const headers = cors();
-
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers, body: "" };
-  }
-
+const sheetsProxyHandler = async function (event) {
   if (!ALLOWED_METHODS.has(event.httpMethod)) {
-    return { statusCode: 405, headers, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
+    return { statusCode: 405, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
   }
 
   try {
@@ -60,16 +46,16 @@ export const handler = async function (event) {
       statusCode: r.status,
       headers: { 
         "content-type": contentType, 
-        "Cache-Control": "no-store",
-        "Access-Control-Allow-Origin": "*"
+        "Cache-Control": "no-store"
       },
       body: text,
     };
   } catch (e) {
     return {
       statusCode: 502,
-      headers,
       body: JSON.stringify({ ok: false, error: `sheets-proxy error: ${e && e.message ? e.message : String(e)}` }),
     };
   }
 };
+
+export const handler = withCors(sheetsProxyHandler);

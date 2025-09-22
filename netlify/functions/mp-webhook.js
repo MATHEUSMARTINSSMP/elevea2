@@ -1,5 +1,6 @@
 // netlify/functions/mp-webhook.js
 import crypto from "node:crypto";
+import { withCors } from './_cors.ts';
 
 const MP_TOKEN = process.env.MP_ACCESS_TOKEN || "";
 const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "";
@@ -56,7 +57,7 @@ function verifyMpSignature(headers) {
   return crypto.timingSafeEqual(A, B);
 }
 
-export const handler = async (event) => {
+const mpWebhookHandler = async (event) => {
   try {
     // GET = teste de saúde
     if (event.httpMethod !== "POST") {
@@ -154,3 +155,5 @@ export const handler = async (event) => {
     return { statusCode: 500, body: "server error" };
   }
 };
+
+export const handler = withCors(mpWebhookHandler);
