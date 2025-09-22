@@ -66,10 +66,10 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
 
     analyticsHook.trackPage(pageName, {
       path,
-      user_role: session?.user?.role,
-      site_slug: session?.user?.siteSlug,
+      user_role: user?.role,
+      site_slug: user?.siteSlug,
     });
-  }, [location, session, analyticsHook]);
+  }, [location, user, analyticsHook]);
 
   const contextValue: AnalyticsContextType = {
     trackEvent: analyticsHook.trackEvent,
