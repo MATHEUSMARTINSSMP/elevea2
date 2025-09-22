@@ -1,10 +1,11 @@
 import { Handler } from '@netlify/functions';
 import { rateLimitMiddleware, verifyVipAccess } from './shared/security';
+import { callGAS } from './shared/gas-client';
 
-const GAS_BASE_URL = process.env.GAS_BASE_URL;
+const FRONTEND_URL = process.env.FRONTEND_URL || process.env.URL || 'http://localhost:3000';
 
 const headers = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': FRONTEND_URL,
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Content-Type': 'application/json'
@@ -59,19 +60,7 @@ interface PurchaseHistory {
   status: 'completed' | 'pending' | 'refunded';
 }
 
-async function callGAS(action: string, params: any = {}) {
-  if (!GAS_BASE_URL) {
-    throw new Error('GAS_BASE_URL não configurada');
-  }
-
-  const response = await fetch(GAS_BASE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, ...params })
-  });
-
-  return await response.json();
-}
+// Removida - usando callGAS do shared/gas-client
 
 /**
  * Buscar todos os templates disponíveis

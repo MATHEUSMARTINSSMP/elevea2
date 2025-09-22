@@ -1,5 +1,31 @@
 # Funções Requeridas no Google Apps Script (GAS)
 
+## ⚠️ IMPORTANTE: Padronização de Contratos
+
+O GAS deve aceitar chamadas com **AMBOS** os padrões para compatibilidade:
+- **Existente**: `{ type: "action_name", site: "slug", ...params }`
+- **Novo**: `{ action: "action_name", siteSlug: "slug", ...params }`
+
+### Implementação no GAS Dispatcher:
+```javascript
+function doPost(e) {
+  const data = JSON.parse(e.postData.contents);
+  
+  // Normalizar type/action
+  const type = data.type || data.action;
+  
+  // Normalizar site/siteSlug
+  const site = data.site || data.siteSlug;
+  
+  // Chamar função baseada no type
+  switch(type) {
+    case 'admin_get_client_features':
+      return admin_get_client_features({...data, site});
+    // ... outras funções
+  }
+}
+```
+
 ## ✅ Funções Existentes (Já Implementadas)
 - `list_leads` - Listar leads
 - `list_feedbacks` - Listar feedbacks  
@@ -13,12 +39,12 @@
 
 ### **1. Sistema Multi-idioma**
 ```javascript
-// action: 'multi_language_get_settings'
+// type: 'multi_language_get_settings'
 function multi_language_get_settings(params) {
-  const { siteSlug } = params;
+  const { site } = params; // Usar 'site' padronizado
   
   // Buscar configurações de idioma do site
-  const settings = getSheetData('language_settings', siteSlug);
+  const settings = getSheetData('language_settings', site);
   
   return {
     ok: true,
