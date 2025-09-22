@@ -67,7 +67,7 @@ export function SentryProvider({ children }: SentryProviderProps) {
                   Detalhes do erro (desenvolvimento)
                 </summary>
                 <pre className="mt-2 text-xs text-gray-600 bg-gray-100 p-2 rounded overflow-auto max-h-32">
-                  {error?.stack || error?.message || 'Erro desconhecido'}
+                  {error instanceof Error ? (error.stack || error.message) : 'Erro desconhecido'}
                 </pre>
               </details>
             )}
