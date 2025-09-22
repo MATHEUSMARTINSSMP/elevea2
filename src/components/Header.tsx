@@ -54,7 +54,7 @@ const Header = () => {
           <div className="hidden md:flex items-center gap-3">
             <LanguageSelector variant="header" />
             <Button asChild size="sm" variant="outline">
-              <a href="/auth/login" data-translate="member-area">
+              <a href="/login" data-translate="member-area">
                 Área de Membros
               </a>
             </Button>
@@ -96,7 +96,7 @@ const Header = () => {
                 <LanguageSelector variant="dashboard" />
               </div>
               <Button asChild size="sm" variant="outline" className="w-full">
-                <a href="/auth/login" data-translate="member-area">
+                <a href="/login" data-translate="member-area">
                   Área de Membros
                 </a>
               </Button>

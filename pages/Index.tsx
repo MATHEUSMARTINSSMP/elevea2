@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import Header from '../src/components/Header';
 import Hero from '../src/components/Hero';
 import ProfessionCarousel from '../src/components/ProfessionCarousel';
