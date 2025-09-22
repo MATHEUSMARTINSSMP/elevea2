@@ -1,16 +1,16 @@
 // src/App.tsx
 import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { WaitSession, RequireAuth, RequireClient, RedirectIfAuthed } from "../routes/guards";
+import { WaitSession, RequireAuth, RequireClient, RedirectIfAuthed } from "@/routes/guards";
 import PWAHandler from "@/components/PWAHandler";
 import SentryProvider from "@/components/SentryProvider";
 import AnalyticsProvider from "@/components/AnalyticsProvider";
 
 // ✅ Páginas (atenção ao caminho/case do Login!)
-const IndexPage       = lazy(() => import("../pages/Index"));              // home pública em "/"
-const LoginPage       = lazy(() => import("../pages/auth/Login"));         // <-- caminho novo e correto
-const ClientDashboard = lazy(() => import("../pages/client/Dashboard"));
-const AdminDashboard  = lazy(() => import("../pages/admin/Dashboard"));
+const IndexPage       = lazy(() => import("@/pages/Index"));              // home pública em "/"
+const LoginPage       = lazy(() => import("@/pages/auth/Login"));         // <-- caminho novo e correto
+const ClientDashboard = lazy(() => import("@/pages/client/Dashboard"));
+const AdminDashboard  = lazy(() => import("@/pages/admin/Dashboard"));
 
 function Loader() {
   return (
