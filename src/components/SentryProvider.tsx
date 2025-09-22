@@ -7,22 +7,22 @@ interface SentryProviderProps {
 }
 
 export function SentryProvider({ children }: SentryProviderProps) {
-  const { session } = useSession();
+  const { user } = useSession();
 
   // Configurar usuário no Sentry quando logado
-  useSentryUser(session?.user || null);
+  useSentryUser(user || null);
 
   // Rastrear login/logout
   React.useEffect(() => {
-    if (session?.user) {
+    if (user) {
       trackUserAction('user_logged_in', {
-        userId: session.user.id,
-        role: session.user.role,
+        userId: user.email, // usar email como ID
+        role: user.role,
       });
     } else {
       trackUserAction('user_logged_out');
     }
-  }, [session]);
+  }, [user]);
 
   return (
     <SentryErrorBoundary

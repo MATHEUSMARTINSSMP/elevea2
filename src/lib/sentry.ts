@@ -22,7 +22,6 @@ export function initSentry() {
       dsn: dsn, // Remove placeholder - exige DSN real
       environment: isDev ? 'development' : 'production',
       tracesSampleRate: isDev ? 0.1 : 0.05, // Reduz sampling para produção
-      autoSessionTracking: true,
       release: import.meta.env.VITE_APP_VERSION || undefined, // Remove fallback
       
       beforeSend(event) {

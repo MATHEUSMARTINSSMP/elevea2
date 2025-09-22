@@ -17,7 +17,7 @@ interface AnalyticsProviderProps {
 }
 
 export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
-  const { session } = useSession();
+  const { user } = useSession();
   const location = useLocation();
   const analyticsHook = useAnalytics();
 
@@ -28,25 +28,25 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
 
   // Identificar/resetar usuário baseado na sessão  
   useEffect(() => {
-    if (session?.user) {
+    if (user) {
       // Por padrão sem consentimento de PII
       identifyUser({
-        id: session.user.id,
-        email: session.user.email,
-        role: session.user.role,
-        siteSlug: session.user.siteSlug,
-        plan: session.user.plan || 'free',
+        id: user.email, // usar email como ID
+        email: user.email,
+        role: user.role,
+        siteSlug: user.siteSlug,
+        plan: user.plan || 'free',
       }, false); // hasConsent = false por padrão
 
       // Track login
       analytics.featureUsed('login', {
-        role: session.user.role,
-        site_slug: session.user.siteSlug,
+        role: user.role,
+        site_slug: user.siteSlug,
       });
     } else {
       resetUser();
     }
-  }, [session]);
+  }, [user]);
 
   // Rastrear mudanças de rota usando useLocation (mais limpo)
   useEffect(() => {
