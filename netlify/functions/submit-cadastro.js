@@ -4,7 +4,7 @@
 const APPS_URL =
   process.env.ELEVEA_STATUS_URL || process.env.SHEETS_WEBAPP_URL || "";
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   const baseHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",

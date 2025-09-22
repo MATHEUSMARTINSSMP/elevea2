@@ -15,7 +15,7 @@ const headers = {
   "Cache-Control": "no-store",
 };
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers, body: "" };
   if (event.httpMethod !== "POST")
     return { statusCode: 405, headers, body: JSON.stringify({ ok:false, error:"method_not_allowed" }) };

@@ -2,7 +2,7 @@
 // CommonJS – evita o erro de "import fora de módulo"
 const ALLOWED_METHODS = new Set(["GET", "POST"]);
 
-exports.handler = async function (event) {
+export const handler = async function (event) {
   try {
     if (!ALLOWED_METHODS.has(event.httpMethod)) {
       return { statusCode: 405, body: "Method Not Allowed" };
@@ -28,7 +28,7 @@ function cors() {
   };
 }
 
-exports.handler = async function (event) {
+export const handler = async function (event) {
   const headers = cors();
 
   if (event.httpMethod === "OPTIONS") {

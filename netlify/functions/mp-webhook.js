@@ -1,5 +1,5 @@
 // netlify/functions/mp-webhook.js
-const crypto = require("crypto");
+import crypto from "node:crypto";
 
 const MP_TOKEN = process.env.MP_ACCESS_TOKEN || "";
 const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "";
@@ -56,7 +56,7 @@ function verifyMpSignature(headers) {
   return crypto.timingSafeEqual(A, B);
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   try {
     // GET = teste de saúde
     if (event.httpMethod !== "POST") {

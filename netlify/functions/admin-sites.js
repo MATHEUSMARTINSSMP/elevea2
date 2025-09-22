@@ -13,7 +13,7 @@ function cors() {
   };
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   const headers = cors();
 
   if (event.httpMethod === "OPTIONS") {
