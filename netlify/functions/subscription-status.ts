@@ -44,13 +44,11 @@ export const handler = async (event: any) => {
   }
 };
 
-function json(statusCode: number, body: any) {
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
-    body: JSON.stringify(body),
-  };
-}
+const json = (statusCode: number, body: any) => ({
+  statusCode,
+  headers: {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  },
+  body: JSON.stringify(body),
+});
