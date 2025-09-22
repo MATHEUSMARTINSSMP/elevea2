@@ -48,25 +48,28 @@ export const handler = async function (event) {
     if (event.httpMethod === "GET") {
       const qs = event.rawQuery ? `?${event.rawQuery}` : "";
       url = `${gasBase}${qs}`;
-    } else if (event.httpMethod === "POST") {
-      init.body = event.body;
+    } else {
+      init.body = event.body || "{}";
     }
 
-    const response = await fetch(url, init);
-    const data = await response.text();
+    const r = await fetch(url, init);
+    const text = await r.text();
+    const contentType = r.headers.get("content-type") || (text.startsWith("{") ? "application/json" : "text/plain");
 
     return {
-      statusCode: response.status,
-      headers,
-      body: data,
+      statusCode: r.status,
+      headers: { 
+        "content-type": contentType, 
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*"
+      },
+      body: text,
     };
-
-  } catch (error) {
-    console.error("Sheets proxy error:", error);
+  } catch (e) {
     return {
-      statusCode: 500,
+      statusCode: 502,
       headers,
-      body: JSON.stringify({ ok: false, error: "proxy_error", details: error.message }),
+      body: JSON.stringify({ ok: false, error: `sheets-proxy error: ${e && e.message ? e.message : String(e)}` }),
     };
   }
 };

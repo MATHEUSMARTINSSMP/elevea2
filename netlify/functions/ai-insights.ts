@@ -47,7 +47,7 @@ interface InsightsResponse {
   error?: string;
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   console.log('[AI-INSIGHTS] Starting insights generation');
   
   if (event.httpMethod !== 'POST') {
