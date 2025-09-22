@@ -39,3 +39,4 @@ externalPort = 8081
 
 [agent]
 integrations = ["javascript_openai:1.0.0"]
+expertMode = true
