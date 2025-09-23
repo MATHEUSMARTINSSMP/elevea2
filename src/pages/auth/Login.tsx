@@ -88,6 +88,30 @@ export default function LoginPage() {
     }
   }
 
+  async function handleSendReset(email: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return { ok: false, error: "email_invalido" };
+    }
+
+    const r = await fetch("/.netlify/functions/reset-dispatch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await r.json().catch(() => ({}));
+
+    if (!r.ok || data?.ok === false) {
+      return { ok: false, error: data?.error || `http_${r.status}` };
+    }
+
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
   async function doForgot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErr(null); setMsg(null);
