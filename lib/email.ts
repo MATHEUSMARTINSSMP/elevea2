@@ -1,34 +1,38 @@
 // src/lib/email.ts
 
-async function sendEmail(payload: { to: string; subject: string; html: string }) {
-  const r = await fetch("/.netlify/functions/send-email", {
+type MailerResp = { ok?: boolean; error?: string };
+
+async function callMailer(body: Record<string, any>) {
+  const r = await fetch("/.netlify/functions/mailer-dispatch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
-  const data = await r.json().catch(() => ({}));
+  const data: MailerResp = await r.json().catch(() => ({}));
   if (!r.ok || data?.ok === false) {
-    console.error("Erro ao enviar email:", data?.error || r.status);
-    throw new Error(data?.error || "Falha no envio de email");
+    console.error("Erro ao enviar e-mail:", data?.error || `http_${r.status}`);
+    throw new Error(data?.error || "Falha no envio de e-mail");
   }
   return data;
 }
 
-export async function sendWelcomeEmail(email: string) {
-  return sendEmail({
+/** E-mail genérico */
+export async function sendCustomEmail(to: string, subject: string, html: string) {
+  return callMailer({ template: "raw", to, subject, html });
+}
+
+/** Bem-vindo (usa template do mailer-dispatch) */
+export async function sendWelcomeEmail(email: string, opts?: { name?: string; dashboardUrl?: string }) {
+  return callMailer({
+    template: "welcome",
     to: email,
-    subject: "Bem-vindo à Elevea 🚀",
-    html: `
-      <div style="font-family:sans-serif;line-height:1.5;">
-        <h2>Bem-vindo(a)!</h2>
-        <p>Estamos muito felizes em ter você conosco.</p>
-        <p>Explore sua conta e aproveite todos os recursos disponíveis.</p>
-        <p><b>Equipe Elevea</b></p>
-      </div>
-    `,
+    name: opts?.name || "",
+    dashboardUrl: opts?.dashboardUrl || "",
   });
 }
 
-export async function sendCustomEmail(to: string, subject: string, html: string) {
-  return sendEmail({ to, subject, html });
+/** Reset – caso você queira disparar manualmente por aqui (não é necessário
+ * para o fluxo de esqueci a senha, que já chama a função dedicada de reset). */
+export async function sendResetEmail(email: string, link: string) {
+  return callMailer({ template: "reset", to: email, link });
 }
