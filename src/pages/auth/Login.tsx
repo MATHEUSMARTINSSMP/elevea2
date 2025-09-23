@@ -1,9 +1,12 @@
+// src/pages/auth/Login.tsx (ou onde você mantém a tela de login)
 import React, { useEffect, useMemo, useState } from "react";
 
-// 👉 usa SEMPRE a mesma função (edge): auth-session
+/** Usa SEMPRE a mesma função edge: auth-session */
 const AUTH_BASE = "/.netlify/functions/auth-session";
 const LOGIN_URL = `${AUTH_BASE}?action=login`;
 const ME_URL    = `${AUTH_BASE}?action=me`;
+
+/** Dispatcher que fala com o GAS/Resend */
 const RESET_URL = "/.netlify/functions/reset-dispatch";
 
 type ApiResp = {
@@ -11,20 +14,20 @@ type ApiResp = {
   error?: string;
   message?: string;
   user?: { email: string; role: "admin" | "client"; siteSlug?: string };
-  link?: string;
+  link?: string; // opcional em ambiente de teste
 };
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
+  const [pass,  setPass]  = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg]   = useState<string | null>(null);
+  const [err, setErr]   = useState<string | null>(null);
 
-  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotOpen, setForgotOpen]   = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
 
-  // pega ?next=/client/dashboard etc.
+  // captura ?next=/client/... para pós-login
   const next = useMemo(() => {
     try {
       const p = new URLSearchParams(window.location.search);
@@ -35,20 +38,20 @@ export default function LoginPage() {
     }
   }, []);
 
-  // Se já tem sessão, manda direto
+  // já logado? manda embora
   useEffect(() => {
     (async () => {
       try {
         const r = await fetch(ME_URL, { credentials: "include", cache: "no-store" });
         const data: ApiResp = await r.json().catch(() => ({} as any));
         if (data?.ok && data.user) redirectByRole(data.user.role, next);
-      } catch {}
+      } catch {/* ignore */}
     })();
   }, [next]);
 
   function redirectByRole(role: "admin" | "client", candidate?: string) {
     if (candidate) {
-      if (role === "admin" && candidate.startsWith("/admin/")) { window.location.assign(candidate); return; }
+      if (role === "admin"  && candidate.startsWith("/admin/"))  { window.location.assign(candidate); return; }
       if (role === "client" && candidate.startsWith("/client/")) { window.location.assign(candidate); return; }
     }
     window.location.assign(role === "admin" ? "/admin/dashboard" : "/client/dashboard");
@@ -60,6 +63,7 @@ export default function LoginPage() {
 
     try {
       const emailLc = email.trim().toLowerCase();
+
       const r = await fetch(LOGIN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -67,7 +71,6 @@ export default function LoginPage() {
         body: JSON.stringify({ email: emailLc, password: pass }),
       });
 
-      // ajuda a diagnosticar 5xx
       if (r.status >= 500) {
         const txt = await r.text().catch(() => "");
         setErr(`Servidor indisponível (${r.status}). ${txt || ""}`.trim());
@@ -75,11 +78,15 @@ export default function LoginPage() {
       }
 
       const data: ApiResp = await r.json().catch(() => ({} as any));
+
       if (!r.ok || data.ok === false) {
         setErr(data.error || data.message || `Falha no login (${r.status})`);
         return;
       }
-      if (!data.user?.role) { setErr("Resposta inválida do servidor."); return; }
+      if (!data.user?.role) {
+        setErr("Resposta inválida do servidor.");
+        return;
+      }
       redirectByRole(data.user.role, next);
     } catch (e: any) {
       setErr(e?.message || "Erro de rede");
@@ -88,54 +95,43 @@ export default function LoginPage() {
     }
   }
 
-  async function handleSendReset(email: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-      return { ok: false, error: "email_invalido" };
+  /** Envia o reset pelo dispatcher com o payload correto */
+  async function handleSendReset(emailIn: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const email = emailIn.trim().toLowerCase();
+      if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+        return { ok: false, error: "email_invalido" };
+      }
+
+      // ⚠️ AQUI O AJUSTE: action: "request" (e NÃO 'type: password_reset_request')
+      const r = await fetch(RESET_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request", email }),
+      });
+
+      const data: ApiResp = await r.json().catch(() => ({} as any));
+
+      if (!r.ok || data?.ok === false) {
+        return { ok: false, error: data?.error || data?.message || `http_${r.status}` };
+      }
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message || e) };
     }
-
-    const r = await fetch("/.netlify/functions/reset-dispatch", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-
-    const data = await r.json().catch(() => ({}));
-
-    if (!r.ok || data?.ok === false) {
-      return { ok: false, error: data?.error || `http_${r.status}` };
-    }
-
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message || e) };
   }
-}
 
   async function doForgot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErr(null); setMsg(null);
-    try {
-      const r = await fetch(RESET_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "password_reset_request",
-          email: forgotEmail.trim().toLowerCase(),
-          siteSlug: import.meta.env.VITE_SITE_SLUG || ""
-        }),
-      });
-      const data: ApiResp = await r.json().catch(() => ({} as any));
-      if (!r.ok || data.ok === false) {
-        setErr(data.error || data.message || `Falha no reset (${r.status})`);
-        return;
-      }
-      if (data.link) setMsg(`Link de reset: ${data.link}`);
-      else setMsg("Se o e-mail existir, enviamos um link de reset.");
-      setForgotOpen(false);
-    } catch (e: any) {
-      setErr(e?.message || "Erro de rede");
+
+    const res = await handleSendReset(forgotEmail);
+    if (!res.ok) {
+      setErr(res.error || "Falha ao enviar o link");
+      return;
     }
+    setMsg("Se o e-mail existir, enviamos um link de redefinição.");
+    setForgotOpen(false);
   }
 
   return (
