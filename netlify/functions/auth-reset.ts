@@ -1,22 +1,23 @@
 // netlify/functions/auth-reset.ts
 import type { Handler } from "@netlify/functions";
 
-const GAS_URL =
-  process.env.ELEVEA_GAS_URL ||
-  process.env.APPS_ENDPOINT ||
-  // fallback: seu webapp GAS direto
-  "https://script.google.com/macros/s/AKfycbxct7yb5ba8lb_LJVj98vn9m7oFLbTeRRoBxUMtW8sMZxnf00tuIuPsjCvoO-tcNe4/exec";
+/**
+ * Este endpoint apenas repassa o pedido para reset-dispatch,
+ * que é quem gera o token (via GAS) e envia o e-mail (via Resend).
+ * Assim centralizamos o envio em um único lugar.
+ */
 
 const allowOrigin = (origin?: string) => {
-  // permite seu site em prod + localhost
   if (!origin) return "*";
   try {
     const u = new URL(origin);
     if (
+      u.hostname === "localhost" ||
       u.hostname.endsWith("netlify.app") ||
-      u.hostname.endsWith("eleveaagencia.netlify.app") ||
-      u.hostname === "localhost"
-    ) return origin;
+      u.hostname.endsWith("eleveaagencia.netlify.app")
+    ) {
+      return origin;
+    }
   } catch {}
   return "*";
 };
@@ -57,15 +58,21 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    const r = await fetch(GAS_URL, {
+    // monta URL absoluta para chamar o próprio function reset-dispatch
+    const host = event.headers["x-forwarded-host"] || event.headers.host;
+    const proto = event.headers["x-forwarded-proto"] || "https";
+    const base = host ? `${proto}://${host}` : "";
+    const dispatchUrl = `${base}/.netlify/functions/reset-dispatch`;
+
+    const r = await fetch(dispatchUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "password_reset_request", email }),
+      body: JSON.stringify({ email }),
     });
 
     const out = await r.json().catch(() => ({}));
     return {
-      statusCode: 200,
+      statusCode: r.status,
       headers: {
         "Access-Control-Allow-Origin": origin,
         "Content-Type": "application/json",
