@@ -1,73 +1,59 @@
 // netlify/functions/auth-reset-confirm.ts
 import type { Handler } from "@netlify/functions";
 
-const GAS_URL =
+const GAS_BASE =
   process.env.ELEVEA_GAS_URL ||
-  process.env.APPS_ENDPOINT ||
-  "https://script.google.com/macros/s/AKfycbxct7yb5ba8lb_LJVj98vn9m7oFLbTeRRoBxUMtW8sMZxnf00tuIuPsjCvoO-tcNe4/exec";
+  process.env.ELEVEA_STATUS_URL ||
+  "";
 
-const allowOrigin = (origin?: string) => {
-  if (!origin) return "*";
-  try {
-    const u = new URL(origin);
-    if (
-      u.hostname.endsWith("netlify.app") ||
-      u.hostname.endsWith("eleveaagencia.netlify.app") ||
-      u.hostname === "localhost"
-    ) return origin;
-  } catch {}
-  return "*";
-};
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST,OPTIONS",
+  "access-control-allow-headers": "Content-Type,Authorization",
+  "content-type": "application/json",
+} as const;
+
+function ensureExecUrl(u: string) {
+  return u.includes("/exec") ? u : u.replace(/\/+$/, "") + "/exec";
+}
 
 export const handler: Handler = async (event) => {
-  const origin = allowOrigin(event.headers?.origin);
-
-  // Preflight CORS
-  if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": origin,
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Max-Age": "86400",
-      },
-      body: "",
-    };
-  }
-
-  if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      headers: { "Access-Control-Allow-Origin": origin },
-      body: JSON.stringify({ ok: false, error: "method_not_allowed" }),
-    };
-  }
-
   try {
-    const payload = JSON.parse(event.body || "{}");
-    const email = String(payload.email || "").trim().toLowerCase();
-    const token = String(payload.token || "").trim();
-    const password = String(payload.password || "").trim();
-
-    if (!email || !token) {
+    if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 204, headers: CORS, body: "" };
+    }
+    if (event.httpMethod !== "POST") {
       return {
-        statusCode: 400,
-        headers: { "Access-Control-Allow-Origin": origin },
-        body: JSON.stringify({ ok: false, error: "missing_email_or_token" }),
+        statusCode: 405,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, error: "method_not_allowed" }),
       };
     }
-    if (!password || password.length < 6) {
+    if (!GAS_BASE) {
       return {
-        statusCode: 400,
-        headers: { "Access-Control-Allow-Origin": origin },
-        body: JSON.stringify({ ok: false, error: "weak_password" }),
+        statusCode: 500,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, error: "missing_gas_url" }),
       };
     }
 
-    const r = await fetch(GAS_URL, {
+    const body = event.body ? JSON.parse(event.body) : {};
+    const email = String(body.email || "").trim().toLowerCase();
+    const token = String(body.token || "").trim();
+    const password = String(body.password || "").trim();
+
+    if (!email || !token || !password) {
+      return {
+        statusCode: 400,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, error: "missing_email_or_token_or_password" }),
+      };
+    }
+
+    // repassa ao GAS
+    const resp = await fetch(ensureExecUrl(GAS_BASE), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
         type: "password_reset_confirm",
         email,
@@ -76,22 +62,30 @@ export const handler: Handler = async (event) => {
       }),
     });
 
-    const out = await r.json().catch(() => ({}));
+    const txt = await resp.text();
+    let data: any = {};
+    try { data = JSON.parse(txt || "{}"); } catch { data = { raw: txt }; }
+
+    if (!resp.ok || data?.ok === false) {
+      // normaliza alguns códigos que sua UI entende
+      const err = data?.error || "invalid_token";
+      return {
+        statusCode: resp.status || 400,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, error: err, data }),
+      };
+    }
+
     return {
       statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": origin,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(out),
+      headers: CORS,
+      body: JSON.stringify({ ok: true, message: "password_reset_success" }),
     };
-  } catch (err: any) {
+  } catch (e: any) {
     return {
       statusCode: 500,
-      headers: { "Access-Control-Allow-Origin": origin },
-      body: JSON.stringify({ ok: false, error: String(err?.message || err) }),
+      headers: CORS,
+      body: JSON.stringify({ ok: false, error: String(e?.message || e) }),
     };
   }
 };
-
-export default handler;
