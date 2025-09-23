@@ -1,10 +1,9 @@
-// netlify/functions/auth-session.ts
 import type { Handler } from "@netlify/functions";
 
 const GAS_BASE =
   process.env.ELEVEA_GAS_URL ||
   process.env.ELEVEA_STATUS_URL ||
-  ""; // coloque aqui o /exec do GAS se quiser fixo
+  ""; // se quiser, cole aqui diretamente o URL do seu GAS /exec
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -45,7 +44,7 @@ const handler: Handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_or_invalid_action" }) };
     }
 
-    // LOGIN (POST)
+    // LOGIN
     if (action === "login") {
       if (event.httpMethod !== "POST") {
         return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
@@ -62,14 +61,13 @@ const handler: Handler = async (event) => {
         return { statusCode: 401, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "invalid_credentials" }) };
       }
 
-      // consulta o "me" em seguida (opcional)
+      // consulta "me" (opcional)
       const me = await postToGas({ type: "user_me", email });
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: me.data?.user || { email } }) };
     }
 
-    // ME (GET ou POST)
+    // ME (aceita GET ?email=... ou POST {email})
     if (action === "me") {
-      // Aceita GET (?email=) ou POST {email}, para evitar quebrar o seu front.
       let email = "";
       if (event.httpMethod === "GET") {
         email = String(event.queryStringParameters?.email || "").trim().toLowerCase();
@@ -79,7 +77,6 @@ const handler: Handler = async (event) => {
       }
 
       if (!email) {
-        // Sem sessão server-side por enquanto — devolvemos ok:false silenciosamente
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
       }
 
