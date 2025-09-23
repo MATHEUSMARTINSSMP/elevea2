@@ -10,7 +10,7 @@ export default function ResetPage() {
   const qEmail = (q.get("email") || q.get("e") || "").toLowerCase();
   const qToken = q.get("token") || q.get("t") || "";
 
-  // Se veio por link, já entra em "confirm"
+  // Se vier pelo link do e-mail, já cai no passo de confirmação
   const [step, setStep] = useState<"request" | "confirm">(
     qEmail || qToken ? "confirm" : "request"
   );
@@ -29,13 +29,14 @@ export default function ResetPage() {
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
 
-  // Se a URL mudar (navegação interna), sincroniza
+  // Mantém sincronia se a URL mudar (ex.: navegação interna)
   useEffect(() => {
     if (qEmail || qToken) {
       setStep("confirm");
       setConfirmEmail(qEmail);
       setToken(qToken);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qEmail, qToken]);
 
   const explainError = (code?: string | null) => {
@@ -65,7 +66,7 @@ export default function ResetPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const out = await r.json().catch(() => ({}));
+      const out = await r.json();
       if (out?.ok) {
         setReqMsg(
           "Se existir uma conta com este e-mail, enviamos um link de redefinição. Verifique sua caixa de entrada e spam."
@@ -91,7 +92,7 @@ export default function ResetPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: confirmEmail, token, password }),
       });
-      const out = await r.json().catch(() => ({}));
+      const out = await r.json();
       if (out?.ok) {
         setConfirmMsg("Senha alterada com sucesso. Você já pode fazer login.");
       } else {
@@ -103,8 +104,6 @@ export default function ResetPage() {
       setConfirmLoading(false);
     }
   }
-
-  const cameWithToken = Boolean(qToken); // se veio pela URL
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16 }}>
@@ -134,15 +133,14 @@ export default function ResetPage() {
                 value={confirmEmail}
                 onChange={(e) => setConfirmEmail(e.target.value)}
                 placeholder="seu@exemplo.com"
-                style={{
-                  width: "100%", height: 40, borderRadius: 10,
-                  border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12
-                }}
+                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
               />
 
-              {/* Token oculto quando veio pela URL */}
-              {cameWithToken ? (
-                <input type="hidden" value={token} readOnly />
+              {/* Se o token veio na URL, não precisa exibir o input; mostramos apenas uma linha informativa */}
+              {token ? (
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 12px" }}>
+                  Token carregado automaticamente pelo link.
+                </p>
               ) : (
                 <>
                   <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Token</label>
@@ -151,10 +149,7 @@ export default function ResetPage() {
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     placeholder="xxxx-xxxx-xxxx..."
-                    style={{
-                      width: "100%", height: 40, borderRadius: 10,
-                      border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12
-                    }}
+                    style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
                   />
                 </>
               )}
@@ -167,10 +162,7 @@ export default function ResetPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="mínimo 6 caracteres"
-                style={{
-                  width: "100%", height: 40, borderRadius: 10,
-                  border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12
-                }}
+                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
               />
 
               <button
@@ -191,7 +183,7 @@ export default function ResetPage() {
             <hr style={{ margin: "16px 0", borderColor: "#eee" }} />
             <p style={{ fontSize: 13, color: "#6b7280" }}>
               Precisa pedir um novo link?{" "}
-              <a href="#" onClick={(e) => { e.preventDefault(); setStep("request"); }}>
+              <a href="#" onClick={(e)=>{e.preventDefault(); setStep("request");}}>
                 Clique aqui
               </a>
             </p>
@@ -214,10 +206,7 @@ export default function ResetPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@exemplo.com"
-                style={{
-                  width: "100%", height: 40, borderRadius: 10,
-                  border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12
-                }}
+                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
               />
 
               <button
