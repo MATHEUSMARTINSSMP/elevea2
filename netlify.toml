@@ -1,38 +1,36 @@
-# netlify.toml
-
 # === Build / Publish ===
 [build]
-  command = "npm run build"
-  publish = "dist"
+  command   = "npm run build"
+  publish   = "dist"
   functions = "netlify/functions"
 
 [build.environment]
-  CI = "false"
+  CI        = "false"
   NPM_FLAGS = "--legacy-peer-deps"
 
 # === Functions ===
 [functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
+  directory     = "netlify/functions"
+  node_bundler  = "esbuild"
 
 # === Redirects / Functions HTTP ===
 
-# Webhook do Mercado Pago
+# Webhook do Mercado Pago (exemplo)
 [[redirects]]
-  from = "/api/mp-webhook"
-  to   = "/.netlify/functions/mp-webhook"
+  from   = "/api/mp-webhook"
+  to     = "/.netlify/functions/mp-webhook"
   status = 200
 
 # SPA fallback (mantenha por último)
 [[redirects]]
-  from = "/*"
-  to   = "/index.html"
+  from   = "/*"
+  to     = "/index.html"
   status = 200
 
 # CORS para todas as Functions
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
-    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Origin  = "*"
     Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type, Authorization"
