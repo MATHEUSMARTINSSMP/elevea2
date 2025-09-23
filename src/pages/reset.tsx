@@ -5,6 +5,8 @@ function useQuery() {
   return useMemo(() => new URLSearchParams(window.location.search), []);
 }
 
+const LOGIN_URL = "/login";
+
 export default function ResetPage() {
   const q = useQuery();
   const qEmail = (q.get("email") || q.get("e") || "").toLowerCase();
@@ -25,6 +27,7 @@ export default function ResetPage() {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
+  const [redirectSecs, setRedirectSecs] = useState(5);
 
   useEffect(() => {
     if (qEmail || qToken) {
@@ -34,23 +37,35 @@ export default function ResetPage() {
     }
   }, [qEmail, qToken]);
 
-  // mensagens alinhadas ao GAS
+  // countdown para login após sucesso
+  useEffect(() => {
+    if (!confirmMsg) return;
+    const t = setInterval(() => setRedirectSecs((s) => {
+      if (s <= 1) {
+        clearInterval(t);
+        window.location.assign(LOGIN_URL);
+        return 0;
+      }
+      return s - 1;
+    }), 1000);
+    return () => clearInterval(t);
+  }, [confirmMsg]);
+
   const explainError = (code?: string | null) => {
     switch (code) {
       case "missing_email":
       case "missing_email_or_token":
       case "missing_email_or_token_or_password":
-        return "Informe seu e-mail e o token do e-mail.";
+        return "Informe seu e-mail (e token quando aplicável).";
       case "user_not_found":
         return "Se existir uma conta com este e-mail, enviaremos o link. Verifique sua caixa de entrada.";
       case "invalid_token":
       case "token_invalid":
-        return "Token inválido. Gere um novo link de redefinição.";
       case "token_expired":
-        return "Token expirado. Gere um novo link de redefinição.";
-      case "password_too_short":
+        return "Token inválido ou expirado. Gere um novo link de redefinição.";
       case "weak_password":
-        return "A nova senha deve ter pelo menos 8 caracteres.";
+      case "password_too_short":
+        return "A nova senha deve ter pelo menos 6–8 caracteres.";
       default:
         return "Não foi possível completar a operação. Tente novamente.";
     }
@@ -62,14 +77,13 @@ export default function ResetPage() {
     setReqErr(null);
     setReqMsg(null);
     try {
-      // usa o dispatcher que fala com o GAS e envia o e-mail
       const r = await fetch("/.netlify/functions/reset-dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const out = await r.json();
-      if (r.ok && out?.ok !== false) {
+      const out = await r.json().catch(() => ({}));
+      if (out?.ok) {
         setReqMsg("Se existir uma conta com este e-mail, enviamos um link de redefinição. Verifique sua caixa de entrada e spam.");
       } else {
         setReqErr(explainError(out?.error));
@@ -87,15 +101,14 @@ export default function ResetPage() {
     setConfirmErr(null);
     setConfirmMsg(null);
     try {
-      // o GAS só precisa de token + password; email é opcional e será ignorado
       const r = await fetch("/.netlify/functions/auth-reset-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password, email: confirmEmail }),
+        body: JSON.stringify({ email: confirmEmail, token, password }),
       });
-      const out = await r.json();
-      if (r.ok && out?.ok !== false) {
-        setConfirmMsg("Senha alterada com sucesso. Você já pode fazer login.");
+      const out = await r.json().catch(() => ({}));
+      if (out?.ok) {
+        setConfirmMsg("Senha alterada com sucesso! Redirecionando para o login…");
       } else {
         setConfirmErr(explainError(out?.error));
       }
@@ -112,85 +125,55 @@ export default function ResetPage() {
         {step === "confirm" ? (
           <>
             <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Definir nova senha</h1>
-            <p style={{ color: "#6b7280", marginBottom: 16 }}>
-              Cole o <b>e-mail</b> e o <b>token</b> recebidos e informe a nova senha.
-            </p>
+            <p style={{ color: "#6b7280", marginBottom: 16 }}>Cole o <b>e-mail</b> e o <b>token</b> recebidos e informe a nova senha.</p>
 
             <form onSubmit={handleConfirm}>
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>E-mail</label>
-              <input
-                type="email"
-                required
-                value={confirmEmail}
-                onChange={(e) => setConfirmEmail(e.target.value)}
-                placeholder="seu@exemplo.com"
-                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
-              />
+              <input type="email" required value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)} placeholder="seu@exemplo.com"
+                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
 
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Token</label>
-              <input
-                required
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="xxxx-xxxx-xxxx..."
-                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
-              />
+              <input required value={token} onChange={(e) => setToken(e.target.value)} placeholder="xxxx-xxxx-xxxx..."
+                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
 
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Nova senha</label>
-              <input
-                type="password"
-                required
-                minLength={8} // GAS exige 8+
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="mínimo 8 caracteres"
-                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
-              />
+              <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres"
+                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
 
-              <button
-                disabled={confirmLoading}
-                style={{ width: "100%", height: 42, borderRadius: 10, border: 0, background: "black", color: "white", fontWeight: 600, cursor: "pointer", opacity: confirmLoading ? 0.7 : 1 }}
-              >
+              <button disabled={confirmLoading} style={{ width: "100%", height: 42, borderRadius: 10, border: 0, background: "black", color: "white", fontWeight: 600, cursor: "pointer", opacity: confirmLoading ? 0.7 : 1 }}>
                 {confirmLoading ? "Salvando..." : "Salvar nova senha"}
               </button>
             </form>
 
-            {confirmMsg && <p style={{ color: "#065f46", marginTop: 12 }}>{confirmMsg}</p>}
+            {confirmMsg && (
+              <div style={{ color: "#065f46", marginTop: 12 }}>
+                <p>{confirmMsg}</p>
+                <button
+                  style={{ width: "100%", marginTop: 8, border: "1px solid #111", borderRadius: 10, height: 40, background: "#fff", cursor: "pointer" }}
+                  onClick={() => window.location.assign(LOGIN_URL)}
+                >
+                  Ir para o login agora
+                </button>
+                <p style={{ color: "#6b7280", fontSize: 12, marginTop: 6 }}>Redirecionando automaticamente em {redirectSecs}s…</p>
+              </div>
+            )}
             {confirmErr && <p style={{ color: "#b91c1c", marginTop: 12 }}>{confirmErr}</p>}
 
             <hr style={{ margin: "16px 0", borderColor: "#eee" }} />
-            <p style={{ fontSize: 13, color: "#6b7280" }}>
-              Precisa pedir um novo link?{" "}
-              <a href="#" onClick={(e)=>{e.preventDefault(); setStep("request");}}>
-                Clique aqui
-              </a>
-            </p>
-            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-              <a href="/">Voltar para a home</a>
-            </p>
+            <p style={{ fontSize: 13, color: "#6b7280" }}>Precisa pedir um novo link? <a href="#" onClick={(e)=>{e.preventDefault(); setStep("request");}}>Clique aqui</a></p>
+            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}><a href="/">Voltar para a home</a></p>
           </>
         ) : (
           <>
             <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Redefinir senha</h1>
-            <p style={{ color: "#6b7280", marginBottom: 16 }}>
-              Informe seu e-mail para enviarmos um link de redefinição.
-            </p>
+            <p style={{ color: "#6b7280", marginBottom: 16 }}>Informe seu e-mail para enviarmos um link de redefinição.</p>
 
             <form onSubmit={handleRequest}>
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>E-mail</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@exemplo.com"
-                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
-              />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@exemplo.com"
+                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
 
-              <button
-                disabled={reqLoading}
-                style={{ width: "100%", height: 42, borderRadius: 10, border: 0, background: "black", color: "white", fontWeight: 600, cursor: "pointer", opacity: reqLoading ? 0.7 : 1 }}
-              >
+              <button disabled={reqLoading} style={{ width: "100%", height: 42, borderRadius: 10, border: 0, background: "black", color: "white", fontWeight: 600, cursor: "pointer", opacity: reqLoading ? 0.7 : 1 }}>
                 {reqLoading ? "Enviando..." : "Enviar link"}
               </button>
             </form>
@@ -199,15 +182,8 @@ export default function ResetPage() {
             {reqErr && <p style={{ color: "#b91c1c", marginTop: 12 }}>{reqErr}</p>}
 
             <hr style={{ margin: "16px 0", borderColor: "#eee" }} />
-            <p style={{ fontSize: 13, color: "#6b7280" }}>
-              Já tem <b>token</b>?{" "}
-              <a href="#" onClick={(e) => { e.preventDefault(); setStep("confirm"); }}>
-                Definir nova senha
-              </a>
-            </p>
-            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-              <a href="/">Voltar para a home</a>
-            </p>
+            <p style={{ fontSize: 13, color: "#6b7280" }}>Já tem <b>token</b>? <a href="#" onClick={(e) => { e.preventDefault(); setStep("confirm"); }}>Definir nova senha</a></p>
+            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}><a href="/">Voltar para a home</a></p>
           </>
         )}
       </div>
