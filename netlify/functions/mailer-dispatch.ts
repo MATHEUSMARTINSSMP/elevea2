@@ -5,16 +5,28 @@ import type { Handler } from "@netlify/functions";
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const RESEND_FROM =
   process.env.RESEND_FROM ||
-  process.env.TEAM_EMAIL || // fallback opcional
-  "";
+  process.env.TEAM_EMAIL || "";
 
 // CORS básico
-const CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "POST,OPTIONS",
-  "access-control-allow-headers": "Content-Type,Authorization",
-  "content-type": "application/json",
-} as const;
+const allowOrigin = (origin?: string) => {
+  if (!origin) return "*";
+  try {
+    const u = new URL(origin);
+    if (
+      u.hostname === "localhost" ||
+      u.hostname.endsWith("netlify.app") ||
+      u.hostname.endsWith("eleveaagencia.netlify.app")
+    ) return origin;
+  } catch {}
+  return "*";
+};
+
+const CORS_BASE = (origin: string) => ({
+  "Access-Control-Allow-Origin": origin,
+  "Access-Control-Allow-Methods": "POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
+  "Content-Type": "application/json",
+});
 
 /** Templates utilitários */
 function tplReset(link: string) {
@@ -75,26 +87,28 @@ async function sendWithResend(args: { to: string | string[]; subject: string; ht
 }
 
 export const handler: Handler = async (event) => {
+  const origin = allowOrigin(event.headers?.origin);
+
   try {
     // Preflight
     if (event.httpMethod === "OPTIONS") {
-      return { statusCode: 204, headers: CORS, body: "" };
+      return { statusCode: 204, headers: CORS_BASE(origin), body: "" };
     }
     if (event.httpMethod !== "POST") {
-      return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
+      return { statusCode: 405, headers: CORS_BASE(origin), body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
     }
 
     const body = event.body ? JSON.parse(event.body) : {};
     const template = String(body.template || "raw");
     const to = body.to;
-    if (!to) return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_to" }) };
+    if (!to) return { statusCode: 400, headers: CORS_BASE(origin), body: JSON.stringify({ ok: false, error: "missing_to" }) };
 
     let subject = String(body.subject || "");
     let html = String(body.html || "");
 
     if (template === "reset") {
       const link = String(body.link || "");
-      if (!link) return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_link" }) };
+      if (!link) return { statusCode: 400, headers: CORS_BASE(origin), body: JSON.stringify({ ok: false, error: "missing_link" }) };
       subject = "Elevea • Redefinição de senha";
       html = tplReset(link);
     } else if (template === "welcome") {
@@ -106,8 +120,8 @@ export const handler: Handler = async (event) => {
     // template "raw" mantém subject/html do body
 
     await sendWithResend({ to, subject, html });
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
+    return { statusCode: 200, headers: CORS_BASE(origin), body: JSON.stringify({ ok: true }) };
   } catch (err: any) {
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(err?.message || err) }) };
+    return { statusCode: 500, headers: CORS_BASE(origin), body: JSON.stringify({ ok: false, error: String(err?.message || err) }) };
   }
 };
