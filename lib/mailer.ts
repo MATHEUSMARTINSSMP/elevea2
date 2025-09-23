@@ -3,13 +3,6 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const RESEND_FROM =
   process.env.RESEND_FROM || process.env.TEAM_EMAIL || "no-reply@eleveaagencia.com.br";
 
-if (!RESEND_API_KEY) {
-  console.warn("[mailer] RESEND_API_KEY ausente.");
-}
-if (!RESEND_FROM) {
-  console.warn("[mailer] RESEND_FROM ausente.");
-}
-
 export type SendMailInput = {
   to: string | string[];
   subject: string;
