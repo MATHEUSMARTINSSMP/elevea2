@@ -18,12 +18,20 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const RESEND_FROM    = process.env.RESEND_FROM    || process.env.TEAM_EMAIL || "";
 const DASH_URL       = process.env.DASH_URL       || process.env.VITE_DASH_URL || "https://eleveaagencia.netlify.app";
 
-const CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "POST,OPTIONS",
-  "access-control-allow-headers": "Content-Type,Authorization",
-  "content-type": "application/json",
-} as const;
+const allowOrigin = (origin?: string) => {
+  if (!origin) return "*";
+  try {
+    const u = new URL(origin);
+    if (
+      u.hostname === "localhost" ||
+      u.hostname.endsWith("netlify.app") ||
+      u.hostname.endsWith("eleveaagencia.netlify.app")
+    ) {
+      return origin;
+    }
+  } catch {}
+  return "*";
+};
 
 function ensureExecUrl(u: string) {
   return u.includes("/exec") ? u : u.replace(/\/+$/, "") + "/exec";
@@ -59,23 +67,29 @@ function htmlTemplate(resetLink: string, token?: string) {
 }
 
 export const handler: Handler = async (event) => {
+  const origin = allowOrigin(event.headers?.origin);
+
   try {
     // CORS preflight
     if (event.httpMethod === "OPTIONS") {
-      return { statusCode: 204, headers: CORS, body: "" };
+      return { statusCode: 204, headers: {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+      }, body: "" };
     }
     if (event.httpMethod !== "POST") {
-      return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
+      return { statusCode: 405, headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
     }
 
-    if (!GAS_BASE)        return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok:false, error:"missing_gas_url" }) };
-    if (!RESEND_API_KEY)  return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok:false, error:"missing_resend_api_key" }) };
-    if (!RESEND_FROM)     return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok:false, error:"missing_resend_from" }) };
+    if (!GAS_BASE)        return { statusCode: 500, headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ ok:false, error:"missing_gas_url" }) };
+    if (!RESEND_API_KEY)  return { statusCode: 500, headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ ok:false, error:"missing_resend_api_key" }) };
+    if (!RESEND_FROM)     return { statusCode: 500, headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ ok:false, error:"missing_resend_from" }) };
 
     const body = event.body ? JSON.parse(event.body) : {};
     const email = String(body.email || "").trim().toLowerCase();
     if (!email) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok:false, error:"missing_email" }) };
+      return { statusCode: 400, headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ ok:false, error:"missing_email" }) };
     }
 
     // 1) pede ao GAS gerar o token
@@ -90,7 +104,7 @@ export const handler: Handler = async (event) => {
     if (!resp.ok || data?.ok === false) {
       return {
         statusCode: resp.status || 502,
-        headers: CORS,
+        headers: { "Access-Control-Allow-Origin": origin },
         body: JSON.stringify({ ok:false, error: data?.error || "gas_error", data })
       };
     }
@@ -119,11 +133,11 @@ export const handler: Handler = async (event) => {
 
     const j2 = await r2.json().catch(() => ({}));
     if (!r2.ok) {
-      return { statusCode: 502, headers: CORS, body: JSON.stringify({ ok:false, error:"resend_error", details:j2 }) };
+      return { statusCode: 502, headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ ok:false, error:"resend_error", details:j2 }) };
     }
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok:true, message:"reset_email_sent" }) };
+    return { statusCode: 200, headers: { "Access-Control-Allow-Origin": origin, "Content-Type":"application/json" }, body: JSON.stringify({ ok:true, message:"reset_email_sent" }) };
   } catch (err: any) {
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok:false, error: String(err?.message || err) }) };
+    return { statusCode: 500, headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ ok:false, error: String(err?.message || err) }) };
   }
 };
