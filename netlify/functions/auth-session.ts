@@ -6,7 +6,7 @@ const GAS_BASE =
   process.env.ELEVEA_STATUS_URL ||
   "";
 
-/** Headers com capitalização “padrão” */
+/** Headers com capitalização padrão */
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
@@ -14,17 +14,15 @@ const CORS = {
   "Content-Type": "application/json",
 } as const;
 
-/** helper para montar URL /exec */
 function ensureExecUrl(u: string) {
   return u && u.includes("/exec") ? u : (u ? u.replace(/\/+$/, "") + "/exec" : "");
 }
 
-/** helper para responder sempre com Response */
 function json(status: number, data: unknown) {
   return new Response(JSON.stringify(data), { status, headers: CORS });
 }
 
-/** chama o GAS e normaliza a resposta */
+/** Chama o GAS e normaliza a resposta */
 async function postToGas(body: any) {
   const url = ensureExecUrl(GAS_BASE);
   if (!url) throw new Error("missing_gas_url");
@@ -42,6 +40,28 @@ async function postToGas(body: any) {
   return { ok: resp.ok && data?.ok !== false, status: resp.status, data };
 }
 
+/** Extrai a ação de forma resiliente (rawUrl > queryStringParameters > body.action) */
+function getAction(event: Parameters<Handler>[0]): string {
+  try {
+    if (event.rawUrl) {
+      const u = new URL(event.rawUrl);
+      const a = (u.searchParams.get("action") || "").toLowerCase();
+      if (a) return a;
+    }
+  } catch { /* ignore */ }
+
+  const q = (event.queryStringParameters?.action || "").toLowerCase();
+  if (q) return q;
+
+  try {
+    const body = event.body ? JSON.parse(event.body) : {};
+    const b = (body.action || "").toLowerCase();
+    if (b) return b;
+  } catch { /* ignore */ }
+
+  return "";
+}
+
 const handler: Handler = async (event) => {
   try {
     // Preflight
@@ -49,7 +69,8 @@ const handler: Handler = async (event) => {
       return new Response("", { status: 204, headers: CORS });
     }
 
-    const action = (event.queryStringParameters?.action || "").toLowerCase();
+    const action = getAction(event);
+
     if (!["login", "me", "logout"].includes(action)) {
       return json(400, { ok: false, error: "missing_or_invalid_action" });
     }
@@ -88,7 +109,6 @@ const handler: Handler = async (event) => {
       }
 
       if (!email) {
-        // sem cookie/sessão, devolve ok:false para o front decidir
         return json(200, { ok: false });
       }
 
