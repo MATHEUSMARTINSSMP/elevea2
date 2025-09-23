@@ -1,124 +1,89 @@
-// netlify/functions/auth-session.js  (Edge)
+// netlify/functions/auth-session.ts
+import type { Handler } from "@netlify/functions";
 
-const readEnv = (k) =>
-  (typeof Netlify !== "undefined" && Netlify?.env?.get?.(k)) ||
-  (typeof process !== "undefined" && process.env?.[k]) ||
-  "";
+const GAS_BASE =
+  process.env.ELEVEA_GAS_URL ||
+  process.env.ELEVEA_STATUS_URL ||
+  ""; // cole o URL do seu WebApp do GAS se quiser deixar fixo
 
-const APPS_WEBAPP_URL  = readEnv("VITE_APPS_WEBAPP_URL"); // GAS /exec
-const ADMIN_DASH_TOKEN = readEnv("ADMIN_DASH_TOKEN");
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET,POST,OPTIONS",
+  "access-control-allow-headers": "Content-Type,Authorization",
+  "content-type": "application/json",
+} as const;
 
-function json(body, status = 200, extra = {}) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*",
-      ...extra,
-    },
-  });
+function ensureExecUrl(u: string) {
+  return u && u.includes("/exec") ? u : (u ? u.replace(/\/+$/, "") + "/exec" : "");
 }
-function noContent(extra = {}) { return new Response("", { status: 204, headers: extra }); }
-function setCookie(name, val, maxAgeSec, extra = "") {
-  let c = `${name}=${val}; Path=/; HttpOnly; SameSite=Lax${extra ? `; ${extra}` : ""}`;
-  if (maxAgeSec != null) c += `; Max-Age=${maxAgeSec}`;
-  return c;
-}
-function getCookie(req, key) {
-  const s = req.headers.get("cookie") || "";
-  const m = s.match(new RegExp(`(?:^|; )${key}=([^;]+)`));
-  return m ? decodeURIComponent(m[1]) : "";
-}
-async function hmac(secret, msg) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(msg));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,"0")).join("");
-}
-const b64u = s => btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-const b64uJSON = o => b64u(JSON.stringify(o));
-async function makeToken(payload) {
-  const h = b64uJSON({ alg:"HS256", typ:"JWT" });
-  const p = b64uJSON(payload);
-  const s = await hmac(ADMIN_DASH_TOKEN, `${h}.${p}`);
-  return `${h}.${p}.${s}`;
-}
-async function verifyToken(tok) {
-  const [h,p,s] = (tok || "").split(".");
-  if (!h || !p || !s) return null;
-  const exp = await hmac(ADMIN_DASH_TOKEN, `${h}.${p}`);
-  if (exp !== s) return null;
-  try { return JSON.parse(atob(p.replace(/-/g,"+").replace(/_/g,"/"))); } catch { return null; }
-}
-async function gasPost(body) {
-  if (!APPS_WEBAPP_URL) return { ok:false, error:"VITE_APPS_WEBAPP_URL ausente" };
-  const r = await fetch(APPS_WEBAPP_URL, {
+
+async function postToGas(pathBody: any) {
+  const url = ensureExecUrl(GAS_BASE);
+  if (!url) throw new Error("missing_gas_url");
+
+  const r = await fetch(url, {
     method: "POST",
-    headers: { "content-type":"application/json" },
-    body: JSON.stringify(body),
-    cf: { cacheTtl: 0 }
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(pathBody),
   });
-  return r.json();
+
+  const txt = await r.text();
+  let data: any = {};
+  try { data = JSON.parse(txt || "{}"); } catch { data = { ok: false, raw: txt }; }
+
+  return { ok: r.ok && data?.ok !== false, status: r.status, data };
 }
 
-export default async function handler(req) {
-  const url = new URL(req.url);
-  const action = (url.searchParams.get("action") || "").toLowerCase();
+export const handler: Handler = async (event) => {
+  try {
+    if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 204, headers: CORS, body: "" };
+    }
 
-  // CORS
-  if (req.method === "OPTIONS") {
-    return noContent({
-      "access-control-allow-origin": "*",
-      "access-control-allow-headers": "*",
-      "access-control-allow-methods": "GET,POST,OPTIONS",
-    });
+    const action = (event.queryStringParameters?.action || "").toLowerCase();
+    if (!["login", "me", "logout"].includes(action)) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_or_invalid_action" }) };
+    }
+
+    if (event.httpMethod !== "POST" && action === "login") {
+      return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
+    }
+
+    // LOGIN
+    if (action === "login") {
+      const body = event.body ? JSON.parse(event.body) : {};
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "").trim();
+      if (!email || !password) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_fields" }) };
+      }
+      const r = await postToGas({ type: "user_login", email, password });
+      if (!r.ok) {
+        return { statusCode: 401, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "invalid_credentials" }) };
+      }
+      // opcional: consultar user_me logo após
+      const me = await postToGas({ type: "user_me", email });
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: me.data?.user || { email } }) };
+    }
+
+    // ME
+    if (action === "me") {
+      // aqui, como não temos sessão no server, o front deve mandar o e-mail (ou você adapta para cookie futuramente)
+      const body = event.body ? JSON.parse(event.body) : {};
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email) return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_email" }) };
+      const r = await postToGas({ type: "user_me", email });
+      if (!r.ok) return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: r.data.user }) };
+    }
+
+    // LOGOUT “stateless”
+    if (action === "logout") {
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
+    }
+
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "invalid_action" }) };
+  } catch (e: any) {
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(e?.message || e) }) };
   }
-
-  if (action === "ping") {
-    return json({ ok:true, runtime:"edge", now: Date.now(), hasEnv: !!APPS_WEBAPP_URL });
-  }
-
-  if (action === "login" && req.method === "POST") {
-    if (!APPS_WEBAPP_URL) return json({ ok:false, error:"VITE_APPS_WEBAPP_URL ausente" }, 500);
-    if (!ADMIN_DASH_TOKEN) return json({ ok:false, error:"ADMIN_DASH_TOKEN ausente" }, 500);
-
-    const { email, password } = await req.json();
-    const emailLc = String(email||"").trim().toLowerCase();
-    if (!emailLc || !password) return json({ ok:false, error:"E-mail e senha obrigatórios" }, 400);
-
-    // 1) valida credenciais no GAS
-    const rLogin = await gasPost({ type:"user_login", email: emailLc, password });
-    if (!rLogin?.ok) return json({ ok:false, error:"Credenciais inválidas" }, 401);
-
-    // 2) lê perfil no GAS
-    const rMe = await gasPost({ type:"user_me", email: emailLc });
-    if (!rMe?.ok) return json({ ok:false, error:"Usuário não encontrado" }, 401);
-
-    const role = String(rMe.role||"").toLowerCase();
-    const siteSlug = role === "admin" ? null : (rMe.siteSlug || null);
-    const payload = { email: emailLc, role, siteSlug, plan: rMe.plan || "essential", ts: Date.now() };
-
-    const token = await makeToken(payload);
-    const cookie = setCookie("elevea_sess", token, 60*60*24*30, "Secure"); // 30d
-
-    return json({ ok:true, user: payload }, 200, { "set-cookie": cookie });
-  }
-
-  if (action === "logout") {
-    const cookie = setCookie("elevea_sess", "", 0, "Secure");
-    return json({ ok:true }, 200, { "set-cookie": cookie });
-  }
-
-  if (action === "me") {
-    const raw = getCookie(req, "elevea_sess");
-    if (!raw) return json({ ok:false, error:"Sem sessão" }, 401);
-    const payload = await verifyToken(raw);
-    if (!payload) return json({ ok:false, error:"Sessão inválida" }, 401);
-    return json({ ok:true, user: payload });
-  }
-
-  return json({ ok:false, error:`Ação inválida: ${action}` }, 400);
-}
-
-export const config = { runtime: "edge" };
+};
