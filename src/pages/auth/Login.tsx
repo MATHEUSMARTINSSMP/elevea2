@@ -1,4 +1,4 @@
-// src/pages/auth/Login.tsx (ou onde você mantém a tela de login)
+// src/pages/auth/Login.tsx
 import React, { useEffect, useMemo, useState } from "react";
 
 /** Usa SEMPRE a mesma função edge: auth-session */
@@ -6,7 +6,7 @@ const AUTH_BASE = "/.netlify/functions/auth-session";
 const LOGIN_URL = `${AUTH_BASE}?action=login`;
 const ME_URL    = `${AUTH_BASE}?action=me`;
 
-/** Dispatcher que fala com o GAS/Resend */
+/** Dispatcher que fala com o GAS/Resend (reset de senha) */
 const RESET_URL = "/.netlify/functions/reset-dispatch";
 
 type ApiResp = {
@@ -14,7 +14,6 @@ type ApiResp = {
   error?: string;
   message?: string;
   user?: { email: string; role: "admin" | "client"; siteSlug?: string };
-  link?: string; // opcional em ambiente de teste
 };
 
 export default function LoginPage() {
@@ -26,6 +25,7 @@ export default function LoginPage() {
 
   const [forgotOpen, setForgotOpen]   = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   // captura ?next=/client/... para pós-login
   const next = useMemo(() => {
@@ -103,10 +103,10 @@ export default function LoginPage() {
         return { ok: false, error: "email_invalido" };
       }
 
-      // ⚠️ AQUI O AJUSTE: action: "request" (e NÃO 'type: password_reset_request')
       const r = await fetch(RESET_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // o reset-dispatch só precisa do email; manter "action" não atrapalha
         body: JSON.stringify({ action: "request", email }),
       });
 
@@ -124,8 +124,12 @@ export default function LoginPage() {
   async function doForgot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErr(null); setMsg(null);
+    setForgotLoading(true);
 
     const res = await handleSendReset(forgotEmail);
+
+    setForgotLoading(false);
+
     if (!res.ok) {
       setErr(res.error || "Falha ao enviar o link");
       return;
@@ -161,7 +165,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-black text-white rounded-xl py-3 hover:bg-gray-800"
+            className="w-full bg-black text-white rounded-xl py-3 hover:bg-gray-800 disabled:opacity-60"
           >
             {loading ? "Entrando..." : "Entrar"}
           </button>
@@ -189,12 +193,22 @@ export default function LoginPage() {
                 onChange={(e)=>setForgotEmail(e.target.value)}
                 className="w-full border rounded-xl px-4 py-3"
                 required
+                disabled={forgotLoading}
               />
               <div className="flex gap-2">
-                <button type="submit" className="bg-black text-white rounded-xl px-4 py-2">
-                  Enviar link
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="bg-black text-white rounded-xl px-4 py-2 disabled:opacity-60"
+                >
+                  {forgotLoading ? "Enviando..." : "Enviar link"}
                 </button>
-                <button type="button" className="border rounded-xl px-4 py-2" onClick={()=>setForgotOpen(false)}>
+                <button
+                  type="button"
+                  className="border rounded-xl px-4 py-2"
+                  onClick={()=>setForgotOpen(false)}
+                  disabled={forgotLoading}
+                >
                   Fechar
                 </button>
               </div>
