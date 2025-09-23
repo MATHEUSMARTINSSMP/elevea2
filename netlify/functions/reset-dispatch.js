@@ -1,141 +1,109 @@
-// netlify/functions/reset-dispatch.js
-// Reset de senha via Apps Script + Resend.
-// Tipos:
-//  - POST { type:"password_reset_request", email }
-//  - POST { type:"password_reset_confirm", email, token, password }
-//
-// ENVs:
-//  - VITE_APPS_WEBAPP_URL (ou SHEETS_WEBAPP_URL): URL do GAS (/exec)
-//  - SITE_BASE_URL: ex. https://eleveaagencia.netlify.app
-//  - RESEND_API_KEY, RESEND_FROM: envio de e-mail
+// netlify/functions/reset-dispatch.ts
+import type { Handler } from "@netlify/functions";
 
-const APPS_URL =
-  process.env.VITE_APPS_WEBAPP_URL || process.env.SHEETS_WEBAPP_URL || "";
+const GAS_BASE =
+  process.env.ELEVEA_GAS_URL ||
+  process.env.ELEVEA_STATUS_URL || // fallback
+  ""; // <- NÃO deixe vazio em produção. Configure no Netlify.
 
-// Função para construir URL baseada no siteSlug do cliente
-function buildSiteUrl(siteSlug) {
-  if (!siteSlug) {
-    // Fallback para URL da agência se não houver siteSlug
-    return process.env.SITE_BASE_URL || "https://eleveaagencia.netlify.app";
-  }
-  // Construir URL dinâmica: SITELUG.netlify.app
-  return `https://${siteSlug.toLowerCase()}.netlify.app`;
-}
-const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const RESEND_FROM = process.env.RESEND_FROM || "";
-const IS_PROD =
-  (process.env.CONTEXT || process.env.NODE_ENV) === "production" &&
-  !process.env.NETLIFY_LOCAL;
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST,OPTIONS",
+  "access-control-allow-headers": "Content-Type,Authorization",
+  "content-type": "application/json",
+} as const;
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Cache-Control": "no-store",
-  "Content-Type": "application/json",
-};
-
-export const handler = async (event) => {
+export const handler: Handler = async (event) => {
   try {
+    // CORS preflight
     if (event.httpMethod === "OPTIONS") {
-      return { statusCode: 204, headers: cors, body: "" };
+      return { statusCode: 204, headers: CORS, body: "" };
     }
+
     if (event.httpMethod !== "POST") {
-      return resp(405, { ok: false, error: "method_not_allowed" });
-    }
-    if (!APPS_URL) {
-      return resp(500, { ok: false, error: "missing_VITE_APPS_WEBAPP_URL" });
+      return {
+        statusCode: 405,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, error: "method_not_allowed" }),
+      };
     }
 
-    const body = JSON.parse(event.body || "{}");
-    const type = String(body.type || "");
-    if (!type) return resp(400, { ok: false, error: "missing_type" });
+    if (!GAS_BASE) {
+      return {
+        statusCode: 500,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, error: "missing_gas_url" }),
+      };
+    }
 
-    // chama GAS
-    const gr = await fetch(APPS_URL, {
+    // Espera { email: string }
+    let email = "";
+    try {
+      const body = event.body ? JSON.parse(event.body) : {};
+      email = String(body.email || "").trim();
+    } catch {
+      /* ignore */
+    }
+
+    if (!email) {
+      return {
+        statusCode: 400,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, error: "missing_email" }),
+      };
+    }
+
+    // Monta chamada ao GAS /exec (rota password_reset_request)
+    const url = GAS_BASE.includes("/exec")
+      ? GAS_BASE
+      : GAS_BASE.replace(/\/+$/, "") + "/exec";
+
+    const payload = {
+      type: "password_reset_request",
+      email,
+    };
+
+    const resp = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
     });
-    const gdata = await gr.json().catch(() => ({}));
-    if (!gr.ok || gdata.ok === false) {
-      return resp(gr.status || 500, gdata.ok === false ? gdata : { ok: false, error: "upstream_error" });
+
+    // Pode retornar 200 com {ok:true} ou 4xx/5xx com json de erro
+    const text = await resp.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text || "{}");
+    } catch {
+      data = { raw: text };
     }
 
-    // solicitar reset → gera token e envia e-mail
-    if (type === "password_reset_request") {
-      const email = String(body.email || "");
-      const siteSlug = String(body.siteSlug || "");
-      const token = gdata.token || "";
-      
-      // DEBUG: Logs para diagnosticar
-      console.log("🔍 DEBUG RESET SENHA:");
-      console.log("- Email:", email);
-      console.log("- SiteSlug recebido:", siteSlug);
-      console.log("- Token:", token ? "✅ Presente" : "❌ Ausente");
-      
-      if (!email || !token) {
-        return resp(500, { ok: false, error: "missing_email_or_token" });
-      }
-
-      // Construir URL dinamicamente baseada no siteSlug
-      const SITE_BASE_URL = buildSiteUrl(siteSlug);
-      const link = `${SITE_BASE_URL}/reset?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
-      
-      console.log("- URL construída:", SITE_BASE_URL);
-      console.log("- Link completo:", link);
-
-      if (RESEND_API_KEY && RESEND_FROM) {
-        const r = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: RESEND_FROM,
-            to: email,
-            subject: "Redefinição de senha - Elevea",
-            html: `
-              <div style="font-family:sans-serif;line-height:1.5;">
-                <h2>Redefinição de Senha</h2>
-                <p>Olá,</p>
-                <p>Recebemos um pedido para redefinir a sua senha.</p>
-                <p>
-                  <a href="${link}" style="display:inline-block;padding:.6rem 1rem;background:#111;color:#fff;border-radius:8px;text-decoration:none;">Definir nova senha</a>
-                </p>
-                <p style="word-break:break-all;color:#555;">${link}</p>
-                <p style="color:#888;font-size:12px;">Se você não solicitou, ignore este e-mail.</p>
-              </div>
-            `,
-          }),
-        });
-
-        if (!r.ok) {
-          const txt = await r.text();
-          console.error("Resend failed:", txt);
-          return resp(200, { ok: true, sent: false, ...(IS_PROD ? {} : { debugLink: link }) });
-        }
-
-        return resp(200, { ok: true, sent: true, ...(IS_PROD ? {} : { debugLink: link }) });
-      }
-
-      // Sem Resend configurado → modo dev
-      return resp(200, { ok: true, sent: false, ...(IS_PROD ? {} : { debugLink: link }) });
+    if (!resp.ok) {
+      return {
+        statusCode: resp.status,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: false,
+          error: data?.error || "gas_error",
+          status: resp.status,
+          data,
+        }),
+      };
     }
 
-    // confirmar reset → só repassa a resposta do GAS
-    if (type === "password_reset_confirm") {
-      return resp(200, gdata);
-    }
-
-    return resp(400, { ok: false, error: "unknown_type" });
-  } catch (err) {
-    console.error(err);
-    return resp(500, { ok: false, error: String(err) });
+    // Normaliza um “ok:true”
+    return {
+      statusCode: 200,
+      headers: CORS,
+      body: JSON.stringify(
+        data?.ok ? data : { ok: true, message: "reset_email_sent" }
+      ),
+    };
+  } catch (err: any) {
+    return {
+      statusCode: 500,
+      headers: CORS,
+      body: JSON.stringify({ ok: false, error: String(err?.message || err) }),
+    };
   }
 };
-
-function resp(statusCode, body) {
-  return { statusCode, headers: cors, body: JSON.stringify(body) };
-}
