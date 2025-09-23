@@ -1,7 +1,14 @@
 // netlify/functions/mailer-dispatch.ts
 import type { Handler } from "@netlify/functions";
-import { sendMail } from "../lib/mailer";
 
+/** Lê env com fallback seguro */
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const RESEND_FROM =
+  process.env.RESEND_FROM ||
+  process.env.TEAM_EMAIL || // fallback opcional
+  "";
+
+// CORS básico
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST,OPTIONS",
@@ -9,6 +16,7 @@ const CORS = {
   "content-type": "application/json",
 } as const;
 
+/** Templates utilitários */
 function tplReset(link: string) {
   return `
   <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6">
@@ -32,9 +40,46 @@ function tplWelcome(name: string, dashboardUrl: string) {
   </div>`.trim();
 }
 
+/** Envia via REST do Resend (sem dependência @resend) */
+async function sendWithResend(args: { to: string | string[]; subject: string; html: string }) {
+  if (!RESEND_API_KEY || !RESEND_FROM) {
+    throw new Error("missing_resend_env (RESEND_API_KEY/RESEND_FROM)");
+  }
+
+  const payload = {
+    from: RESEND_FROM,
+    to: Array.isArray(args.to) ? args.to : [args.to],
+    subject: args.subject,
+    html: args.html,
+  };
+
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await resp.text();
+  let data: any = {};
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+  if (!resp.ok) {
+    const err = data?.error?.message || data?.message || "resend_error";
+    throw new Error(`${err} (status ${resp.status})`);
+  }
+
+  return data;
+}
+
 export const handler: Handler = async (event) => {
   try {
-    if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: CORS, body: "" };
+    // Preflight
+    if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 204, headers: CORS, body: "" };
+    }
     if (event.httpMethod !== "POST") {
       return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
     }
@@ -47,7 +92,6 @@ export const handler: Handler = async (event) => {
     let subject = String(body.subject || "");
     let html = String(body.html || "");
 
-    // templates prontos:
     if (template === "reset") {
       const link = String(body.link || "");
       if (!link) return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_link" }) };
@@ -55,12 +99,13 @@ export const handler: Handler = async (event) => {
       html = tplReset(link);
     } else if (template === "welcome") {
       const name = String(body.name || "");
-      const dash = String(body.dashboardUrl || "");
+      const dash = String(body.dashboardUrl || "https://eleveaagencia.netlify.app/dashboard");
       subject = "Bem-vindo(a) à Elevea";
-      html = tplWelcome(name, dash || "https://eleveaagencia.netlify.app/dashboard");
-    } // else: template "raw" usa subject/html enviados
+      html = tplWelcome(name, dash);
+    }
+    // template "raw" mantém subject/html do body
 
-    await sendMail({ to, subject, html });
+    await sendWithResend({ to, subject, html });
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
   } catch (err: any) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(err?.message || err) }) };
