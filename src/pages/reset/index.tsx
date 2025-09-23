@@ -1,160 +1,264 @@
-import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+// src/pages/reset/index.tsx
+import React, { useMemo, useState } from "react";
 
-type FetchJson<T> = (url: string, init?: RequestInit) => Promise<T>;
-const fetchJson: FetchJson<any> = async (url, init) => {
-  const r = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  const text = await r.text();
-  let data: any = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-  if (!r.ok) throw Object.assign(new Error(data?.error || r.statusText), { status: r.status, data });
-  return data;
-};
-
-function RequestResetForm() {
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<null | { ok: boolean; message: string }>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    if (!email.trim()) {
-      setErr("Informe um e-mail válido.");
-      return;
-    }
-    setBusy(true);
-    try {
-      // chama Netlify Function
-      await fetchJson("/.netlify/functions/auth-reset", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      });
-      setDone({ ok: true, message: "Se este e-mail existir, enviaremos um link para redefinição." });
-    } catch (e: any) {
-      setErr(e?.data?.error || e?.message || "Falha ao solicitar reset.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (done?.ok) {
-    return (
-      <div className="max-w-md mx-auto bg-card border border-border rounded-xl p-6 text-center">
-        <h2 className="text-xl font-semibold mb-2">Verifique seu e-mail</h2>
-        <p className="text-muted-foreground">{done.message}</p>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="max-w-md mx-auto bg-card border border-border rounded-xl p-6">
-      <h2 className="text-xl font-semibold mb-4">Reset de Senha</h2>
-      <label className="block text-sm mb-1">E-mail</label>
-      <input
-        type="email"
-        className="w-full border border-border rounded-lg px-3 h-11 bg-background"
-        placeholder="seuemail@dominio.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
-      <div className="mt-4 flex gap-2">
-        <button
-          type="submit"
-          disabled={busy}
-          className="inline-flex items-center justify-center h-11 px-4 rounded-lg text-white bg-black hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? "Enviando..." : "Enviar link"}
-        </button>
-        <a href="/login" className="h-11 px-4 rounded-lg border border-border inline-flex items-center">
-          Voltar ao login
-        </a>
-      </div>
-      <p className="text-xs text-muted-foreground mt-3">
-        Você receberá um link para criar uma nova senha.
-      </p>
-    </form>
-  );
-}
-
-function ConfirmResetForm({ token }: { token: string }) {
-  const nav = useNavigate();
-  const [pwd, setPwd] = useState("");
-  const [pwd2, setPwd2] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState(false);
-
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    if (pwd.length < 8) return setErr("A senha deve ter ao menos 8 caracteres.");
-    if (pwd !== pwd2) return setErr("As senhas não conferem.");
-    setBusy(true);
-    try {
-      await fetchJson("/.netlify/functions/auth-reset-confirm", {
-        method: "POST",
-        body: JSON.stringify({ token, password: pwd }),
-      });
-      setOk(true);
-      setTimeout(() => nav("/login"), 1200);
-    } catch (e: any) {
-      setErr(e?.data?.error || e?.message || "Falha ao redefinir senha.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (ok) {
-    return (
-      <div className="max-w-md mx-auto bg-card border border-border rounded-xl p-6 text-center">
-        <h2 className="text-xl font-semibold mb-2">Senha alterada!</h2>
-        <p className="text-muted-foreground">Redirecionando para o login…</p>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="max-w-md mx-auto bg-card border border-border rounded-xl p-6">
-      <h2 className="text-xl font-semibold mb-4">Definir nova senha</h2>
-      <label className="block text-sm mb-1">Nova senha</label>
-      <input
-        type="password"
-        className="w-full border border-border rounded-lg px-3 h-11 bg-background"
-        value={pwd}
-        onChange={(e) => setPwd(e.target.value)}
-        placeholder="••••••••"
-      />
-      <label className="block text-sm mb-1 mt-3">Confirmar senha</label>
-      <input
-        type="password"
-        className="w-full border border-border rounded-lg px-3 h-11 bg-background"
-        value={pwd2}
-        onChange={(e) => setPwd2(e.target.value)}
-        placeholder="••••••••"
-      />
-      {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
-      <button
-        type="submit"
-        disabled={busy}
-        className="mt-4 inline-flex items-center justify-center h-11 px-4 rounded-lg text-white bg-black hover:opacity-90 disabled:opacity-50"
-      >
-        {busy ? "Salvando..." : "Salvar nova senha"}
-      </button>
-    </form>
-  );
+function useQuery() {
+  return useMemo(() => new URLSearchParams(window.location.search), []);
 }
 
 export default function ResetPage() {
-  const { token } = useParams<{ token?: string }>();
+  const q = useQuery();
+  const initialEmail = (q.get("email") || q.get("e") || "").toLowerCase();
+  const initialToken = q.get("token") || q.get("t") || "";
+
+  const [step, setStep] = useState<"request" | "confirm">(
+    initialToken && initialEmail ? "confirm" : "request"
+  );
+
+  // REQUEST (manda e-mail)
+  const [email, setEmail] = useState(initialEmail);
+  const [reqLoading, setReqLoading] = useState(false);
+  const [reqMsg, setReqMsg] = useState<string | null>(null);
+  const [reqErr, setReqErr] = useState<string | null>(null);
+
+  // CONFIRM (define senha)
+  const [confirmEmail, setConfirmEmail] = useState(initialEmail);
+  const [token, setToken] = useState(initialToken);
+  const [password, setPassword] = useState("");
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+  const [confirmErr, setConfirmErr] = useState<string | null>(null);
+
+  const explainError = (code?: string | null) => {
+    switch (code) {
+      case "missing_email":
+      case "missing_email_or_token":
+        return "Informe seu e-mail (e token quando aplicável).";
+      case "user_not_found":
+        return "Se existir uma conta com este e-mail, enviaremos o link. Verifique sua caixa de entrada.";
+      case "invalid_token":
+        return "Token inválido ou expirado. Gere um novo link de redefinição.";
+      case "weak_password":
+        return "A nova senha deve ter pelo menos 6 caracteres.";
+      default:
+        return "Não foi possível completar a operação. Tente novamente.";
+    }
+  };
+
+  async function handleRequest(e: React.FormEvent) {
+    e.preventDefault();
+    setReqLoading(true);
+    setReqErr(null);
+    setReqMsg(null);
+
+    try {
+      const r = await fetch("/.netlify/functions/auth-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const out = await r.json();
+      if (out?.ok) {
+        setReqMsg(
+          "Se existir uma conta com este e-mail, enviamos um link de redefinição. Verifique sua caixa de entrada e spam."
+        );
+      } else {
+        setReqErr(explainError(out?.error));
+      }
+    } catch (_) {
+      setReqErr("Falha de rede. Tente novamente.");
+    } finally {
+      setReqLoading(false);
+    }
+  }
+
+  async function handleConfirm(e: React.FormEvent) {
+    e.preventDefault();
+    setConfirmLoading(true);
+    setConfirmErr(null);
+    setConfirmMsg(null);
+
+    try {
+      const r = await fetch("/.netlify/functions/auth-reset-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: confirmEmail,
+          token,
+          password,
+        }),
+      });
+      const out = await r.json();
+      if (out?.ok) {
+        setConfirmMsg("Senha alterada com sucesso. Você já pode fazer login.");
+        // opcional: redirecionar depois de alguns segundos
+        // setTimeout(() => (window.location.href = "/login"), 1200);
+      } else {
+        setConfirmErr(explainError(out?.error));
+      }
+    } catch (_) {
+      setConfirmErr("Falha de rede. Tente novamente.");
+    } finally {
+      setConfirmLoading(false);
+    }
+  }
+
   return (
-    <div className="min-h-[70vh] grid place-items-center px-4 py-16">
-      {token ? <ConfirmResetForm token={token} /> : <RequestResetForm />}
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16 }}>
+      <div
+        style={{
+          width: 420,
+          maxWidth: "95vw",
+          background: "#fff",
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          boxShadow: "0 8px 24px rgba(0,0,0,.06)",
+          padding: 24,
+        }}
+      >
+        {step === "request" ? (
+          <>
+            <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Redefinir senha</h1>
+            <p style={{ color: "#6b7280", marginBottom: 16 }}>
+              Informe seu e-mail para enviarmos um link de redefinição.
+            </p>
+            <form onSubmit={handleRequest}>
+              <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>E-mail</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seu@exemplo.com"
+                style={{
+                  width: "100%",
+                  height: 40,
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  padding: "0 12px",
+                  marginBottom: 12,
+                }}
+              />
+              <button
+                disabled={reqLoading}
+                style={{
+                  width: "100%",
+                  height: 42,
+                  borderRadius: 10,
+                  border: "0",
+                  background: "black",
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: reqLoading ? 0.7 : 1,
+                }}
+              >
+                {reqLoading ? "Enviando..." : "Enviar link"}
+              </button>
+            </form>
+            {reqMsg && <p style={{ color: "#065f46", marginTop: 12 }}>{reqMsg}</p>}
+            {reqErr && <p style={{ color: "#b91c1c", marginTop: 12 }}>{reqErr}</p>}
+
+            <hr style={{ margin: "16px 0", borderColor: "#eee" }} />
+
+            <p style={{ fontSize: 13, color: "#6b7280" }}>
+              Já tem <b>token</b>?{" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setStep("confirm");
+                }}
+              >
+                Definir nova senha
+              </a>
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Definir nova senha</h1>
+            <p style={{ color: "#6b7280", marginBottom: 16 }}>
+              Cole o e-mail e o token recebidos e informe a nova senha.
+            </p>
+            <form onSubmit={handleConfirm}>
+              <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>E-mail</label>
+              <input
+                type="email"
+                required
+                value={confirmEmail}
+                onChange={(e) => setConfirmEmail(e.target.value)}
+                placeholder="seu@exemplo.com"
+                style={{
+                  width: "100%",
+                  height: 40,
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  padding: "0 12px",
+                  marginBottom: 12,
+                }}
+              />
+
+              <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Token</label>
+              <input
+                required
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="xxxx-xxxx-xxxx..."
+                style={{
+                  width: "100%",
+                  height: 40,
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  padding: "0 12px",
+                  marginBottom: 12,
+                }}
+              />
+
+              <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Nova senha</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="mínimo 6 caracteres"
+                style={{
+                  width: "100%",
+                  height: 40,
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  padding: "0 12px",
+                  marginBottom: 12,
+                }}
+              />
+
+              <button
+                disabled={confirmLoading}
+                style={{
+                  width: "100%",
+                  height: 42,
+                  borderRadius: 10,
+                  border: "0",
+                  background: "black",
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: confirmLoading ? 0.7 : 1,
+                }}
+              >
+                {confirmLoading ? "Salvando..." : "Salvar nova senha"}
+              </button>
+            </form>
+
+            {confirmMsg && <p style={{ color: "#065f46", marginTop: 12 }}>{confirmMsg}</p>}
+            {confirmErr && <p style={{ color: "#b91c1c", marginTop: 12 }}>{confirmErr}</p>}
+
+            <hr style={{ margin: "16px 0", borderColor: "#eee" }} />
+            <p style={{ fontSize: 13, color: "#6b7280" }}>
+              Precisa pedir o link? <a href="/reset">Clique aqui</a>
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
