@@ -12,6 +12,7 @@ export default function ResetPage() {
   const qEmail = (q.get("email") || q.get("e") || "").toLowerCase();
   const qToken = q.get("token") || q.get("t") || "";
 
+  // “confirm” direto quando vier de e-mail com query
   const [step, setStep] = useState<"request" | "confirm">(qEmail || qToken ? "confirm" : "request");
 
   // REQUEST
@@ -24,11 +25,13 @@ export default function ResetPage() {
   const [confirmEmail, setConfirmEmail] = useState(qEmail);
   const [token, setToken] = useState(qToken);
   const [password, setPassword] = useState("");
+  const [showToken, setShowToken] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
   const [redirectSecs, setRedirectSecs] = useState(5);
 
+  // mantém sincronizado se navegar internamente
   useEffect(() => {
     if (qEmail || qToken) {
       setStep("confirm");
@@ -37,17 +40,19 @@ export default function ResetPage() {
     }
   }, [qEmail, qToken]);
 
-  // countdown para login após sucesso
+  // redireciona para login após sucesso
   useEffect(() => {
     if (!confirmMsg) return;
-    const t = setInterval(() => setRedirectSecs((s) => {
-      if (s <= 1) {
-        clearInterval(t);
-        window.location.assign(LOGIN_URL);
-        return 0;
-      }
-      return s - 1;
-    }), 1000);
+    const t = setInterval(() => {
+      setRedirectSecs((s) => {
+        if (s <= 1) {
+          clearInterval(t);
+          window.location.assign(LOGIN_URL);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
     return () => clearInterval(t);
   }, [confirmMsg]);
 
@@ -120,27 +125,91 @@ export default function ResetPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16 }}>
-      <div style={{ width: 420, maxWidth: "95vw", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, boxShadow: "0 8px 24px rgba(0,0,0,.06)", padding: 24 }}>
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16, background: "#f6f7f9" }}>
+      <div
+        style={{
+          width: 440,
+          maxWidth: "95vw",
+          background: "#fff",
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          boxShadow: "0 8px 24px rgba(0,0,0,.06)",
+          padding: 24,
+        }}
+      >
         {step === "confirm" ? (
           <>
             <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Definir nova senha</h1>
-            <p style={{ color: "#6b7280", marginBottom: 16 }}>Cole o <b>e-mail</b> e o <b>token</b> recebidos e informe a nova senha.</p>
+            <p style={{ color: "#6b7280", marginBottom: 16 }}>
+              Cole o <b>e-mail</b> e o <b>token</b> recebidos e informe a nova senha.
+            </p>
 
             <form onSubmit={handleConfirm}>
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>E-mail</label>
-              <input type="email" required value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)} placeholder="seu@exemplo.com"
-                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
+              <input
+                type="email"
+                required
+                value={confirmEmail}
+                onChange={(e) => setConfirmEmail(e.target.value)}
+                placeholder="seu@exemplo.com"
+                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
+              />
 
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Token</label>
-              <input required value={token} onChange={(e) => setToken(e.target.value)} placeholder="xxxx-xxxx-xxxx..."
-                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
+              <div style={{ position: "relative", marginBottom: 12 }}>
+                <input
+                  type={showToken ? "text" : "password"}
+                  required
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder="xxxx-xxxx-xxxx..."
+                  style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 90px 0 12px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: 4,
+                    height: 32,
+                    padding: "0 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  {showToken ? "Ocultar" : "Mostrar"}
+                </button>
+              </div>
 
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Nova senha</label>
-              <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres"
-                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="mínimo 6 caracteres"
+                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
+              />
 
-              <button disabled={confirmLoading} style={{ width: "100%", height: 42, borderRadius: 10, border: 0, background: "black", color: "white", fontWeight: 600, cursor: "pointer", opacity: confirmLoading ? 0.7 : 1 }}>
+              <button
+                disabled={confirmLoading}
+                style={{
+                  width: "100%",
+                  height: 42,
+                  borderRadius: 10,
+                  border: 0,
+                  background: "black",
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: confirmLoading ? 0.7 : 1,
+                }}
+              >
                 {confirmLoading ? "Salvando..." : "Salvar nova senha"}
               </button>
             </form>
@@ -154,26 +223,62 @@ export default function ResetPage() {
                 >
                   Ir para o login agora
                 </button>
-                <p style={{ color: "#6b7280", fontSize: 12, marginTop: 6 }}>Redirecionando automaticamente em {redirectSecs}s…</p>
+                <p style={{ color: "#6b7280", fontSize: 12, marginTop: 6 }}>
+                  Redirecionando automaticamente em {redirectSecs}s…
+                </p>
               </div>
             )}
             {confirmErr && <p style={{ color: "#b91c1c", marginTop: 12 }}>{confirmErr}</p>}
 
             <hr style={{ margin: "16px 0", borderColor: "#eee" }} />
-            <p style={{ fontSize: 13, color: "#6b7280" }}>Precisa pedir um novo link? <a href="#" onClick={(e)=>{e.preventDefault(); setStep("request");}}>Clique aqui</a></p>
-            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}><a href="/">Voltar para a home</a></p>
+            <p style={{ fontSize: 13, color: "#6b7280" }}>
+              Precisa pedir um novo link?{" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setStep("request");
+                }}
+              >
+                Clique aqui
+              </a>
+            </p>
+            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
+              <a href="/">Voltar para a home</a>
+            </p>
           </>
         ) : (
           <>
             <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Redefinir senha</h1>
-            <p style={{ color: "#6b7280", marginBottom: 16 }}>Informe seu e-mail para enviarmos um link de redefinição.</p>
+            <p style={{ color: "#6b7280", marginBottom: 16 }}>
+              Informe seu e-mail para enviarmos um link de redefinição.
+            </p>
 
             <form onSubmit={handleRequest}>
               <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>E-mail</label>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@exemplo.com"
-                     style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }} />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seu@exemplo.com"
+                style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d1d5db", padding: "0 12px", marginBottom: 12 }}
+              />
 
-              <button disabled={reqLoading} style={{ width: "100%", height: 42, borderRadius: 10, border: 0, background: "black", color: "white", fontWeight: 600, cursor: "pointer", opacity: reqLoading ? 0.7 : 1 }}>
+              <button
+                disabled={reqLoading}
+                style={{
+                  width: "100%",
+                  height: 42,
+                  borderRadius: 10,
+                  border: 0,
+                  background: "black",
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: reqLoading ? 0.7 : 1,
+                }}
+              >
                 {reqLoading ? "Enviando..." : "Enviar link"}
               </button>
             </form>
@@ -182,8 +287,21 @@ export default function ResetPage() {
             {reqErr && <p style={{ color: "#b91c1c", marginTop: 12 }}>{reqErr}</p>}
 
             <hr style={{ margin: "16px 0", borderColor: "#eee" }} />
-            <p style={{ fontSize: 13, color: "#6b7280" }}>Já tem <b>token</b>? <a href="#" onClick={(e) => { e.preventDefault(); setStep("confirm"); }}>Definir nova senha</a></p>
-            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}><a href="/">Voltar para a home</a></p>
+            <p style={{ fontSize: 13, color: "#6b7280" }}>
+              Já tem <b>token</b>?{" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setStep("confirm");
+                }}
+              >
+                Definir nova senha
+              </a>
+            </p>
+            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
+              <a href="/">Voltar para a home</a>
+            </p>
           </>
         )}
       </div>
