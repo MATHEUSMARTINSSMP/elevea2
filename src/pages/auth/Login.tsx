@@ -1,4 +1,3 @@
-// src/pages/auth/Login.tsx
 import React, { useEffect, useMemo, useState } from "react";
 
 const AUTH_BASE = "/.netlify/functions/auth-session";
