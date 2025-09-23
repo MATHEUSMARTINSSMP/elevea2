@@ -1,9 +1,10 @@
 import type { Handler } from "@netlify/functions";
 
+/** URL base do seu WebApp do GAS (sem /exec no final; eu acrescento abaixo). */
 const GAS_BASE =
   process.env.ELEVEA_GAS_URL ||
   process.env.ELEVEA_STATUS_URL ||
-  ""; // se quiser, cole aqui diretamente o URL do seu GAS /exec
+  ""; // se quiser, cole direto a URL base do seu GAS aqui
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -35,6 +36,7 @@ async function postToGas(body: any) {
 
 const handler: Handler = async (event) => {
   try {
+    // CORS / preflight
     if (event.httpMethod === "OPTIONS") {
       return { statusCode: 204, headers: CORS, body: "" };
     }
@@ -44,7 +46,7 @@ const handler: Handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_or_invalid_action" }) };
     }
 
-    // LOGIN
+    // LOGIN (POST)
     if (action === "login") {
       if (event.httpMethod !== "POST") {
         return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
@@ -52,6 +54,7 @@ const handler: Handler = async (event) => {
       const body = event.body ? JSON.parse(event.body) : {};
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "").trim();
+
       if (!email || !password) {
         return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_fields" }) };
       }
@@ -61,27 +64,30 @@ const handler: Handler = async (event) => {
         return { statusCode: 401, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "invalid_credentials" }) };
       }
 
-      // consulta "me" (opcional)
+      // opcional: buscar dados do usuário
       const me = await postToGas({ type: "user_me", email });
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: me.data?.user || { email } }) };
     }
 
-    // ME (aceita GET ?email=... ou POST {email})
+    // ME (GET ?email=... ou POST { email })
     if (action === "me") {
       let email = "";
       if (event.httpMethod === "GET") {
         email = String(event.queryStringParameters?.email || "").trim().toLowerCase();
-      } else if (event.httpMethod === "POST") {
+      } else {
         const body = event.body ? JSON.parse(event.body) : {};
         email = String(body.email || "").trim().toLowerCase();
       }
 
       if (!email) {
+        // sem sessão server-side: devolvemos ok:false para o front decidir
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
       }
 
       const r = await postToGas({ type: "user_me", email });
-      if (!r.ok) return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+      if (!r.ok) {
+        return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+      }
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: r.data.user }) };
     }
 
