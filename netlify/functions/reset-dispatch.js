@@ -1,21 +1,21 @@
-// netlify/functions/reset-dispatch.ts
-import type { Handler } from "@netlify/functions";
+// netlify/functions/reset-dispatch.js
+// CommonJS, compatível com o bundler do Netlify sem transpilar
 
 const GAS_BASE =
   process.env.ELEVEA_GAS_URL ||
   process.env.ELEVEA_STATUS_URL || // fallback
-  ""; // <- NÃO deixe vazio em produção. Configure no Netlify.
+  ""; // configure isso no Netlify (Site settings → Environment variables)
 
 const CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "POST,OPTIONS",
-  "access-control-allow-headers": "Content-Type,Authorization",
-  "content-type": "application/json",
-} as const;
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
+  "Content-Type": "application/json; charset=utf-8",
+};
 
-export const handler: Handler = async (event) => {
+exports.handler = async (event) => {
   try {
-    // CORS preflight
+    // Preflight
     if (event.httpMethod === "OPTIONS") {
       return { statusCode: 204, headers: CORS, body: "" };
     }
@@ -36,14 +36,11 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    // Espera { email: string }
     let email = "";
     try {
       const body = event.body ? JSON.parse(event.body) : {};
-      email = String(body.email || "").trim();
-    } catch {
-      /* ignore */
-    }
+      email = String(body.email || "").trim().toLowerCase();
+    } catch (_) {}
 
     if (!email) {
       return {
@@ -53,7 +50,7 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    // Monta chamada ao GAS /exec (rota password_reset_request)
+    // Monta URL do WebApp do GAS (garante /exec)
     const url = GAS_BASE.includes("/exec")
       ? GAS_BASE
       : GAS_BASE.replace(/\/+$/, "") + "/exec";
@@ -65,22 +62,21 @@ export const handler: Handler = async (event) => {
 
     const resp = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify(payload),
     });
 
-    // Pode retornar 200 com {ok:true} ou 4xx/5xx com json de erro
     const text = await resp.text();
-    let data: any = {};
+    let data = {};
     try {
       data = JSON.parse(text || "{}");
     } catch {
       data = { raw: text };
     }
 
-    if (!resp.ok) {
+    if (!resp.ok || data?.ok === false) {
       return {
-        statusCode: resp.status,
+        statusCode: resp.status || 502,
         headers: CORS,
         body: JSON.stringify({
           ok: false,
@@ -91,7 +87,6 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    // Normaliza um “ok:true”
     return {
       statusCode: 200,
       headers: CORS,
@@ -99,11 +94,11 @@ export const handler: Handler = async (event) => {
         data?.ok ? data : { ok: true, message: "reset_email_sent" }
       ),
     };
-  } catch (err: any) {
+  } catch (err) {
     return {
       statusCode: 500,
       headers: CORS,
-      body: JSON.stringify({ ok: false, error: String(err?.message || err) }),
+      body: JSON.stringify({ ok: false, error: String(err && err.message || err) }),
     };
   }
 };
