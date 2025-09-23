@@ -23,43 +23,26 @@ export const handler: Handler = async (event) => {
       return { statusCode: 204, headers: CORS, body: "" };
     }
     if (event.httpMethod !== "POST") {
-      return {
-        statusCode: 405,
-        headers: CORS,
-        body: JSON.stringify({ ok: false, error: "method_not_allowed" }),
-      };
+      return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
     }
     if (!GAS_BASE) {
-      return {
-        statusCode: 500,
-        headers: CORS,
-        body: JSON.stringify({ ok: false, error: "missing_gas_url" }),
-      };
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_gas_url" }) };
     }
 
     const body = event.body ? JSON.parse(event.body) : {};
-    const email = String(body.email || "").trim().toLowerCase();
     const token = String(body.token || "").trim();
     const password = String(body.password || "").trim();
+    const email = String(body.email || "").trim().toLowerCase(); // opcional; GAS ignora
 
-    if (!email || !token || !password) {
-      return {
-        statusCode: 400,
-        headers: CORS,
-        body: JSON.stringify({ ok: false, error: "missing_email_or_token_or_password" }),
-      };
+    if (!token || !password) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_email_or_token_or_password" }) };
     }
 
-    // repassa ao GAS
+    // repassa ao GAS — ele vai cair em passwordResetConfirm_
     const resp = await fetch(ensureExecUrl(GAS_BASE), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        type: "password_reset_confirm",
-        email,
-        token,
-        password,
-      }),
+      body: JSON.stringify({ type: "password_reset_confirm", token, password, email }),
     });
 
     const txt = await resp.text();
@@ -67,25 +50,15 @@ export const handler: Handler = async (event) => {
     try { data = JSON.parse(txt || "{}"); } catch { data = { raw: txt }; }
 
     if (!resp.ok || data?.ok === false) {
-      // normaliza alguns códigos que sua UI entende
+      // normaliza mensagens que a UI entende
       const err = data?.error || "invalid_token";
-      return {
-        statusCode: resp.status || 400,
-        headers: CORS,
-        body: JSON.stringify({ ok: false, error: err, data }),
-      };
+      return { statusCode: resp.status || 400, headers: CORS, body: JSON.stringify({ ok: false, error: err, data }) };
     }
 
-    return {
-      statusCode: 200,
-      headers: CORS,
-      body: JSON.stringify({ ok: true, message: "password_reset_success" }),
-    };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, message: "password_reset_success" }) };
   } catch (e: any) {
-    return {
-      statusCode: 500,
-      headers: CORS,
-      body: JSON.stringify({ ok: false, error: String(e?.message || e) }),
-    };
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(e?.message || e) }) };
   }
 };
+
+export default handler;
