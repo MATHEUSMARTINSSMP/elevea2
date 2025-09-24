@@ -8,35 +8,33 @@
   CI        = "false"
   NPM_FLAGS = "--legacy-peer-deps"
 
-# === Functions ===
+# === Functions (Node) ===
 [functions]
-  directory     = "netlify/functions"
-  node_bundler  = "esbuild"
+  directory    = "netlify/functions"
+  node_bundler = "esbuild"
 
-# === Edge Functions (apenas áreas privadas) ===
-[[edge_functions]]
-  path     = "/client/*"
-  function = "protect"
-
+# === Edge bindings (ESSENCIAL) ===
 [[edge_functions]]
   path     = "/admin/*"
   function = "protect"
 
-# === Redirects / Functions HTTP ===
+[[edge_functions]]
+  path     = "/client/*"
+  function = "protect"
 
-# Webhook do Mercado Pago (exemplo)
+# === Redirects / HTTP Functions ===
 [[redirects]]
   from   = "/api/mp-webhook"
   to     = "/.netlify/functions/mp-webhook"
   status = 200
 
-# SPA fallback (mantenha por último)
+# SPA fallback (mantenha por ÚLTIMO)
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
 
-# CORS para todas as Functions
+# CORS p/ todas as Functions
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
