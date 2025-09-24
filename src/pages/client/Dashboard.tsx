@@ -17,11 +17,16 @@ import TemplateMarketplace from "./components/TemplateMarketplace";
 import AuditLogs from "./components/AuditLogs";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 
+/* =========== CONFIG =========== */
+const DEBUG = false; // coloque true para logs no console
 const PLAN_TIMEOUT_MS = 3000;
 const CARDS_TIMEOUT_MS = 5000;
 const UPGRADE_URL =
   (import.meta as any).env?.VITE_UPGRADE_URL ||
   "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=99dceb0e108a4f238a84fbef3e91bab8";
+
+/* =========== HELPERS =========== */
+const log = (...a: any[]) => DEBUG && console.log("[DASH]", ...a);
 
 const PALETAS = [
   { name: "Azul Futurista", colors: ["#0f172a", "#3b82f6", "#38bdf8"] },
@@ -35,6 +40,7 @@ type StatusResp = {
   siteSlug: string;
   status?: string | null;
   plan?: string | null;
+  // padronizamos internamente como nextPayment:
   nextPayment?: string | null;
   lastPayment?: { date: string; amount?: number } | null;
   error?: string | null;
@@ -102,9 +108,7 @@ async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T>
 const norm = (s?: string) => String(s ?? "").trim().toLowerCase();
 const looksVip = (p?: string) => !!p && (norm(p) === "vip" || norm(p).includes("vip"));
 const isActiveStatus = (s?: string) =>
-  ["approved", "authorized", "active", "processing", "in_process", "charged", "authorized_pending_capture"].includes(
-    norm(s)
-  );
+  ["approved", "authorized", "active", "processing", "in_process", "charged", "authorized_pending_capture"].includes(norm(s));
 
 const fmtDateTime = (s?: string | null) => {
   if (!s) return "—";
@@ -117,11 +121,18 @@ const fmtDateTime = (s?: string | null) => {
   );
 };
 
+/* =========== PÁGINA =========== */
 export default function ClientDashboard() {
   const { user } = useSession();
   const { logout: authLogout } = useAuth();
   const canQuery = !!user?.email && !!user?.siteSlug && user?.role === "client";
 
+  // expõe para testes no console
+  useEffect(() => {
+    (window as any).__USER = user || null;
+  }, [user]);
+
+  /* Plano / gate VIP */
   const [plan, setPlan] = useState<string | null>(null);
   const [checkingPlan, setCheckingPlan] = useState(false);
   const [planErr, setPlanErr] = useState<string | null>(null);
@@ -129,6 +140,7 @@ export default function ClientDashboard() {
   const onceRef = useRef(false);
   const [planFetchTick, setPlanFetchTick] = useState(0);
 
+  /* Outros cards */
   const [status, setStatus] = useState<StatusResp | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
 
@@ -157,7 +169,9 @@ export default function ClientDashboard() {
   const [loadingStructure, setLoadingStructure] = useState(true);
   const [savingStructure, setSavingStructure] = useState(false);
 
-  const vipEnabled = looksVip(plan || undefined) || looksVip(status?.plan) || isActiveStatus(status?.status);
+  // VIP habilita se QUALQUER fonte indicar
+  const effectivePlan = plan || status?.plan || null;
+  const vipEnabled = looksVip(effectivePlan || undefined) || isActiveStatus(status?.status);
 
   const isFeatureEnabled = (featureId: string) => enabledFeatures.includes(featureId);
 
@@ -182,15 +196,18 @@ export default function ClientDashboard() {
     }
   };
 
-  const planLabel = plan === null ? "—" : vipEnabled ? "vip" : plan || "—";
+  const planLabel = effectivePlan === null ? "—" : vipEnabled ? "vip" : effectivePlan || "—";
 
+  // Redireciona admin
   useEffect(() => {
     if (user?.role === "admin") window.location.replace("/admin/dashboard");
   }, [user?.role]);
 
+  /* 1) Carrega plano principal (client-plan) */
   useEffect(() => {
     if (!canQuery) return;
 
+    // abre com último plano conhecido
     if (!onceRef.current) {
       onceRef.current = true;
       try {
@@ -204,91 +221,88 @@ export default function ClientDashboard() {
       setCheckingPlan(true);
       setPlanErr(null);
       try {
-        const r = await getJSON<{
-          ok: boolean;
-          vip: boolean;
-          plan: string;
-          status?: string;
-          nextPayment?: string | null;
-          lastPayment?: { date: string; amount: number } | null;
-        }>(
-          `/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}&email=${encodeURIComponent(
-            user!.email
-          )}`,
+        const r = await getJSON<any>(
+          `/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}&email=${encodeURIComponent(user!.email)}`,
           PLAN_TIMEOUT_MS
         );
+        log("client-plan =>", r);
 
         if (!alive) return;
-        const resolvedPlan = r.vip ? "vip" : r.plan || "";
-        setPlan(resolvedPlan);
-        try {
-          sessionStorage.setItem(cacheKey, resolvedPlan);
-        } catch {}
 
-        setStatus({
+        // normalização aqui:
+        const resolvedPlan = (r.vip ? "vip" : (r.plan || "")).toString();
+        const nextPayment = r.nextPayment || r.next_charge || r.nextCharge || null;
+
+        setPlan(resolvedPlan);
+        try { sessionStorage.setItem(cacheKey, resolvedPlan); } catch {}
+
+        setStatus(prev => ({
           ok: true,
           siteSlug: user!.siteSlug!,
-          status: r.status,
-          nextPayment: r.nextPayment,
-          lastPayment: r.lastPayment,
-          plan: resolvedPlan,
-        });
-      } catch {
+          status: r.status ?? prev?.status ?? null,
+          nextPayment: nextPayment ?? prev?.nextPayment ?? null,
+          lastPayment: r.lastPayment ?? r.last_payment ?? prev?.lastPayment ?? null,
+          plan: resolvedPlan || prev?.plan || null,
+          error: null,
+        }));
+      } catch (e: any) {
+        log("client-plan ERROR:", e?.message || e);
+        // não derruba a UI — só marca erro para o banner
         setPlanErr("Não foi possível validar sua assinatura agora.");
       } finally {
         if (alive) setCheckingPlan(false);
       }
     })();
 
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [canQuery, user?.siteSlug, user?.email, planFetchTick]);
 
   const retryPlan = () => {
-    try {
-      sessionStorage.removeItem(cacheKey);
-    } catch {}
+    try { sessionStorage.removeItem(cacheKey); } catch {}
     setPlan(null);
     setPlanErr(null);
     setLoadingStatus(true);
-    setPlanFetchTick((n) => n + 1);
+    setPlanFetchTick(n => n + 1);
   };
 
+  /* 2) Cards paralelos — status, settings, features, assets */
   useEffect(() => {
     if (!canQuery) return;
     let alive = true;
 
+    // STATUS normalizado (auth-status)
     (async () => {
       try {
         const s = await getJSON<StatusResp>(
           `/.netlify/functions/auth-status?site=${encodeURIComponent(user!.siteSlug!)}`,
           CARDS_TIMEOUT_MS
         );
+        log("auth-status =>", s);
         if (!alive) return;
-        setStatus((prev) => ({
+        setStatus(prev => ({
           ...(prev || { ok: true, siteSlug: user!.siteSlug! }),
           ok: s.ok,
           siteSlug: s.siteSlug || user!.siteSlug!,
-          status: s.status ?? prev?.status,
-          plan: s.plan ?? prev?.plan,
-          nextPayment: s.nextPayment ?? prev?.nextPayment,
-          lastPayment: s.lastPayment ?? prev?.lastPayment,
-          error: s.error ?? prev?.error,
+          status: s.status ?? prev?.status ?? null,
+          plan: s.plan ?? prev?.plan ?? null,
+          nextPayment: s.nextPayment ?? prev?.nextPayment ?? null,
+          lastPayment: s.lastPayment ?? prev?.lastPayment ?? null,
+          error: s.error ?? prev?.error ?? null,
         }));
+        // atualiza badge do header
         if (s?.plan) {
           const resolvedPlan = String(s.plan).toLowerCase();
           setPlan(resolvedPlan);
-          try {
-            sessionStorage.setItem(cacheKey, resolvedPlan);
-          } catch {}
+          try { sessionStorage.setItem(cacheKey, resolvedPlan); } catch {}
         }
-      } catch {
+      } catch (e: any) {
+        log("auth-status ERROR:", e?.message || e);
       } finally {
         if (alive) setLoadingStatus(false);
       }
     })();
 
+    // SETTINGS
     (async () => {
       try {
         const st = await getJSON<{ ok: boolean; settings?: ClientSettings }>(
@@ -298,16 +312,18 @@ export default function ClientDashboard() {
         if (!alive) return;
         setSettings(st.settings || {});
         setVipPin(st.settings?.vipPin || "");
-      } catch {
+        log("settings =>", st.settings);
+      } catch (e: any) {
+        log("settings ERROR:", e?.message || e);
       } finally {
         if (alive) setLoadingSettings(false);
       }
     })();
 
-    (async () => {
-      await loadUserFeatures();
-    })();
+    // FEATURES
+    (async () => { await loadUserFeatures(); })();
 
+    // ASSETS
     (async () => {
       try {
         const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
@@ -318,17 +334,18 @@ export default function ClientDashboard() {
         const mapped = new Map<string, string>();
         assets.items.forEach((a) => mapped.set(a.key, a.url));
         setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
-      } catch {
+        log("assets =>", assets.items);
+      } catch (e: any) {
+        log("assets ERROR:", e?.message || e);
       } finally {
         if (alive) setLoadingAssets(false);
       }
     })();
 
-    return () => {
-      alive = false;
-    };
-  }, [canQuery, user?.siteSlug, status?.nextPayment]);
+    return () => { alive = false; };
+  }, [canQuery, user?.siteSlug]);
 
+  /* 3) Feedbacks (depende de vip/pin) */
   useEffect(() => {
     if (!canQuery) return;
     let alive = true;
@@ -349,47 +366,19 @@ export default function ClientDashboard() {
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         }
         if (!alive) return;
-        const items = fb.items || [];
-        setFeedbacks(items);
-
-        if (vipEnabled && items.length > 0) {
-          (async () => {
-            try {
-              const batch = items.filter((f) => !f.sentiment && f.message?.trim()).slice(0, 10);
-              if (batch.length === 0) return;
-              const resp = await fetch("/.netlify/functions/ai-sentiment", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({
-                  batch: batch.map((f) => ({ id: f.id, feedback: f.message, clientName: f.name })),
-                }),
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                if (data.ok && data.results) {
-                  setFeedbacks((prev) =>
-                    prev.map((f) => {
-                      const a = data.results.find((r: any) => r.id === f.id && r.success);
-                      return a ? { ...f, sentiment: a.analysis } : f;
-                    })
-                  );
-                }
-              }
-            } catch {}
-          })();
-        }
-      } catch {
+        setFeedbacks(fb.items || []);
+        log("feedbacks =>", fb.items?.length || 0);
+      } catch (e: any) {
+        log("feedbacks ERROR:", e?.message || e);
       } finally {
         if (alive) setLoadingFeedbacks(false);
       }
     })();
 
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
 
+  /* 4) Estrutura (VIP + PIN) */
   useEffect(() => {
     if (!canQuery || !vipEnabled || !vipPin) {
       setSiteStructure(null);
@@ -406,16 +395,17 @@ export default function ClientDashboard() {
         );
         if (!alive) return;
         if (response.ok && response.structure) setSiteStructure(response.structure);
-      } catch {
+        log("site-structure =>", response.structure);
+      } catch (e: any) {
+        log("site-structure ERROR:", e?.message || e);
       } finally {
         if (alive) setLoadingStructure(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
 
+  /* =========== Ações =========== */
   async function saveSettings(partial: Partial<ClientSettings>) {
     if (!canQuery) return;
     setSaving(true);
@@ -518,9 +508,11 @@ export default function ClientDashboard() {
 
   if (!user) return null;
 
+  /* =========== UI =========== */
   return (
     <div className="min-h-screen bg-[#0B1220] p-6 text-white">
       <div className="max-w-7xl mx-auto space-y-8">
+        {/* HEADER */}
         <header className="rounded-2xl border border-white/10 bg-white text-slate-900 p-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <img src="/logo-elevea.png" alt="ELEVEA" className="h-6 w-auto" />
@@ -531,9 +523,7 @@ export default function ClientDashboard() {
           <div className="flex items-center gap-2">
             {vipEnabled ? (
               <>
-                <span className="rounded-xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 px-3 py-1 text-xs font-medium">
-                  VIP ativo
-                </span>
+                <span className="rounded-xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 px-3 py-1 text-xs font-medium">VIP ativo</span>
                 <input
                   value={vipPin}
                   onChange={(e) => setVipPin(e.target.value)}
@@ -542,13 +532,9 @@ export default function ClientDashboard() {
                 />
               </>
             ) : checkingPlan ? (
-              <span className="rounded-xl bg-yellow-500/15 text-yellow-700 border border-yellow-300 px-3 py-1 text-xs font-medium">
-                Verificando…
-              </span>
+              <span className="rounded-xl bg-yellow-500/15 text-yellow-700 border border-yellow-300 px-3 py-1 text-xs font-medium">Verificando…</span>
             ) : (
-              <span className="rounded-xl bg-slate-500/15 text-slate-700 border border-slate-300 px-3 py-1 text-xs font-medium">
-                Plano Essential
-              </span>
+              <span className="rounded-xl bg-slate-500/15 text-slate-700 border border-slate-300 px-3 py-1 text-xs font-medium">Plano Essential</span>
             )}
             <button onClick={logout} className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm hover:opacity-90">
               Sair
@@ -556,6 +542,7 @@ export default function ClientDashboard() {
           </div>
         </header>
 
+        {/* ERROS */}
         {(planErr || status?.error) && (
           <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900">
             <div className="flex items-center justify-between">
@@ -567,6 +554,7 @@ export default function ClientDashboard() {
           </div>
         )}
 
+        {/* RESUMO */}
         <section className="grid md:grid-cols-4 gap-4">
           <Card title="Status" value={loadingStatus ? "—" : status?.status ? status.status.toUpperCase() : "—"} />
           <Card title="Plano" value={planLabel} />
@@ -585,6 +573,7 @@ export default function ClientDashboard() {
           />
         </section>
 
+        {/* BLOCO VIPS */}
         {vipEnabled && vipPin && (
           <section className="space-y-6">
             <AnalyticsDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin} />
@@ -623,54 +612,14 @@ export default function ClientDashboard() {
           </section>
         )}
 
-        {vipEnabled && vipPin && (
-          <section className="space-y-6">
-            <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
-        {vipEnabled && vipPin && isFeatureEnabled("whatsapp-chatbot") && (
-          <section className="space-y-6">
-            <WhatsAppManager siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
-        {vipEnabled && vipPin && isFeatureEnabled("lead-scoring") && (
-          <section className="space-y-6">
-            <LeadScoring siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
-        {vipEnabled && vipPin && isFeatureEnabled("multi-language") && (
-          <section className="space-y-6">
-            <MultiLanguageManager siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
-        {vipEnabled && vipPin && isFeatureEnabled("appointment-scheduling") && (
-          <section className="space-y-6">
-            <AppointmentScheduling siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
-        {vipEnabled && vipPin && isFeatureEnabled("ecommerce") && (
-          <section className="space-y-6">
-            <EcommerceDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
-        {vipEnabled && vipPin && isFeatureEnabled("premium-templates") && (
-          <section className="space-y-6">
-            <TemplateMarketplace siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
-        {vipEnabled && vipPin && isFeatureEnabled("audit-logs") && (
-          <section className="space-y-6">
-            <AuditLogs siteSlug={user.siteSlug || ""} vipPin={vipPin} />
-          </section>
-        )}
-
+        {vipEnabled && vipPin && <section className="space-y-6"><GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
+        {vipEnabled && vipPin && isFeatureEnabled("whatsapp-chatbot") && <section className="space-y-6"><WhatsAppManager siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
+        {vipEnabled && vipPin && isFeatureEnabled("lead-scoring") && <section className="space-y-6"><LeadScoring siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
+        {vipEnabled && vipPin && isFeatureEnabled("multi-language") && <section className="space-y-6"><MultiLanguageManager siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
+        {vipEnabled && vipPin && isFeatureEnabled("appointment-scheduling") && <section className="space-y-6"><AppointmentScheduling siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
+        {vipEnabled && vipPin && isFeatureEnabled("ecommerce") && <section className="space-y-6"><EcommerceDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
+        {vipEnabled && vipPin && isFeatureEnabled("premium-templates") && <section className="space-y-6"><TemplateMarketplace siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
+        {vipEnabled && vipPin && isFeatureEnabled("audit-logs") && <section className="space-y-6"><AuditLogs siteSlug={user.siteSlug || ""} vipPin={vipPin} /></section>}
         {vipEnabled && vipPin && isFeatureEnabled("auto-seo") && (
           <section className="space-y-6">
             <SEOOptimizer
@@ -686,12 +635,14 @@ export default function ClientDashboard() {
           </section>
         )}
 
+        {/* Manager de features */}
         {vipEnabled && (
           <section className="space-y-6">
             <FeatureManager siteSlug={user.siteSlug || ""} vipPin={vipPin} userPlan={userPlan} />
           </section>
         )}
 
+        {/* Copywriter */}
         {vipEnabled && vipPin && (
           <section className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6">
@@ -704,12 +655,13 @@ export default function ClientDashboard() {
           </section>
         )}
 
+        {/* Conteúdo principal */}
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
+            {/* Configurações */}
             <VipGate enabled={vipEnabled} checking={checkingPlan} teaser="Configure aparência, tema e PIN VIP">
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <h2 className="text-lg font-semibold">Configurações Gerais</h2>
-
                 <div className="grid md:grid-cols-2 gap-4">
                   <label className="flex items-center gap-2">
                     <input
@@ -720,7 +672,6 @@ export default function ClientDashboard() {
                     />
                     <span className="text-sm">Mostrar marca no rodapé</span>
                   </label>
-
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -750,10 +701,7 @@ export default function ClientDashboard() {
                   <input
                     type="password"
                     value={vipPin}
-                    onChange={(e) => {
-                      setVipPin(e.target.value);
-                      saveSettings({ vipPin: e.target.value });
-                    }}
+                    onChange={(e) => { setVipPin(e.target.value); saveSettings({ vipPin: e.target.value }); }}
                     placeholder="Defina um PIN para acessar recursos VIP"
                     className="w-full px-3 py-2 border rounded-lg"
                   />
@@ -766,17 +714,11 @@ export default function ClientDashboard() {
                     {PALETAS.map((pal, i) => (
                       <button
                         key={i}
-                        onClick={() =>
-                          saveSettings({
-                            theme: { primary: pal.colors[1], background: pal.colors[0], accent: pal.colors[2] },
-                          })
-                        }
+                        onClick={() => saveSettings({ theme: { primary: pal.colors[1], background: pal.colors[0], accent: pal.colors[2] } })}
                         className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50"
                       >
                         <div className="flex gap-1">
-                          {pal.colors.map((c, j) => (
-                            <div key={j} className="w-4 h-4 rounded" style={{ backgroundColor: c }} />
-                          ))}
+                          {pal.colors.map((c, j) => <div key={j} className="w-4 h-4 rounded" style={{ backgroundColor: c }} />)}
                         </div>
                         <span className="text-xs">{pal.name}</span>
                       </button>
@@ -786,22 +728,18 @@ export default function ClientDashboard() {
               </section>
             </VipGate>
 
+            {/* Mídias */}
             <VipGate enabled={vipEnabled} checking={loadingAssets} teaser="Personalize imagens e vídeos do seu site">
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <h2 className="text-lg font-semibold">Gerenciar Mídias</h2>
                 <div className="grid md:grid-cols-2 gap-4">
-                  {slots.map((slot) => (
-                    <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />
-                  ))}
+                  {slots.map((slot) => <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />)}
                 </div>
               </section>
             </VipGate>
 
-            <VipGate
-              enabled={vipEnabled && !!vipPin}
-              checking={loadingStructure}
-              teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site"
-            >
+            {/* Personalização de seções */}
+            <VipGate enabled={vipEnabled && !!vipPin} checking={loadingStructure} teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site">
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Personalizar Seções do Site</h2>
@@ -824,24 +762,17 @@ export default function ClientDashboard() {
                     <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
                   </div>
                 ) : !siteStructure ? (
-                  <div className="text-slate-500 text-sm">
-                    Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.
-                  </div>
+                  <div className="text-slate-500 text-sm">Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.</div>
                 ) : (
                   <div className="space-y-4 max-h-96 overflow-y-auto">
                     <div className="text-xs text-slate-600 mb-4">
-                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado:{" "}
-                      <strong>{siteStructure.category || "geral"}</strong>
+                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado: <strong>{siteStructure.category || "geral"}</strong>
                     </div>
                     {siteStructure.sections?.map((section: any) => (
                       <div key={section.id} className="border rounded-lg p-4 space-y-3">
                         <div className="flex items-center justify-between">
                           <h3 className="font-medium text-sm capitalize">{section.id.replace("-", " ")}</h3>
-                          <span
-                            className={`text-xs px-2 py-1 rounded ${
-                              section.visible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                            }`}
-                          >
+                          <span className={`text-xs px-2 py-1 rounded ${section.visible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                             {section.visible ? "Visível" : "Oculta"}
                           </span>
                         </div>
@@ -914,9 +845,7 @@ export default function ClientDashboard() {
                               src={section.image}
                               alt={section.title || "Preview"}
                               className="w-20 h-12 object-cover rounded border"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = "none";
-                              }}
+                              onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
                             />
                           </div>
                         )}
@@ -940,6 +869,7 @@ export default function ClientDashboard() {
             </VipGate>
           </div>
 
+          {/* Feedbacks */}
           <div className="space-y-6">
             <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 space-y-4">
               <div className="flex items-center justify-between">
@@ -967,15 +897,11 @@ export default function ClientDashboard() {
                             <span>{fmtDateTime(f.timestamp)}</span>
                             {f.approved && <span className="text-emerald-400">✓ Aprovado</span>}
                             {f.sentiment && (
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  f.sentiment.rating >= 4
-                                    ? "bg-emerald-500/20 text-emerald-300"
-                                    : f.sentiment.rating >= 3
-                                    ? "bg-yellow-500/20 text-yellow-300"
-                                    : "bg-red-500/20 text-red-300"
-                                }`}
-                              >
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                f.sentiment.rating >= 4 ? "bg-emerald-500/20 text-emerald-300" :
+                                f.sentiment.rating >= 3 ? "bg-yellow-500/20 text-yellow-300" :
+                                "bg-red-500/20 text-red-300"
+                              }`}>
                                 {f.sentiment.emotion} ({f.sentiment.rating}/5)
                               </span>
                             )}
@@ -995,17 +921,13 @@ export default function ClientDashboard() {
                           <div className="flex gap-1">
                             <button
                               onClick={() => setFeedbackApproval(f.id, true)}
-                              className={`px-2 py-1 text-xs rounded ${
-                                f.approved ? "bg-emerald-600 text-white" : "bg-white/10 text-white/70 hover:bg-emerald-600"
-                              }`}
+                              className={`px-2 py-1 text-xs rounded ${f.approved ? "bg-emerald-600 text-white" : "bg-white/10 text-white/70 hover:bg-emerald-600"}`}
                             >
                               ✓
                             </button>
                             <button
                               onClick={() => setFeedbackApproval(f.id, false)}
-                              className={`px-2 py-1 text-xs rounded ${
-                                !f.approved ? "bg-red-600 text-white" : "bg-white/10 text-white/70 hover:bg-red-600"
-                              }`}
+                              className={`px-2 py-1 text-xs rounded ${!f.approved ? "bg-red-600 text-white" : "bg-white/10 text-white/70 hover:bg-red-600"}`}
                             >
                               ✗
                             </button>
@@ -1021,6 +943,7 @@ export default function ClientDashboard() {
         </div>
       </div>
 
+      {/* Chat FAB */}
       {vipEnabled && (
         <button
           onClick={() => setShowAIChat(true)}
@@ -1028,17 +951,18 @@ export default function ClientDashboard() {
           title="Chat de Suporte Inteligente"
         >
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
-              clipRule="evenodd"
-            />
+            <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
           </svg>
         </button>
       )}
 
+      {/* Modais */}
       {showAIChat && vipEnabled && (
-        <AIChat businessType={siteStructure?.category || "geral"} businessName={user?.siteSlug || "seu negócio"} onClose={() => setShowAIChat(false)} />
+        <AIChat
+          businessType={siteStructure?.category || "geral"}
+          businessName={user?.siteSlug || "seu negócio"}
+          onClose={() => setShowAIChat(false)}
+        />
       )}
 
       {showContentGenerator && vipEnabled && (
@@ -1054,6 +978,7 @@ export default function ClientDashboard() {
   );
 }
 
+/* =========== SUBCOMPONENTES =========== */
 function Card({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-4">
@@ -1064,16 +989,8 @@ function Card({ title, value }: { title: string; value: string }) {
 }
 
 function VipGate({
-  enabled,
-  checking,
-  children,
-  teaser,
-}: {
-  enabled: boolean;
-  checking?: boolean;
-  teaser: string;
-  children: React.ReactNode;
-}) {
+  enabled, checking, children, teaser,
+}: { enabled: boolean; checking?: boolean; teaser: string; children: React.ReactNode; }) {
   if (enabled) return <>{children}</>;
   if (checking) {
     return (
@@ -1095,12 +1012,7 @@ function VipGate({
       <div className="absolute inset-x-0 bottom-0 p-6">
         <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-sm text-white">{teaser}</div>
-          <a
-            href={UPGRADE_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-medium text-black hover:bg-emerald-400"
-          >
+          <a href={UPGRADE_URL} target="_blank" rel="noreferrer" className="shrink-0 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-medium text-black hover:bg-emerald-400">
             Fazer upgrade
           </a>
         </div>
@@ -1111,20 +1023,12 @@ function VipGate({
 
 function MediaSlot({ slot, onUpload }: { slot: ImageSlot; onUpload: (slot: ImageSlot, file: File) => Promise<void> }) {
   const [uploading, setUploading] = useState(false);
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    try {
-      await onUpload(slot, file);
-    } catch (err: any) {
-      alert(err?.message || "Erro no upload");
-    } finally {
-      setUploading(false);
-    }
+    try { await onUpload(slot, file); } catch (err: any) { alert(err?.message || "Erro no upload"); } finally { setUploading(false); }
   };
-
   return (
     <div className="border rounded-lg p-3">
       <div className="text-sm font-medium mb-2">{slot.label}</div>
@@ -1140,4 +1044,3 @@ function MediaSlot({ slot, onUpload }: { slot: ImageSlot; onUpload: (slot: Image
     </div>
   );
 }
-
