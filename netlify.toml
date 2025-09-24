@@ -1,4 +1,3 @@
-# === Build / Publish ===
 [build]
   command   = "npm run build"
   publish   = "dist"
@@ -8,12 +7,11 @@
   CI        = "false"
   NPM_FLAGS = "--legacy-peer-deps"
 
-# === Functions (Node) ===
 [functions]
   directory    = "netlify/functions"
   node_bundler = "esbuild"
 
-# === Edge bindings (aplicam ANTES dos redirects) ===
+# Edge protege antes de qualquer coisa
 [[edge_functions]]
   path     = "/admin/*"
   function = "protect"
@@ -22,19 +20,19 @@
   path     = "/client/*"
   function = "protect"
 
-# === Redirects / HTTP Functions ===
+# Webhook (exemplo)
 [[redirects]]
   from   = "/api/mp-webhook"
   to     = "/.netlify/functions/mp-webhook"
   status = 200
 
-# SPA fallback (mantenha por ÚLTIMO)
+# SPA fallback — DEIXE POR ÚLTIMO
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
 
-# CORS p/ todas as Functions
+# CORS das Functions
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
