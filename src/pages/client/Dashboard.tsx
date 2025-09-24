@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+# Writing the corrected and optimized ClientDashboard component to a downloadable file
+code = r'''import React, { useEffect, useRef, useState } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useAuth } from "@/hooks/useAuth";
 import AIChat from "./components/AIChat";
@@ -37,10 +38,11 @@ const PALETAS = [
 type StatusResp = {
   ok: boolean;
   siteSlug: string;
-  status?: string;
-  plan?: string;
-  nextCharge?: string | null;
-  lastPayment?: { date: string; amount: number } | null;
+  status?: string | null;
+  plan?: string | null;
+  nextPayment?: string | null;
+  lastPayment?: { date: string; amount?: number } | null;
+  error?: string | null;
 };
 
 type Feedback = {
@@ -172,8 +174,8 @@ export default function ClientDashboard() {
   // VIP habilita se QUALQUER fonte indicar isso
   const vipEnabled =
     looksVip(plan || undefined) ||
-    looksVip(status?.plan) ||
-    isActiveStatus(status?.status);
+    looksVip(status?.plan || undefined) ||
+    isActiveStatus(status?.status || undefined);
 
   // Funções auxiliares para verificar funcionalidades habilitadas
   const isFeatureEnabled = (featureId: string) => {
@@ -196,8 +198,8 @@ export default function ClientDashboard() {
       if (response.ok) {
         const result = await response.json();
         if (result.ok) {
-          setEnabledFeatures(result.userSettings.enabledFeatures);
-          setUserPlan(result.userSettings.plan);
+          setEnabledFeatures(result.userSettings.enabledFeatures || []);
+          setUserPlan(result.userSettings.plan || 'essential');
           setFeaturesLoaded(true);
         }
       }
@@ -251,14 +253,15 @@ export default function ClientDashboard() {
         setPlan(resolvedPlan);
         try { sessionStorage.setItem(cacheKey, resolvedPlan); } catch {}
 
-        // hidrata status com o que já veio
+        // hidrata status com o que já veio (usa campos antigos se existirem)
         setStatus({
           ok: true,
           siteSlug: user!.siteSlug!,
-          status: r.status,
-          nextCharge: r.nextCharge,
-          lastPayment: r.lastPayment,
+          status: r.status || null,
+          nextPayment: (r as any).nextPayment || r.nextCharge || null,
+          lastPayment: r.lastPayment || null,
           plan: resolvedPlan,
+          error: null,
         });
       } catch (e: any) {
         setPlanErr("Não foi possível validar sua assinatura agora.");
@@ -283,22 +286,37 @@ export default function ClientDashboard() {
     if (!canQuery) return;
     let alive = true;
 
-    // STATUS (atualiza se necessário)
+    // STATUS (topo) — puxa da auth-status (normalizado)
     (async () => {
-      if (status?.nextCharge && status?.lastPayment) {
-        setLoadingStatus(false);
-        return; // já tem dados do plano
-      }
-      
       try {
         const s = await getJSON<StatusResp>(
-          `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
+          `/.netlify/functions/auth-status?site=${encodeURIComponent(user!.siteSlug!)}`,
           CARDS_TIMEOUT_MS
         );
+
         if (!alive) return;
-        setStatus(prev => ({ ...prev, ...s }));
-      } catch {}
-      finally {
+
+        // hidrata status com o que veio do endpoint
+        setStatus(prev => ({
+          ...(prev || {}),
+          ok: s.ok,
+          siteSlug: s.siteSlug || user!.siteSlug!,
+          status: s.status ?? prev?.status ?? null,
+          plan: s.plan ?? prev?.plan ?? null,
+          nextPayment: s.nextPayment ?? prev?.nextPayment ?? null,
+          lastPayment: s.lastPayment ?? prev?.lastPayment ?? null,
+          error: s.error ?? prev?.error ?? null,
+        }));
+
+        // se plano vier daqui, atualiza state de plano (ajuda no badge do header)
+        if (s?.plan) {
+          const resolvedPlan = String(s.plan).toLowerCase();
+          setPlan(resolvedPlan);
+          try { sessionStorage.setItem(cacheKey, resolvedPlan); } catch {}
+        }
+      } catch {
+        // não bloqueia UI
+      } finally {
         if (alive) setLoadingStatus(false);
       }
     })();
@@ -342,7 +360,7 @@ export default function ClientDashboard() {
     })();
 
     return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment]);
+  }, [canQuery, user?.siteSlug, status?.nextPayment, status?.lastPayment]);
 
   /* 3) FEEDBACKS - depende do estado VIP e PIN */
   useEffect(() => {
@@ -602,10 +620,10 @@ export default function ClientDashboard() {
         </header>
 
         {/* ERRO DE PLANO */}
-        {planErr && (
+        {(planErr || status?.error) && (
           <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900">
             <div className="flex items-center justify-between">
-              <span className="text-sm">{planErr}</span>
+              <span className="text-sm">{planErr || "Não foi possível validar sua assinatura agora."}</span>
               <button onClick={retryPlan} className="rounded-lg bg-red-500 text-white px-3 py-1 text-xs hover:bg-red-600">
                 Tentar novamente
               </button>
@@ -615,12 +633,12 @@ export default function ClientDashboard() {
 
         {/* RESUMO */}
         <section className="grid md:grid-cols-4 gap-4">
-          <Card title="Status" value={loadingStatus ? "—" : status?.status ? status.status.toUpperCase() : "—"} />
+          <Card title="Status" value={loadingStatus ? "—" : status?.status ? String(status.status).toUpperCase() : "—"} />
           <Card title="Plano" value={planLabel} />
-          <Card title="Próxima Cobrança" value={loadingStatus ? "—" : fmtDateTime(status?.nextCharge)} />
+          <Card title="Próxima Cobrança" value={loadingStatus ? "—" : fmtDateTime(status?.nextPayment)} />
           <Card title="Último Pagamento" value={
             loadingStatus ? "—" :
-              status?.lastPayment ? `${fmtDateTime(status.lastPayment.date)} • R$ ${status.lastPayment.amount.toFixed(2)}` : "—"
+              status?.lastPayment ? `${fmtDateTime(status.lastPayment.date)}${typeof status.lastPayment.amount === "number" ? ` • R$ ${status.lastPayment.amount.toFixed(2)}` : ""}` : "—"
           }/>
         </section>
 
@@ -1153,7 +1171,7 @@ function VipGate({
         <div className="pointer-events-none select-none opacity-70">{children}</div>
         <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-transparent via-[#0B1220]/80 to-[#0B1220]" />
         <div className="absolute inset-x-0 bottom-0 p-6">
-          <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur px-4 py-3 text-sm text-white">
+          <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur px-4 py-3 text-sm text白">
             Verificando sua assinatura…
           </div>
         </div>
@@ -1225,3 +1243,6 @@ function MediaSlot({ slot, onUpload }: { slot: ImageSlot; onUpload: (slot: Image
     </div>
   );
 }
+'''
+open('/mnt/data/ClientDashboard_fixed.tsx', 'w', encoding='utf-8').write(code)
+print("Written to /mnt/data/ClientDashboard_fixed.tsx")
