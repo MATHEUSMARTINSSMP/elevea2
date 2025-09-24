@@ -1,12 +1,13 @@
 // netlify/functions/auth-session.ts
 import type { Handler } from "@netlify/functions";
 
-// === Config ===
+/** === Config / GAS base === */
 const GAS_BASE =
   process.env.ELEVEA_GAS_URL ||
   process.env.ELEVEA_STATUS_URL ||
-  ""; // cole seu /exec se quiser fixar
+  "";
 
+/** === CORS comum === */
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,OPTIONS",
@@ -14,11 +15,12 @@ const CORS = {
   "content-type": "application/json",
 } as const;
 
-// === Utils ===
+/** Normaliza URL do GAS (garante /exec) */
 function ensureExecUrl(u: string) {
   return u && u.includes("/exec") ? u : (u ? u.replace(/\/+$/, "") + "/exec" : "");
 }
 
+/** Chama o GAS */
 async function postToGas(body: any) {
   const url = ensureExecUrl(GAS_BASE);
   if (!url) throw new Error("missing_gas_url");
@@ -36,7 +38,7 @@ async function postToGas(body: any) {
   return { ok: resp.ok && data?.ok !== false, status: resp.status, data };
 }
 
-// === Assinatura HMAC (compatível com a Edge protect.js) ===
+/** === Assinatura/validação do cookie elevea_sess === */
 const SIGN_SECRET = process.env.ADMIN_DASH_TOKEN || process.env.ADMIN_TOKEN || "";
 
 const b64url = (buf: ArrayBuffer) =>
@@ -56,19 +58,47 @@ async function hmac(payload: string): Promise<string> {
 }
 
 function makeCookie(value: string, maxAgeSec = 60 * 60 * 24 * 7) {
-  // Cookie HTTP-only por 7 dias
-  const parts = [
+  return [
     `elevea_sess=${value}`,
     `Path=/`,
     `HttpOnly`,
     `Secure`,
     `SameSite=Lax`,
     `Max-Age=${maxAgeSec}`,
-  ];
-  return parts.join("; ");
+  ].join("; ");
 }
 
-// === Handler ===
+/** Lê cookie bruto -> objeto */
+function parseCookie(raw: string | undefined) {
+  const out: Record<string,string> = {};
+  (raw || "").split(/;\s*/).filter(Boolean).forEach(p => {
+    const i = p.indexOf("=");
+    if (i > 0) out[p.slice(0, i)] = p.slice(i + 1);
+  });
+  return out;
+}
+
+/** Verifica o token e retorna claims (ou null) */
+async function readClaimsFromCookie(cookieHeader: string | undefined) {
+  if (!SIGN_SECRET) return null;
+  const cookies = parseCookie(cookieHeader);
+  const token = cookies["elevea_sess"];
+  if (!token || !token.includes(".")) return null;
+
+  const [payload, sig] = token.split(".");
+  const expected = await hmac(payload);
+  if (expected !== sig) return null;
+
+  try {
+    const jsonStr = Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const claims = JSON.parse(jsonStr);
+    if (!claims?.exp || Date.now() > Number(claims.exp)) return null;
+    return claims as { email:string; role:"admin"|"client"; siteSlug?:string; exp:number };
+  } catch {
+    return null;
+  }
+}
+
 export const handler: Handler = async (event) => {
   try {
     if (event.httpMethod === "OPTIONS") {
@@ -80,7 +110,7 @@ export const handler: Handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_or_invalid_action" }) };
     }
 
-    // === LOGIN ===
+    /** === LOGIN === */
     if (action === "login") {
       if (event.httpMethod !== "POST") {
         return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
@@ -97,63 +127,67 @@ export const handler: Handler = async (event) => {
         return { statusCode: 401, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "invalid_credentials" }) };
       }
 
-      // perfil para montar claims
+      // perfil
       const me = await postToGas({ type: "user_me", email });
-      const user = me.data?.user || { email, role: "client", siteSlug: "" };
+      const user = me.data?.user || { email, role: "client" };
 
-      // Se não houver segredo de assinatura, seguimos sem cookie (apenas JSON)
       if (!SIGN_SECRET) {
+        // sem cookie => stateless
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user }) };
       }
 
-      // Payload + assinatura base64url (parse compatível com a Edge)
+      // monta token
       const payloadObj = {
         email: user.email,
-        role: user.role || "client",
+        role: user.role,
         siteSlug: user.siteSlug || "",
-        exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // expira em 7 dias
+        exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 dias
       };
-      const payload = Buffer.from(JSON.stringify(payloadObj), "utf8")
-        .toString("base64")
+      const payload = Buffer.from(JSON.stringify(payloadObj), "utf8").toString("base64")
         .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
       const sig = await hmac(payload);
       const token = `${payload}.${sig}`;
 
-      // IMPORTANTE: use "Set-Cookie" (maiúsculo) e fetch no front com credentials:"include"
-      const headers = { ...CORS, "Set-Cookie": makeCookie(token) };
+      const headers = { ...CORS, "set-cookie": makeCookie(token) };
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, user }) };
     }
 
-    // === ME (GET ?email=... ou POST {email}) ===
+    /** === ME (AGORA LÊ O COOKIE NO SERVIDOR) === */
     if (action === "me") {
-      let email = "";
-      if (event.httpMethod === "GET") {
-        email = String(event.queryStringParameters?.email || "").trim().toLowerCase();
-      } else if (event.httpMethod === "POST") {
-        const body = event.body ? JSON.parse(event.body) : {};
-        email = String(body.email || "").trim().toLowerCase();
-      }
-      if (!email) {
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
+      // tenta extrair do cookie
+      const claims = await readClaimsFromCookie(event.headers?.cookie);
+      if (!claims?.email) {
+        // fallback: aceita email explicitamente (compat)
+        let email = "";
+        if (event.httpMethod === "GET") {
+          email = String(event.queryStringParameters?.email || "").trim().toLowerCase();
+        } else if (event.httpMethod === "POST") {
+          const body = event.body ? JSON.parse(event.body) : {};
+          email = String(body.email || "").trim().toLowerCase();
+        }
+        if (!email) {
+          return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
+        }
+        const r = await postToGas({ type: "user_me", email });
+        if (!r.ok) return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: r.data.user }) };
       }
 
-      const r = await postToGas({ type: "user_me", email });
-      if (!r.ok) {
-        return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
-      }
+      // claims válidas -> confirma no GAS e retorna
+      const r = await postToGas({ type: "user_me", email: claims.email });
+      if (!r.ok) return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: r.data.user }) };
     }
 
-    // === LOGOUT (apaga cookie) ===
+    /** === LOGOUT === */
     if (action === "logout") {
       const headers = {
         ...CORS,
-        "Set-Cookie": "elevea_sess=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+        "set-cookie": "elevea_sess=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
       };
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
     }
 
-    // fallback
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "invalid_action" }) };
   } catch (e: any) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(e?.message || e) }) };
