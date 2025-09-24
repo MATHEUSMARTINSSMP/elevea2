@@ -1,9 +1,11 @@
+// netlify/functions/auth-session.ts
 import type { Handler } from "@netlify/functions";
 
+// === Config ===
 const GAS_BASE =
   process.env.ELEVEA_GAS_URL ||
   process.env.ELEVEA_STATUS_URL ||
-  "";
+  ""; // cole seu /exec se quiser fixar
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -12,6 +14,7 @@ const CORS = {
   "content-type": "application/json",
 } as const;
 
+// === Utils ===
 function ensureExecUrl(u: string) {
   return u && u.includes("/exec") ? u : (u ? u.replace(/\/+$/, "") + "/exec" : "");
 }
@@ -33,7 +36,7 @@ async function postToGas(body: any) {
   return { ok: resp.ok && data?.ok !== false, status: resp.status, data };
 }
 
-// ==== helpers p/ token assinado igual na Edge ====
+// === Assinatura HMAC (compatível com a Edge protect.js) ===
 const SIGN_SECRET = process.env.ADMIN_DASH_TOKEN || process.env.ADMIN_TOKEN || "";
 
 const b64url = (buf: ArrayBuffer) =>
@@ -53,18 +56,19 @@ async function hmac(payload: string): Promise<string> {
 }
 
 function makeCookie(value: string, maxAgeSec = 60 * 60 * 24 * 7) {
-  // 7 dias
+  // Cookie HTTP-only por 7 dias
   const parts = [
     `elevea_sess=${value}`,
     `Path=/`,
     `HttpOnly`,
     `Secure`,
     `SameSite=Lax`,
-    `Max-Age=${maxAgeSec}`
+    `Max-Age=${maxAgeSec}`,
   ];
   return parts.join("; ");
 }
 
+// === Handler ===
 export const handler: Handler = async (event) => {
   try {
     if (event.httpMethod === "OPTIONS") {
@@ -76,7 +80,7 @@ export const handler: Handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_or_invalid_action" }) };
     }
 
-    // LOGIN
+    // === LOGIN ===
     if (action === "login") {
       if (event.httpMethod !== "POST") {
         return { statusCode: 405, headers: CORS, body: JSON.stringify({ ok: false, error: "method_not_allowed" }) };
@@ -93,32 +97,34 @@ export const handler: Handler = async (event) => {
         return { statusCode: 401, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "invalid_credentials" }) };
       }
 
-      // pega perfil
+      // perfil para montar claims
       const me = await postToGas({ type: "user_me", email });
-      const user = me.data?.user || { email, role: "client" };
+      const user = me.data?.user || { email, role: "client", siteSlug: "" };
 
+      // Se não houver segredo de assinatura, seguimos sem cookie (apenas JSON)
       if (!SIGN_SECRET) {
-        // Sem cookie: segue stateless (não recomendado)
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user }) };
       }
 
-      // monta token igual ao da Edge
+      // Payload + assinatura base64url (parse compatível com a Edge)
       const payloadObj = {
         email: user.email,
-        role: user.role,
+        role: user.role || "client",
         siteSlug: user.siteSlug || "",
-        exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 dias
+        exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // expira em 7 dias
       };
-      const payload = Buffer.from(JSON.stringify(payloadObj), "utf8").toString("base64")
+      const payload = Buffer.from(JSON.stringify(payloadObj), "utf8")
+        .toString("base64")
         .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
       const sig = await hmac(payload);
       const token = `${payload}.${sig}`;
 
-      const headers = { ...CORS, "set-cookie": makeCookie(token) };
+      // IMPORTANTE: use "Set-Cookie" (maiúsculo) e fetch no front com credentials:"include"
+      const headers = { ...CORS, "Set-Cookie": makeCookie(token) };
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, user }) };
     }
 
-    // ME (GET ?email=... ou POST {email})
+    // === ME (GET ?email=... ou POST {email}) ===
     if (action === "me") {
       let email = "";
       if (event.httpMethod === "GET") {
@@ -127,22 +133,27 @@ export const handler: Handler = async (event) => {
         const body = event.body ? JSON.parse(event.body) : {};
         email = String(body.email || "").trim().toLowerCase();
       }
-      if (!email) return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
+      if (!email) {
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
+      }
 
       const r = await postToGas({ type: "user_me", email });
-      if (!r.ok) return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+      if (!r.ok) {
+        return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+      }
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: r.data.user }) };
     }
 
-    // LOGOUT: apaga cookie
+    // === LOGOUT (apaga cookie) ===
     if (action === "logout") {
       const headers = {
         ...CORS,
-        "set-cookie": "elevea_sess=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+        "Set-Cookie": "elevea_sess=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
       };
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
     }
 
+    // fallback
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "invalid_action" }) };
   } catch (e: any) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(e?.message || e) }) };
