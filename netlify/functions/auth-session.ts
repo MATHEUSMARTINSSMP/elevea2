@@ -13,6 +13,7 @@ const CORS = {
   "access-control-allow-methods": "GET,POST,OPTIONS",
   "access-control-allow-headers": "Content-Type,Authorization",
   "content-type": "application/json",
+  "cache-control": "no-store",
 } as const;
 
 /** Normaliza URL do GAS (garante /exec) */
@@ -41,6 +42,7 @@ async function postToGas(body: any) {
 /** === Assinatura/validação do cookie elevea_sess === */
 const SIGN_SECRET = process.env.ADMIN_DASH_TOKEN || process.env.ADMIN_TOKEN || "";
 
+// base64-url encode
 const b64url = (buf: ArrayBuffer) =>
   Buffer.from(new Uint8Array(buf)).toString("base64")
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -63,7 +65,7 @@ function makeCookie(value: string, maxAgeSec = 60 * 60 * 24 * 7) {
     `Path=/`,
     `HttpOnly`,
     `Secure`,
-    `SameSite=Lax`,
+    `SameSite=Strict`,
     `Max-Age=${maxAgeSec}`,
   ].join("; ");
 }
@@ -132,16 +134,14 @@ export const handler: Handler = async (event) => {
       const user = me.data?.user || { email, role: "client" };
 
       if (!SIGN_SECRET) {
-        // sem cookie => stateless
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user }) };
       }
 
-      // monta token
       const payloadObj = {
         email: user.email,
         role: user.role,
         siteSlug: user.siteSlug || "",
-        exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 dias
+        exp: Date.now() + 1000 * 60 * 60 * 24 * 7,
       };
       const payload = Buffer.from(JSON.stringify(payloadObj), "utf8").toString("base64")
         .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -152,30 +152,16 @@ export const handler: Handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, user }) };
     }
 
-    /** === ME (AGORA LÊ O COOKIE NO SERVIDOR) === */
+    /** === ME (exige cookie válido; SEM fallback por email) === */
     if (action === "me") {
-      // tenta extrair do cookie
       const claims = await readClaimsFromCookie(event.headers?.cookie);
       if (!claims?.email) {
-        // fallback: aceita email explicitamente (compat)
-        let email = "";
-        if (event.httpMethod === "GET") {
-          email = String(event.queryStringParameters?.email || "").trim().toLowerCase();
-        } else if (event.httpMethod === "POST") {
-          const body = event.body ? JSON.parse(event.body) : {};
-          email = String(body.email || "").trim().toLowerCase();
-        }
-        if (!email) {
-          return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
-        }
-        const r = await postToGas({ type: "user_me", email });
-        if (!r.ok) return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: r.data.user }) };
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
       }
-
-      // claims válidas -> confirma no GAS e retorna
       const r = await postToGas({ type: "user_me", email: claims.email });
-      if (!r.ok) return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+      if (!r.ok) {
+        return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };
+      }
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user: r.data.user }) };
     }
 
@@ -183,7 +169,7 @@ export const handler: Handler = async (event) => {
     if (action === "logout") {
       const headers = {
         ...CORS,
-        "set-cookie": "elevea_sess=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+        "set-cookie": "elevea_sess=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict",
       };
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
     }
@@ -193,3 +179,5 @@ export const handler: Handler = async (event) => {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(e?.message || e) }) };
   }
 };
+
+export default handler;
