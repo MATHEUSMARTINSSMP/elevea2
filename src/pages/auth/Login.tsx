@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const AUTH_BASE = "/.netlify/functions/auth-session";
 const LOGIN_URL = `${AUTH_BASE}?action=login`;
-const ME_URL    = `${AUTH_BASE}?action=me`;
+const ME_URL    = `${AUTH_BASE}?action=me`;   // usaremos GET com ?email=...
 
 const RESET_URL = "/.netlify/functions/reset-dispatch";
 
@@ -35,7 +35,14 @@ export default function LoginPage() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(ME_URL, { credentials: "include", cache: "no-store" });
+        // Se você tiver o e-mail salvo em localStorage, dá pra passar aqui.
+        const current = window.localStorage.getItem("elevea_last_email") || "";
+        if (!current) return;
+
+        const r = await fetch(`${ME_URL}&email=${encodeURIComponent(current)}`, {
+          method: "GET",
+          cache: "no-store",
+        });
         const data: ApiResp = await r.json().catch(() => ({} as any));
         if (data?.ok && data.user) redirectByRole(data.user.role, next);
       } catch {/* ignore */}
@@ -53,21 +60,36 @@ export default function LoginPage() {
   async function doLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErr(null); setMsg(null); setLoading(true);
+
     try {
+      const emailLc = email.trim().toLowerCase();
+
       const r = await fetch(LOGIN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password: pass }),
+        // Enviamos o action também no body como fallback
+        body: JSON.stringify({ action: "login", email: emailLc, password: pass }),
       });
+
       if (r.status >= 500) {
         const txt = await r.text().catch(() => "");
         setErr(`Servidor indisponível (${r.status}). ${txt || ""}`.trim());
         return;
       }
+
       const data: ApiResp = await r.json().catch(() => ({} as any));
-      if (!r.ok || data.ok === false) { setErr(data.error || data.message || `Falha no login (${r.status})`); return; }
-      if (!data.user?.role) { setErr("Resposta inválida do servidor."); return; }
+      if (!r.ok || data.ok === false) {
+        setErr(data.error || data.message || `Falha no login (${r.status})`);
+        return;
+      }
+      if (!data.user?.role) {
+        setErr("Resposta inválida do servidor.");
+        return;
+      }
+
+      // guarda último e-mail para o “me”
+      try { window.localStorage.setItem("elevea_last_email", emailLc); } catch {}
+
       redirectByRole(data.user.role, next);
     } catch (e: any) {
       setErr(e?.message || "Erro de rede");
@@ -113,15 +135,37 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold mb-6">Entrar</h1>
 
         <form className="space-y-4" onSubmit={doLogin}>
-          <input type="email" placeholder="E-mail" value={email} onChange={(e)=>setEmail(e.target.value)} className="w-full border rounded-xl px-4 py-3" autoComplete="username" required />
-          <input type="password" placeholder="Senha" value={pass} onChange={(e)=>setPass(e.target.value)} className="w-full border rounded-xl px-4 py-3" autoComplete="current-password" required />
-          <button type="submit" disabled={loading} className="w-full bg-black text-white rounded-xl py-3 hover:bg-gray-800">
+          <input
+            type="email"
+            placeholder="E-mail"
+            value={email}
+            onChange={(e)=>setEmail(e.target.value)}
+            className="w-full border rounded-xl px-4 py-3"
+            autoComplete="username"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            value={pass}
+            onChange={(e)=>setPass(e.target.value)}
+            className="w-full border rounded-xl px-4 py-3"
+            autoComplete="current-password"
+            required
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-black text-white rounded-xl py-3 hover:bg-gray-800"
+          >
             {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
 
         <div className="mt-4 text-sm">
-          <button className="text-blue-600 underline" onClick={()=>setForgotOpen(true)}>Esqueci a senha</button>
+          <button className="text-blue-600 underline" onClick={()=>setForgotOpen(true)}>
+            Esqueci a senha
+          </button>
         </div>
 
         {err && <div className="mt-4 text-red-600 whitespace-pre-wrap">{err}</div>}
@@ -133,12 +177,21 @@ export default function LoginPage() {
           <div className="bg-white w-full max-w-md rounded-xl shadow p-6">
             <h2 className="text-xl font-semibold mb-4">Reset de Senha</h2>
             <form className="space-y-4" onSubmit={doForgot}>
-              <input type="email" placeholder="E-mail" value={forgotEmail} onChange={(e)=>setForgotEmail(e.target.value)} className="w-full border rounded-xl px-4 py-3" required />
+              <input
+                type="email"
+                placeholder="E-mail"
+                value={forgotEmail}
+                onChange={(e)=>setForgotEmail(e.target.value)}
+                className="w-full border rounded-xl px-4 py-3"
+                required
+              />
               <div className="flex gap-2">
                 <button type="submit" className="bg-black text-white rounded-xl px-4 py-2" disabled={forgotLoading}>
                   {forgotLoading ? "Enviando..." : "Enviar link"}
                 </button>
-                <button type="button" className="border rounded-xl px-4 py-2" onClick={()=>setForgotOpen(false)}>Fechar</button>
+                <button type="button" className="border rounded-xl px-4 py-2" onClick={()=>setForgotOpen(false)}>
+                  Fechar
+                </button>
               </div>
             </form>
             <p className="text-xs text-gray-500 mt-3">Você receberá um link para criar uma nova senha.</p>
