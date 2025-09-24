@@ -207,7 +207,7 @@ export default function ClientDashboard() {
     }
   };
 
-  const planLabel = plan === null ? "—" : (vipEnabled ? "vip" : (plan || "—"));
+  const planLabel = plan === null ? "—" : (vipEnabled ? "VIP" : (plan || "—"));
 
   // Redireciona admin
   useEffect(() => {
@@ -260,6 +260,9 @@ export default function ClientDashboard() {
           lastPayment: r.lastPayment,
           plan: resolvedPlan,
         });
+
+        // ✅ cards prontos assim que o plano é resolvido
+        setLoadingStatus(false);
       } catch (e: any) {
         setPlanErr("Não foi possível validar sua assinatura agora.");
       } finally {
@@ -601,8 +604,8 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        {/* ERRO DE PLANO */}
-        {planErr && (
+        {/* ERRO DE PLANO — só mostra se não estiver VIP */}
+        {planErr && !vipEnabled && (
           <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900">
             <div className="flex items-center justify-between">
               <span className="text-sm">{planErr}</span>
