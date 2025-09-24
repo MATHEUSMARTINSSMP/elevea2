@@ -35,14 +35,14 @@ async function postToGas(body: any) {
   return { ok: resp.ok && data?.ok !== false, status: resp.status, data };
 }
 
-const handler: Handler = async (event) => {
+export const handler: Handler = async (event) => {
   try {
     // Preflight
     if (event.httpMethod === "OPTIONS") {
       return { statusCode: 204, headers: CORS, body: "" };
     }
 
-    // Lê action do query, ou do body (fallback)
+    // Lê action do query OU do body (fallback)
     let bodyJson: any = {};
     try { bodyJson = event.body ? JSON.parse(event.body) : {}; } catch { bodyJson = {}; }
 
@@ -124,5 +124,3 @@ const handler: Handler = async (event) => {
     };
   }
 };
-
-export default handler;
