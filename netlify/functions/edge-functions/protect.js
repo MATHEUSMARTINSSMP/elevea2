@@ -1,88 +1,113 @@
 // netlify/edge-functions/protect.js
+// Protege apenas /admin/* e /client/*, sem nunca quebrar a página.
+// Em caso de erro/falta de cookie, redireciona para /login?next=...
+
 export default async (request, context) => {
-  const url = new URL(request.url);
-  const path = url.pathname;
+  try {
+    const url  = new URL(request.url);
+    const path = url.pathname;
 
-  // Só protege /admin/* e /client/*
-  const isAdmin = path.startsWith("/admin/");
-  const isClient = path.startsWith("/client/");
-  if (!isAdmin && !isClient) {
-    return context.next(); // páginas públicas: "/" inclusive
-  }
+    // só vigia áreas privadas
+    const isAdmin  = path.startsWith("/admin/");
+    const isClient = path.startsWith("/client/");
+    if (!isAdmin && !isClient) return context.next();
 
-  // Lê cookie
-  const rawCookie = request.headers.get("cookie") || "";
-  const cookie = Object.fromEntries(
-    rawCookie.split(/;\s*/).filter(Boolean).map((p) => {
-      const i = p.indexOf("=");
-      return [p.slice(0, i), p.slice(i + 1)];
-    })
-  );
-  const token = cookie["elevea_sess"] || "";
-
-  // Segredo HMAC
-  const SIGN_SECRET = context.env?.ADMIN_DASH_TOKEN || context.env?.ADMIN_TOKEN || "";
-  if (!SIGN_SECRET) {
-    return new Response("Missing signing secret", { status: 500 });
-  }
-
-  const timingSafeEqual = (a, b) => {
-    const A = new TextEncoder().encode(a || "");
-    const B = new TextEncoder().encode(b || "");
-    if (A.length !== B.length) return false;
-    let ok = 0;
-    for (let i = 0; i < A.length; i++) ok |= A[i] ^ B[i];
-    return ok === 0;
-  };
-
-  const b64url = (buf) =>
-    btoa(String.fromCharCode(...new Uint8Array(buf)))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/g, "");
-
-  const sign = async (payload) => {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(SIGN_SECRET),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
+    // lê cookie (tolerante)
+    const rawCookie = request.headers.get("cookie") || "";
+    const cookie = Object.fromEntries(
+      rawCookie
+        .split(/;\s*/).filter(Boolean)
+        .map((p) => {
+          const i = p.indexOf("=");
+          const k = i >= 0 ? p.slice(0, i) : p;
+          const v = i >= 0 ? p.slice(i + 1) : "";
+          return [k, v];
+        })
     );
-    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-    return b64url(mac);
-  };
 
-  const parseToken = async (tkn) => {
-    if (!tkn || !tkn.includes(".")) return null;
-    const [payload, sig] = tkn.split(".");
-    const expected = await sign(payload);
-    if (!timingSafeEqual(expected, sig)) return null;
-    try {
-      const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-      if (!json.exp || Date.now() > json.exp) return null;
-      return json;
-    } catch {
-      return null;
-    }
-  };
+    const token = cookie["elevea_sess"] || "";
 
-  const claims = await parseToken(token);
-  const goLogin = () =>
-    Response.redirect(`/login?next=${encodeURIComponent(url.pathname + url.search)}`, 302);
+    // segredo opcional (se faltar, não vamos derrubar; só não validamos assinatura)
+    const SIGN_SECRET =
+      context.env?.ADMIN_DASH_TOKEN ||
+      context.env?.ADMIN_TOKEN ||
+      "";
 
-  if (!claims) return goLogin();
+    // utilidades
+    const timingSafeEqual = (a, b) => {
+      const A = new TextEncoder().encode(a || "");
+      const B = new TextEncoder().encode(b || "");
+      if (A.length !== B.length) return false;
+      let ok = 0;
+      for (let i = 0; i < A.length; i++) ok |= A[i] ^ B[i];
+      return ok === 0;
+    };
 
-  // Autorização por role
-  const role = String(claims.role || "");
-  if (isAdmin && role !== "admin") return new Response("Forbidden", { status: 403 });
-  if (isClient && !(role === "client" || role === "admin")) return goLogin();
+    const b64url = (buf) =>
+      btoa(String.fromCharCode(...new Uint8Array(buf)))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
 
-  // Encaminha com cabeçalhos úteis
-  const newHeaders = new Headers(request.headers);
-  newHeaders.set("x-user-email", claims.email || "");
-  newHeaders.set("x-user-role", role);
-  newHeaders.set("x-user-site", claims.siteSlug || "");
+    const sign = async (payload) => {
+      if (!SIGN_SECRET) return ""; // sem segredo ⇒ sem validação
+      const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(SIGN_SECRET),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+      const mac = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        new TextEncoder().encode(payload)
+      );
+      return b64url(mac);
+    };
 
-  return context.next({ request: new Request(request, { headers: newHeaders }) });
+    const parseToken = async (tkn) => {
+      if (!tkn || !tkn.includes(".")) return null;
+      const [payload, sig] = tkn.split(".");
+      // valida assinatura somente se houver segredo
+      if (SIGN_SECRET) {
+        const expected = await sign(payload);
+        if (!timingSafeEqual(expected, sig)) return null;
+      }
+      try {
+        const json = JSON.parse(
+          atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
+        );
+        if (json?.exp && Date.now() > json.exp) return null; // expirado
+        return json;
+      } catch {
+        return null;
+      }
+    };
+
+    const claims = await parseToken(token);
+    const toLogin = () =>
+      Response.redirect(
+        `/login?next=${encodeURIComponent(url.pathname + url.search)}`,
+        302
+      );
+
+    if (!claims) return toLogin();
+
+    // autorização por role
+    const role = String(claims.role || "");
+    if (isAdmin && role !== "admin") return toLogin();
+    if (isClient && !(role === "client" || role === "admin")) return toLogin();
+
+    // encaminha com cabeçalhos úteis (sem quebrar)
+    const headers = new Headers(request.headers);
+    if (claims.email)    headers.set("x-user-email", claims.email);
+    if (role)            headers.set("x-user-role", role);
+    if (claims.siteSlug) headers.set("x-user-site", claims.siteSlug);
+
+    return context.next({ request: new Request(request, { headers }) });
+  } catch {
+    // **NUNCA** derruba a página: segue o fluxo normal
+    return context.next();
+  }
 };
