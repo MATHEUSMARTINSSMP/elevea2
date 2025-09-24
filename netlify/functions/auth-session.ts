@@ -6,7 +6,7 @@ const GAS_BASE =
   process.env.ELEVEA_STATUS_URL ||
   "";
 
-/** Headers com capitalização padrão */
+/** Headers com capitalização que o Netlify espera */
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
@@ -40,24 +40,41 @@ async function postToGas(body: any) {
   return { ok: resp.ok && data?.ok !== false, status: resp.status, data };
 }
 
-/** Extrai a ação de forma resiliente (rawUrl > queryStringParameters > body.action) */
+/** Extrai a ação de forma à prova de ambiente */
 function getAction(event: Parameters<Handler>[0]): string {
+  // 1) rawUrl → URLSearchParams
   try {
-    if (event.rawUrl) {
-      const u = new URL(event.rawUrl);
+    if ((event as any).rawUrl) {
+      const u = new URL((event as any).rawUrl as string);
       const a = (u.searchParams.get("action") || "").toLowerCase();
       if (a) return a;
     }
   } catch { /* ignore */ }
 
+  // 2) rawQuery → URLSearchParams
+  try {
+    const rawQuery = (event as any).rawQuery as string | undefined;
+    if (rawQuery) {
+      const p = new URLSearchParams(rawQuery);
+      const a = (p.get("action") || "").toLowerCase();
+      if (a) return a;
+    }
+  } catch { /* ignore */ }
+
+  // 3) queryStringParameters
   const q = (event.queryStringParameters?.action || "").toLowerCase();
   if (q) return q;
 
+  // 4) body.action
   try {
     const body = event.body ? JSON.parse(event.body) : {};
     const b = (body.action || "").toLowerCase();
     if (b) return b;
   } catch { /* ignore */ }
+
+  // 5) fallback por método — para não travar fluxo
+  if (event.httpMethod === "POST") return "login";
+  if (event.httpMethod === "GET")  return "me";
 
   return "";
 }
@@ -109,6 +126,7 @@ const handler: Handler = async (event) => {
       }
 
       if (!email) {
+        // sem sessão server-side ainda; devolve ok:false
         return json(200, { ok: false });
       }
 
