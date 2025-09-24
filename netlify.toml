@@ -41,3 +41,13 @@
     Access-Control-Allow-Origin  = "*"
     Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+    # === Edge Functions (proteção) ===
+[[edge_functions]]
+  path     = "/admin/*"
+  function = "protect"
+
+[[edge_functions]]
+  path     = "/client/*"
+  function = "protect"
+
