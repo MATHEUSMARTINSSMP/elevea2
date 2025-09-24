@@ -11,10 +11,11 @@ const CORS = {
   "access-control-allow-methods": "POST,OPTIONS",
   "access-control-allow-headers": "Content-Type,Authorization",
   "content-type": "application/json",
+  "cache-control": "no-store",
 } as const;
 
 function ensureExecUrl(u: string) {
-  return u.includes("/exec") ? u : u.replace(/\/+$/, "") + "/exec";
+  return u && u.includes("/exec") ? u : (u ? u.replace(/\/+$/, "") + "/exec" : "");
 }
 
 export const handler: Handler = async (event) => {
@@ -32,13 +33,12 @@ export const handler: Handler = async (event) => {
     const body = event.body ? JSON.parse(event.body) : {};
     const token = String(body.token || "").trim();
     const password = String(body.password || "").trim();
-    const email = String(body.email || "").trim().toLowerCase(); // opcional; GAS ignora
+    const email = String(body.email || "").trim().toLowerCase();
 
     if (!token || !password) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_email_or_token_or_password" }) };
     }
 
-    // repassa ao GAS — ele vai cair em passwordResetConfirm_
     const resp = await fetch(ensureExecUrl(GAS_BASE), {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -50,7 +50,6 @@ export const handler: Handler = async (event) => {
     try { data = JSON.parse(txt || "{}"); } catch { data = { raw: txt }; }
 
     if (!resp.ok || data?.ok === false) {
-      // normaliza mensagens que a UI entende
       const err = data?.error || "invalid_token";
       return { statusCode: resp.status || 400, headers: CORS, body: JSON.stringify({ ok: false, error: err, data }) };
     }
