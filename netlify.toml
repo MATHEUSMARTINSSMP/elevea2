@@ -13,6 +13,15 @@
   directory     = "netlify/functions"
   node_bundler  = "esbuild"
 
+# === Edge Functions (apenas áreas privadas) ===
+[[edge_functions]]
+  path     = "/client/*"
+  function = "protect"
+
+[[edge_functions]]
+  path     = "/admin/*"
+  function = "protect"
+
 # === Redirects / Functions HTTP ===
 
 # Webhook do Mercado Pago (exemplo)
