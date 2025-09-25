@@ -84,7 +84,7 @@ interface SiteStructure {
 
 /* ===== MOCK FUNCTIONS ===== */
 function getJSON<T>(url: string, timeoutMs = 10000): Promise<T> {
-  interceptNetlifyFunctions();
+  // Mock data handling for development
 
   const devMode = (import.meta as any).env?.DEV;
   if (devMode && (url.includes("client-plan") || url.includes("auth-status"))) {
