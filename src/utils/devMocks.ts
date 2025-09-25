@@ -40,7 +40,7 @@ export function mockClientPlan(site: string, email: string): ClientPlanResponse 
     vip: true,
     plan: 'vip',
     status: 'active',
-    nextPayment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 dias
+    nextPayment: "2025-10-25T10:00:00.000Z", // 25/10/2025 às 10h
     lastPayment: {
       date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 dias atrás
       amount: 97.00
@@ -58,7 +58,7 @@ export function mockAuthStatus(site: string): StatusResponse {
     siteSlug: site,
     status: 'active',
     plan: 'vip',
-    nextPayment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    nextPayment: "2025-10-25T10:00:00.000Z", // 25/10/2025 às 10h
     lastPayment: {
       date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
       amount: 97.00
