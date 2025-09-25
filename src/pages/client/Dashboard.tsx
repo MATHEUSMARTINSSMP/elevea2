@@ -121,6 +121,15 @@ const fmtDateTime = (s?: string | null) => {
   );
 };
 
+/* Helpers de query-string */
+const getQS = (key: string) => {
+  try { return new URLSearchParams(window.location.search).get(key) ?? undefined; } catch { return undefined; }
+};
+const getQSBool = (key: string) => {
+  const v = getQS(key);
+  return v === "1" || v === "true";
+};
+
 /* ================= Página ================= */
 export default function ClientDashboard() {
   const { user } = useSession();
@@ -130,8 +139,7 @@ export default function ClientDashboard() {
   /* ------- DEV FORCE VIP ------- */
   const DEV_FORCE_VIP =
     typeof window !== "undefined" &&
-    (new URLSearchParams(window.location.search).get("forceVIP") === "1" ||
-      localStorage.getItem("elevea:forceVIP") === "1");
+    (getQSBool("forceVIP") || localStorage.getItem("elevea:forceVIP") === "1");
 
   /* Plano / gate VIP */
   const [plan, setPlan] = useState<string | null>(null);
@@ -156,7 +164,17 @@ export default function ClientDashboard() {
   );
   const [loadingAssets, setLoadingAssets] = useState(true);
 
-  const [vipPin, setVipPin] = useState("");
+  const [vipPin, setVipPin] = useState<string>(() => {
+    // Prioridade: ?pin=... > sessionStorage > vazio (será preenchido pelos settings depois)
+    try {
+      const qsPin = getQS("pin");
+      if (qsPin) return qsPin;
+      const ss = sessionStorage.getItem("dashboard:vipPin") || "";
+      return ss;
+    } catch {
+      return "";
+    }
+  });
   const [saving, setSaving] = useState(false);
 
   /* Gerenciamento de Funcionalidades */
@@ -174,6 +192,11 @@ export default function ClientDashboard() {
   const [siteStructure, setSiteStructure] = useState<any>(null);
   const [loadingStructure, setLoadingStructure] = useState(true);
   const [savingStructure, setSavingStructure] = useState(false);
+
+  // Persistir vipPin sempre que mudar
+  useEffect(() => {
+    try { sessionStorage.setItem("dashboard:vipPin", vipPin || ""); } catch {}
+  }, [vipPin]);
 
   // VIP habilita se QUALQUER fonte indicar isso (ou DEV force)
   const vipEnabledRaw =
@@ -219,7 +242,10 @@ export default function ClientDashboard() {
     }
   };
 
-  const planLabel = plan === null ? "—" : vipEnabled ? "VIP" : (plan || "—");
+  const planLabel =
+    plan === null ? "—" :
+    vipEnabled ? (DEV_FORCE_VIP ? "VIP (forçado)" : "VIP") :
+    (plan || "—");
 
   // Redireciona admin
   useEffect(() => {
@@ -349,7 +375,8 @@ export default function ClientDashboard() {
         ).catch(() => ({ ok: true, settings: {} as ClientSettings }));
         if (!alive) return;
         setSettings(st.settings || {});
-        setVipPin(st.settings?.vipPin || "");
+        // Se não há pin vindo da URL/session, use o dos settings
+        setVipPin((prev) => prev || st.settings?.vipPin || "");
       } catch {
       } finally {
         if (alive) setLoadingSettings(false);
