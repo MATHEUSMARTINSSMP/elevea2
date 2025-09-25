@@ -795,6 +795,7 @@ export default function ClientDashboard() {
               vipPin={vipPin || "FORCED"}
               analytics={{
                 totalVisits: 1847,
+                conversionRate: 4.8,
                 bounceRate: 32.8,
                 avgSessionDuration: "2:22",
                 topPages: [
@@ -812,7 +813,6 @@ export default function ClientDashboard() {
               }}
               feedback={{
                 avgRating: 4.3,
-                totalFeedbacks: 59,
                 recentFeedbacks: [
                   { rating: 5, comment: "Excelente atendimento! Superou minhas expectativas.", sentiment: "positive" },
                   { rating: 4, comment: "Muito bom serviço, recomendo!", sentiment: "positive" },
