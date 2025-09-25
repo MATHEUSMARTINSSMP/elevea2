@@ -260,20 +260,6 @@ export default function ClientDashboard() {
     })();
 
   const vipEnabled = DEV_FORCE_VIP || vipEnabledRaw;
-  
-  // 🎯 DEBUG: Log para verificar lógica VIP
-  console.log('🔍 VIP ENABLED DEBUG:', {
-    plan,
-    statusPlan: status?.plan,
-    statusStatus: status?.status,
-    looksVipPlan: looksVip(plan || undefined),
-    looksVipStatusPlan: looksVip(status?.plan),
-    isActiveStatusStatus: isActiveStatus(status?.status),
-    vipEnabledRaw,
-    vipEnabled,
-    DEV_FORCE_VIP,
-    timestamp: new Date().toISOString()
-  });
 
   // helpers de features (não esconda nada se for VIP/forçado)
   const isFeatureEnabled = (featureId: string) => {
@@ -369,17 +355,9 @@ export default function ClientDashboard() {
         );
 
         if (!alive) return;
-        // 🔧 CORREÇÃO: Se backend retorna vip=true, forçar plan="vip"
+        // Se backend retorna vip=true, forçar plan="vip"
         const resolvedPlan = r.vip ? "vip" : (r.plan || "");
         setPlan(resolvedPlan);
-        
-        // 🎯 DEBUG: Log para verificar valores
-        console.log('🔍 CLIENT-PLAN DEBUG:', {
-          backendVip: r.vip,
-          backendPlan: r.plan,
-          resolvedPlan,
-          timestamp: new Date().toISOString()
-        });
         
         try {
           sessionStorage.setItem(cacheKey, resolvedPlan);
@@ -816,24 +794,29 @@ export default function ClientDashboard() {
               businessName={user?.siteSlug || "seu negócio"}
               vipPin={vipPin || "FORCED"}
               analytics={{
-                totalVisits: 2500,
-                conversionRate: 3.2,
-                bounceRate: 35.8,
-                avgSessionDuration: "2:34",
+                totalVisits: 1847,
+                bounceRate: 32.8,
+                avgSessionDuration: "2:22",
                 topPages: [
-                  { page: "/", visits: 1250 },
-                  { page: "/servicos", visits: 850 },
+                  { page: "/", visits: 776 },
+                  { page: "/servicos", visits: 480 },
+                  { page: "/contato", visits: 332 },
+                  { page: "/sobre", visits: 185 },
+                  { page: "/galeria", visits: 74 },
                 ],
                 deviceTypes: [
-                  { name: "Mobile", value: 65 },
-                  { name: "Desktop", value: 35 },
+                  { name: "Mobile", value: 72 },
+                  { name: "Desktop", value: 23 },
+                  { name: "Tablet", value: 5 },
                 ],
               }}
               feedback={{
-                avgRating: 4.2,
+                avgRating: 4.3,
+                totalFeedbacks: 59,
                 recentFeedbacks: [
-                  { rating: 5, comment: "Excelente atendimento!", sentiment: "positive" },
-                  { rating: 4, comment: "Muito bom serviço", sentiment: "positive" },
+                  { rating: 5, comment: "Excelente atendimento! Superou minhas expectativas.", sentiment: "positive" },
+                  { rating: 4, comment: "Muito bom serviço, recomendo!", sentiment: "positive" },
+                  { rating: 5, comment: "Profissionais competentes e pontuais.", sentiment: "positive" },
                 ],
               }}
             />
