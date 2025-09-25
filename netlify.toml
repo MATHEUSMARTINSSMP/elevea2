@@ -8,6 +8,14 @@
   CI        = "false"
   NPM_FLAGS = "--legacy-peer-deps"
 
+# === Dev Server ===
+[dev]
+  command = "npm run dev:vite"
+  targetPort = 5000
+  port = 8888
+  publish = "dist"
+  functions = "netlify/functions"
+
 # === Functions (Node) ===
 [functions]
   directory    = "netlify/functions"
