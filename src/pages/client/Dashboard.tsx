@@ -260,6 +260,20 @@ export default function ClientDashboard() {
     })();
 
   const vipEnabled = DEV_FORCE_VIP || vipEnabledRaw;
+  
+  // 🎯 DEBUG: Log para verificar lógica VIP
+  console.log('🔍 VIP ENABLED DEBUG:', {
+    plan,
+    statusPlan: status?.plan,
+    statusStatus: status?.status,
+    looksVipPlan: looksVip(plan || undefined),
+    looksVipStatusPlan: looksVip(status?.plan),
+    isActiveStatusStatus: isActiveStatus(status?.status),
+    vipEnabledRaw,
+    vipEnabled,
+    DEV_FORCE_VIP,
+    timestamp: new Date().toISOString()
+  });
 
   // helpers de features (não esconda nada se for VIP/forçado)
   const isFeatureEnabled = (featureId: string) => {
@@ -355,8 +369,18 @@ export default function ClientDashboard() {
         );
 
         if (!alive) return;
+        // 🔧 CORREÇÃO: Se backend retorna vip=true, forçar plan="vip"
         const resolvedPlan = r.vip ? "vip" : (r.plan || "");
         setPlan(resolvedPlan);
+        
+        // 🎯 DEBUG: Log para verificar valores
+        console.log('🔍 CLIENT-PLAN DEBUG:', {
+          backendVip: r.vip,
+          backendPlan: r.plan,
+          resolvedPlan,
+          timestamp: new Date().toISOString()
+        });
+        
         try {
           sessionStorage.setItem(cacheKey, resolvedPlan);
         } catch {}
