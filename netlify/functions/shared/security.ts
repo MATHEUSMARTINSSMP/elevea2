@@ -68,15 +68,16 @@ export async function verifyVipAccess(siteSlug: string, vipPin: string): Promise
   try {
     if (!siteSlug || !vipPin) return false
     
+    // Usar GET com query params como esperado pelo client-api
     const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
-    const response = await fetch(`${baseUrl}/.netlify/functions/client-api`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_settings', siteSlug })
+    const response = await fetch(`${baseUrl}/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(siteSlug.toUpperCase())}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
     })
 
     if (response.ok) {
       const data = await response.json()
+      // Verificar se o vipPin confere com o armazenado
       return data.settings?.vipPin === vipPin
     }
     return false
