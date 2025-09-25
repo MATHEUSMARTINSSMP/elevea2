@@ -241,10 +241,9 @@ export default function AnalyticsDashboard({ siteSlug, vipPin }: AnalyticsDashbo
       </div>
 
       {/* Cards de resumo */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard title="Visitas Totais" value={data.summary.totalVisits.toLocaleString()} trend="+12.5%" />
         <StatCard title="Leads Gerados" value={data.summary.totalLeads.toString()} trend="+8.3%" />
-        <StatCard title="Taxa de Conversão" value={`${data.summary.conversionRate}%`} trend="+0.8%" />
         <StatCard title="Avaliação Média" value={data.summary.avgRating.toString()} trend="+0.2" />
       </div>
 
