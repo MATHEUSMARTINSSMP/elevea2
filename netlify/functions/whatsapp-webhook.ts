@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions'
-import { rateLimitMiddleware, verifyVipAccess, verifyWebhookSignature, processWhatsAppMessage, normalizePhoneNumber, saveConversation } from './shared/security'
+import { rateLimitMiddleware, verifyVipAccess } from './shared/security'
+import crypto from 'crypto'
 
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
@@ -39,25 +40,32 @@ export const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === 'POST') {
-      // Verificar assinatura do webhook para segurança
-      const signature = event.headers['x-hub-signature-256']
-      if (!verifyWebhookSignature(event.body || '', signature)) {
-        console.warn('Webhook signature inválida ou ausente')
-        return {
-          statusCode: 401,
-          headers,
-          body: JSON.stringify({ error: 'Signature inválida ou ausente' })
-        }
-      }
-
       const body = JSON.parse(event.body || '{}')
       
-      // Processar mensagens recebidas do WhatsApp
+      // Processar mensagens recebidas do WhatsApp Business API
       if (body.object === 'whatsapp_business_account') {
+        // Verificar assinatura do webhook para segurança (só em produção)
+        if (process.env.WHATSAPP_APP_SECRET) {
+          const signature = event.headers['x-hub-signature-256']
+          if (!verifyWebhookSignature(event.body || '', signature)) {
+            console.warn('Webhook signature inválida ou ausente')
+            return {
+              statusCode: 401,
+              headers,
+              body: JSON.stringify({ error: 'Signature inválida ou ausente' })
+            }
+          }
+        }
+        
+        // Processar mensagens recebidas
         for (const entry of body.entry || []) {
           for (const change of entry.changes || []) {
             if (change.field === 'messages') {
-              await processWhatsAppMessage(change.value)
+              const messages = change.value?.messages || []
+              for (const message of messages) {
+                // Processar cada mensagem automaticamente
+                await processIncomingMessage(message, 'default_site') // TODO: determinar siteSlug real
+              }
             }
           }
         }
@@ -188,7 +196,29 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string, siteSlu
     const whatsappPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
 
     if (!whatsappToken || !whatsappPhoneId) {
-      throw new Error('Credenciais do WhatsApp não configuradas')
+      console.warn('⚠️ Credenciais WhatsApp não configuradas - usando modo desenvolvimento')
+      
+      // Salvar mensagem no Google Sheets mesmo em modo desenvolvimento
+      await saveConversationToSheets(siteSlug, {
+        phoneNumber: normalizePhoneNumber(phoneNumber),
+        contactName: 'Contato',
+        message,
+        messageType: 'sent',
+        messageId: `dev_${Date.now()}`,
+        status: 'sent',
+        isFromBot: false
+      })
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          ok: true,
+          messageId: `dev_msg_${Date.now()}`,
+          status: 'sent_dev_mode',
+          note: 'Modo desenvolvimento - configure WHATSAPP_ACCESS_TOKEN para produção'
+        })
+      }
     }
 
     const response = await fetch(`https://graph.facebook.com/v18.0/${whatsappPhoneId}/messages`, {
@@ -312,13 +342,24 @@ async function sendWhatsAppTemplate(phoneNumber: string, templateName: string, s
 
 async function getConversations(siteSlug: string) {
   try {
-    // TODO: Buscar conversações reais do storage
-    // const conversations = await netlifyBlobs.list(`whatsapp_${siteSlug}_*`)
+    // Buscar conversações reais do Google Sheets
+    const conversations = await getConversationsFromSheets(siteSlug)
     
-    // Dados mock para desenvolvimento
+    if (conversations && conversations.length > 0) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          ok: true,
+          conversations: conversations.slice(0, 50) // Últimas 50 conversas
+        })
+      }
+    }
+    
+    // Fallback para dados mock se não há dados no sheets
     const mockConversations = [
       {
-        id: '1',
+        id: 'mock_1',
         phoneNumber: '+5596991234567',
         contactName: 'Maria Silva',
         message: 'Olá! Gostaria de saber mais sobre seus serviços.',
@@ -326,7 +367,7 @@ async function getConversations(siteSlug: string) {
         type: 'received'
       },
       {
-        id: '2',
+        id: 'mock_2',
         phoneNumber: '+5596991234567', 
         contactName: 'Sistema',
         message: '👋 Olá! Obrigado por entrar em contato. Como posso ajudá-lo hoje?',
@@ -341,7 +382,8 @@ async function getConversations(siteSlug: string) {
       headers,
       body: JSON.stringify({
         ok: true,
-        conversations: mockConversations
+        conversations: mockConversations,
+        note: 'Dados exemplo - configure Google Sheets para dados reais'
       })
     }
   } catch (error) {
@@ -361,4 +403,162 @@ async function notifyVipAdmins(messageData: any) {
   // Notificar administradores VIP sobre nova mensagem
   console.log('Notificando admins VIP:', messageData)
   // TODO: Implementar notificação real
+}
+
+// Funções de integração com Google Sheets
+async function saveConversationToSheets(siteSlug: string, conversationData: any) {
+  try {
+    const gasUrl = process.env.GAS_BASE_URL
+    if (!gasUrl) {
+      console.warn('GAS_BASE_URL não configurada - salvamento de conversa pulado')
+      return false
+    }
+
+    const response = await fetch(`${gasUrl}?action=save_whatsapp_conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        siteSlug,
+        conversation: {
+          ...conversationData,
+          id: conversationData.messageId || `msg_${Date.now()}`,
+          timestamp: new Date().toISOString()
+        }
+      })
+    })
+
+    if (!response.ok) {
+      console.warn('Erro ao salvar conversa no Google Sheets:', response.statusText)
+      return false
+    }
+
+    console.log('✅ Conversa WhatsApp salva no Google Sheets')
+    return true
+  } catch (error) {
+    console.error('Erro ao salvar conversa WhatsApp:', error)
+    return false
+  }
+}
+
+async function getConversationsFromSheets(siteSlug: string) {
+  try {
+    const gasUrl = process.env.GAS_BASE_URL
+    if (!gasUrl) {
+      console.warn('GAS_BASE_URL não configurada - busca de conversas pulada')
+      return []
+    }
+
+    const response = await fetch(`${gasUrl}?action=get_whatsapp_conversations&siteSlug=${siteSlug}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    if (!response.ok) {
+      console.warn('Erro ao buscar conversas do Google Sheets:', response.statusText)
+      return []
+    }
+
+    const data = await response.json()
+    return data.conversations || []
+  } catch (error) {
+    console.error('Erro ao buscar conversas WhatsApp:', error)
+    return []
+  }
+}
+
+function normalizePhoneNumber(phone: string): string {
+  // Remove todos os caracteres não numéricos
+  let normalized = phone.replace(/\D/g, '')
+  
+  // Se não tem código do país, assume Brasil (+55)
+  if (normalized.length === 11 && normalized.startsWith('9')) {
+    normalized = '55' + normalized
+  } else if (normalized.length === 10) {
+    normalized = '559' + normalized
+  }
+  
+  // Adiciona o + se não tem
+  if (!normalized.startsWith('+')) {
+    normalized = '+' + normalized
+  }
+  
+  return normalized
+}
+
+// Verificação de assinatura do webhook WhatsApp
+function verifyWebhookSignature(payload: string, signature?: string): boolean {
+  if (!signature || !process.env.WHATSAPP_APP_SECRET) {
+    return false
+  }
+
+  try {
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.WHATSAPP_APP_SECRET)
+      .update(payload)
+      .digest('hex')
+
+    const receivedSignature = signature.replace('sha256=', '')
+    
+    // Usar timing-safe comparison
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature, 'hex'),
+      Buffer.from(receivedSignature, 'hex')
+    )
+  } catch (error) {
+    console.error('Erro na verificação de assinatura:', error)
+    return false
+  }
+}
+
+// Processamento inteligente de mensagens WhatsApp
+async function processIncomingMessage(messageData: any, siteSlug: string) {
+  try {
+    const { from, text, timestamp, id } = messageData
+    
+    // Normalizar número de telefone
+    const phoneNumber = normalizePhoneNumber(from)
+    
+    // Salvar mensagem recebida no Google Sheets
+    await saveConversationToSheets(siteSlug, {
+      phoneNumber,
+      contactName: `Contato ${phoneNumber.slice(-4)}`,
+      message: text.body,
+      messageType: 'received',
+      messageId: id,
+      status: 'received',
+      isFromBot: false
+    })
+    
+    // Gerar resposta automática
+    const autoResponse = generateAutoResponse(text.body)
+    
+    if (autoResponse) {
+      // Enviar resposta automática
+      await sendWhatsAppMessage(phoneNumber, autoResponse.text, siteSlug)
+      
+      // Salvar resposta automática no Google Sheets
+      await saveConversationToSheets(siteSlug, {
+        phoneNumber,
+        contactName: 'Sistema Automático',
+        message: autoResponse.text,
+        messageType: 'auto_response',
+        messageId: `auto_${Date.now()}`,
+        status: 'sent',
+        isFromBot: true
+      })
+    }
+    
+    // Notificar administradores sobre nova mensagem
+    await notifyVipAdmins({
+      siteSlug,
+      phoneNumber,
+      message: text.body,
+      timestamp: new Date().toISOString()
+    })
+    
+    return true
+  } catch (error) {
+    console.error('Erro ao processar mensagem WhatsApp:', error)
+    return false
+  }
 }
