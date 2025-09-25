@@ -18,6 +18,7 @@ import AuditLogs from "./components/AuditLogs";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 // mantendo seus imports de skeletons
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
+import { interceptNetlifyFunctions } from "@/utils/devMocks";
 
 /* ================= CONFIG ================= */
 const PLAN_TIMEOUT_MS = 8000; // Increased from 3s to 8s for better reliability
@@ -79,7 +80,10 @@ async function getJSON<T = any>(url: string, ms: number): Promise<T> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
-    const r = await fetch(url, { signal: ctl.signal, credentials: "include" });
+    // Use mock interceptor em desenvolvimento local para funções Netlify
+    const r = await interceptNetlifyFunctions(url, (fetchUrl) => 
+      fetch(fetchUrl, { signal: ctl.signal, credentials: "include" })
+    );
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -91,13 +95,16 @@ async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T>
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: ctl.signal,
-      credentials: "include",
-    });
+    // Use mock interceptor em desenvolvimento local para funções Netlify
+    const r = await interceptNetlifyFunctions(url, (fetchUrl) => 
+      fetch(fetchUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+        credentials: "include",
+      })
+    );
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
