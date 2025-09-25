@@ -77,13 +77,52 @@ type ImageSlot = { key: string; label: string; url?: string };
 
 /* ===== fetch com timeout real (AbortController) ===== */
 async function getJSON<T = any>(url: string, ms: number): Promise<T> {
+  // Se for desenvolvimento local e URL é função Netlify, retorna mock
+  if (typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+      url.includes('/.netlify/functions/')) {
+    
+    console.log('[DEV MOCK] Intercepting:', url);
+    
+    if (url.includes('/client-plan')) {
+      const mockData = {
+        ok: true,
+        vip: true,
+        plan: 'vip',
+        status: 'active',
+        nextCharge: "2025-10-25T10:00:00.000Z",
+        lastPayment: {
+          date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+          amount: 97.00
+        }
+      };
+      console.log('[DEV MOCK] client-plan returning:', mockData);
+      return mockData as T;
+    }
+    
+    if (url.includes('/auth-status')) {
+      const mockData = {
+        ok: true,
+        siteSlug: 'demo',
+        status: 'active',
+        plan: 'vip',
+        nextCharge: "2025-10-25T10:00:00.000Z",
+        lastPayment: {
+          date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+          amount: 97.00
+        },
+        error: null
+      };
+      console.log('[DEV MOCK] auth-status returning:', mockData);
+      return mockData as T;
+    }
+  }
+
+  // Chamada original
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
-    // Use mock interceptor em desenvolvimento local para funções Netlify
-    const r = await interceptNetlifyFunctions(url, (fetchUrl) => 
-      fetch(fetchUrl, { signal: ctl.signal, credentials: "include" })
-    );
+    const r = await fetch(url, { signal: ctl.signal, credentials: "include" });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {

@@ -135,7 +135,11 @@ export function mockClientFeedbacks(site: string) {
  * Intercepta chamadas para funções Netlify em desenvolvimento
  */
 export function interceptNetlifyFunctions(url: string, originalFetch: typeof fetch): Promise<Response> {
+  console.log('[INTERCEPTOR] Called with URL:', url);
+  console.log('[INTERCEPTOR] Is local development:', isLocalDevelopment());
+  
   if (!isLocalDevelopment()) {
+    console.log('[INTERCEPTOR] Not local dev, calling original fetch');
     return originalFetch(url);
   }
 
@@ -143,6 +147,8 @@ export function interceptNetlifyFunctions(url: string, originalFetch: typeof fet
   const urlObj = new URL(url, window.location.origin);
   const path = urlObj.pathname;
   const params = urlObj.searchParams;
+  
+  console.log('[INTERCEPTOR] Parsed path:', path);
 
   let mockData: any = null;
 

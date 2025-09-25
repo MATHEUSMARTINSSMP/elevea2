@@ -9,26 +9,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 5000,  // Corrigido para match com workflow
-    proxy: {
-      // Proxy para funções Netlify em desenvolvimento
-      '/.netlify/functions': {
-        target: 'http://localhost:9999',
-        changeOrigin: true,
-        secure: false,
-        configure: (proxy, options) => {
-          proxy.on('error', (err, req, res) => {
-            console.log('proxy error', err);
-            res.writeHead(500, {
-              'Content-Type': 'text/plain',
-            });
-            res.end('Função Netlify não disponível em desenvolvimento local. Deploy necessário.');
-          });
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('Proxy request to:', req.url);
-          });
-        },
-      },
-    },
+    // Removido proxy - os mocks interceptam diretamente no código
   },
   plugins: [
     react(),
