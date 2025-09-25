@@ -1,5 +1,11 @@
 import type { Handler } from '@netlify/functions'
 import { rateLimitMiddleware, verifyVipAccess } from './shared/security'
+import OpenAI from 'openai'
+
+// Inicializar OpenAI com API key real
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
 
 const headers = {
   'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:8080',
@@ -61,8 +67,11 @@ export const handler: Handler = async (event, context) => {
       }
     }
 
-    // Gerar SEO automático baseado nos dados do negócio
-    const autoSEO = generateAutoSEO(businessData, siteContent)
+    // Gerar SEO automático usando OpenAI REAL
+    const autoSEO = await generateAutoSEOWithAI(businessData, siteContent, siteSlug)
+    
+    // Salvar análise no Google Sheets para histórico
+    await saveSEOAnalysisToSheets(siteSlug, autoSEO)
 
     return {
       statusCode: 200,
@@ -86,6 +95,63 @@ export const handler: Handler = async (event, context) => {
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       })
     }
+  }
+}
+
+// Função OpenAI REAL para SEO inteligente
+async function generateAutoSEOWithAI(businessData: any, siteContent?: any, siteSlug?: string) {
+  try {
+    const prompt = `Atue como um especialista em SEO. Analise os dados do negócio e gere uma otimização SEO completa e profissional.
+
+DADOS DO NEGÓCIO:
+- Nome: ${businessData.name}
+- Tipo: ${businessData.type}
+- Localização: ${businessData.location || 'Não informado'}
+- Telefone: ${businessData.phone || 'Não informado'}
+- Descrição: ${businessData.description || 'Não informada'}
+- Categoria: ${businessData.category || 'Não informada'}
+- Site: ${businessData.website || 'Não informado'}
+
+CONTEÚDO DO SITE: ${siteContent ? JSON.stringify(siteContent).slice(0, 1000) : 'Não fornecido'}
+
+Gere uma análise SEO completa em JSON com:
+1. title: Título SEO otimizado (50-60 caracteres)
+2. description: Meta description persuasiva (150-160 caracteres)
+3. keywords: Array com 15 palavras-chave relevantes (incluindo long-tail)
+4. seoScore: Pontuação de 0-100 com detalhes por categoria
+5. recommendations: Array com 5-8 recomendações específicas
+6. structuredData: Schema.org JSON-LD para o tipo de negócio
+7. openGraph: Dados Open Graph otimizados
+
+IMPORTANTE: Foque em SEO local brasileiro, use linguagem natural e seja específico para o tipo de negócio.`
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+      max_tokens: 2500
+    })
+
+    const aiResult = JSON.parse(completion.choices[0].message.content || '{}')
+    
+    // Enriquecer com dados adicionais
+    const enrichedSEO = {
+      ...aiResult,
+      sitemap: generateSitemapStructure(businessData, siteContent),
+      robots: generateRobotsConfig(businessData),
+      timestamp: new Date().toISOString(),
+      siteSlug: siteSlug,
+      // Garantir que temos um score válido
+      seoScore: aiResult.seoScore || calculateFallbackScore(businessData)
+    }
+    
+    return enrichedSEO
+    
+  } catch (error) {
+    console.error('Erro na análise OpenAI:', error)
+    // Fallback para método tradicional em caso de erro
+    return generateAutoSEO(businessData, siteContent)
   }
 }
 
@@ -457,5 +523,65 @@ function generateSEORecommendations(seoScore: any, businessData: any): string[] 
   }
   
   return recommendations
+}
+
+// Funções auxiliares para OpenAI
+function generateRobotsConfig(businessData: any): string {
+  return `User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /private/
+
+Sitemap: https://${businessData.website || businessData.name?.toLowerCase().replace(/\s+/g, '')}.netlify.app/sitemap.xml`
+}
+
+function calculateFallbackScore(businessData: any): any {
+  let score = 50 // Score base
+  
+  if (businessData.name) score += 10
+  if (businessData.description) score += 15
+  if (businessData.phone) score += 10
+  if (businessData.location) score += 10
+  if (businessData.openingHours) score += 5
+  
+  return {
+    score: Math.min(score, 100),
+    details: {
+      title: { score: businessData.name ? 20 : 10, status: businessData.name ? 'good' : 'needs_improvement' },
+      description: { score: businessData.description ? 20 : 10, status: businessData.description ? 'good' : 'needs_improvement' },
+      keywords: { score: 15, status: 'good' },
+      structured: { score: businessData.phone ? 15 : 10, status: businessData.phone ? 'good' : 'needs_improvement' },
+      content: { score: 20, status: 'good' }
+    }
+  }
+}
+
+// Salvar análise SEO no Google Sheets
+async function saveSEOAnalysisToSheets(siteSlug: string, seoData: any) {
+  try {
+    const gasUrl = process.env.GAS_BASE_URL
+    if (!gasUrl) {
+      console.warn('GAS_BASE_URL não configurada - salvamento pulado')
+      return
+    }
+
+    const response = await fetch(`${gasUrl}?action=save_seo_analysis`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        siteSlug,
+        seoData,
+        timestamp: new Date().toISOString()
+      })
+    })
+
+    if (!response.ok) {
+      console.warn('Erro ao salvar no Google Sheets:', response.statusText)
+    } else {
+      console.log('✅ Análise SEO salva no Google Sheets')
+    }
+  } catch (error) {
+    console.error('Erro ao salvar análise SEO:', error)
+  }
 }
 
