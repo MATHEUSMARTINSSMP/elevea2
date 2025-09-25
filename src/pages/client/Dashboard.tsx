@@ -413,7 +413,8 @@ export default function ClientDashboard() {
         setLoadingStatus(false);
         return;
       }
-      if (status?.nextCharge && status?.lastPayment) {
+      // Se já tem dados válidos da primeira chamada, não faz segunda chamada
+      if (status?.nextCharge || status?.lastPayment) {
         setLoadingStatus(false);
         return; // já tem dados do plano
       }
