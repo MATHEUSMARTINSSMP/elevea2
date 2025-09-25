@@ -683,18 +683,25 @@ useEffect(() => {
   }
 
   async function setFeedbackApproval(id: string, approved: boolean) {
-    if (!canQuery) return;
-    try {
-      await postJSON(
-        "/.netlify/functions/client-api",
-        { action: "feedback_set_approval", site: user!.siteSlug!, id, approved, pin: vipPin || undefined },
-        CARDS_TIMEOUT_MS
-      );
-      setFeedbacks((prev) => prev.map((f) => (f.id === id ? { ...f, approved } : f)));
-    } catch (e: any) {
-      alert(e?.message || "Não foi possível atualizar a aprovação.");
-    }
+  if (!canQuery) return;
+  try {
+    const res = await postJSON<{ ok: boolean }>(
+      "/.netlify/functions/client-api",
+      {
+        action: "feedback_set_approval",
+        site: user!.siteSlug!,   // importante enviar o slug correto
+        id,
+        approved,
+        pin: vipPin || undefined // o GAS confere o PIN
+      },
+      CARDS_TIMEOUT_MS
+    );
+    if (!res.ok) throw new Error("Falha ao aprovar/reprovar");
+    setFeedbacks((prev) => prev.map((f) => (f.id === id ? { ...f, approved } : f)));
+  } catch (e: any) {
+    alert(e?.message || "Não foi possível atualizar a aprovação.");
   }
+}
 
   async function saveSiteStructure(updatedStructure?: any) {
     if (!canQuery || !canPerformVipAction(true)) return; // true = requer PIN para salvar
