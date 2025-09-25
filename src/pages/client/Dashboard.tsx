@@ -243,10 +243,10 @@ export default function ClientDashboard() {
   };
 
   // Mostra "VIP" (ou o valor do plano) mesmo se o fetch principal falhar,
-// usando também status.plan como fallback.
-const planLabel = vipEnabled
-  ? (status?.plan?.toUpperCase?.() || plan?.toUpperCase?.() || (DEV_FORCE_VIP ? "VIP (FORÇADO)" : "VIP"))
-  : (plan || status?.plan || "—");
+  // usando também status.plan como fallback.
+  const planLabel = vipEnabled
+    ? (status?.plan?.toUpperCase?.() || plan?.toUpperCase?.() || (DEV_FORCE_VIP ? "VIP (FORÇADO)" : "VIP"))
+    : (plan || status?.plan || "—");
 
   // Redireciona admin
   useEffect(() => {
@@ -333,90 +333,90 @@ const planLabel = vipEnabled
   };
 
   /* 2) Cards em paralelo (não bloqueiam a decisão VIP) */
-useEffect(() => {
-  if (!canQuery) {
-    setLoadingAssets(false);
-    setLoadingSettings(false);
-    setLoadingStructure(false);
-    setLoadingFeedbacks(false);
-    setFeaturesLoaded(true);
-    return;
-  }
-
-  let alive = true;
-
-  // STATUS (atualiza se necessário)
-  (async () => {
-    if (DEV_FORCE_VIP) {
-      setLoadingStatus(false);
+  useEffect(() => {
+    if (!canQuery) {
+      setLoadingAssets(false);
+      setLoadingSettings(false);
+      setLoadingStructure(false);
+      setLoadingFeedbacks(false);
+      setFeaturesLoaded(true);
       return;
     }
-    if (status?.nextCharge && status?.lastPayment) {
-      setLoadingStatus(false);
-      return; // já tem dados do plano
-    }
 
-    try {
-      const s = await getJSON<StatusResp>(
-        `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
-        CARDS_TIMEOUT_MS
-      );
-      if (!alive) return;
-      setStatus(prev => ({ ...prev, ...s }));
-    } catch {
-      // silencioso
-    } finally {
-      if (alive) setLoadingStatus(false);
-    }
-  })();
+    let alive = true;
 
-  // SETTINGS
-  (async () => {
-    try {
-      const st = await getJSON<{ ok: boolean; settings?: ClientSettings }>(
-        `/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(user!.siteSlug!)}`,
-        CARDS_TIMEOUT_MS
-      ).catch(() => ({ ok: true, settings: {} as ClientSettings }));
-      if (!alive) return;
-      setSettings(st.settings || {});
-      setVipPin(st.settings?.vipPin || "");
-    } catch {
-      // silencioso
-    } finally {
-      if (alive) setLoadingSettings(false);
-    }
-  })();
+    // STATUS (atualiza se necessário)
+    (async () => {
+      if (DEV_FORCE_VIP) {
+        setLoadingStatus(false);
+        return;
+      }
+      if (status?.nextCharge && status?.lastPayment) {
+        setLoadingStatus(false);
+        return; // já tem dados do plano
+      }
 
-  // FUNCIONALIDADES DO USUÁRIO
-  (async () => {
-    await loadUserFeatures();
-  })();
+      try {
+        const s = await getJSON<StatusResp>(
+          `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
+          CARDS_TIMEOUT_MS
+        );
+        if (!alive) return;
+        setStatus(prev => ({ ...prev, ...s }));
+      } catch {
+        // silencioso
+      } finally {
+        if (alive) setLoadingStatus(false);
+      }
+    })();
 
-  // ASSETS
-  (async () => {
-    try {
-      const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
-        `/.netlify/functions/assets?site=${encodeURIComponent(user!.siteSlug!)}`,
-        CARDS_TIMEOUT_MS
-      ).catch(() => ({ ok: true, items: [] as any[] }));
+    // SETTINGS
+    (async () => {
+      try {
+        const st = await getJSON<{ ok: boolean; settings?: ClientSettings }>(
+          `/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(user!.siteSlug!)}`,
+          CARDS_TIMEOUT_MS
+        ).catch(() => ({ ok: true, settings: {} as ClientSettings }));
+        if (!alive) return;
+        setSettings(st.settings || {});
+        setVipPin(st.settings?.vipPin || "");
+      } catch {
+        // silencioso
+      } finally {
+        if (alive) setLoadingSettings(false);
+      }
+    })();
 
-      if (!alive) return;
+    // FUNCIONALIDADES DO USUÁRIO
+    (async () => {
+      await loadUserFeatures();
+    })();
 
-      const mapped = new Map<string, string>();
-      assets.items.forEach((a) => mapped.set(a.key, a.url));
-      setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
-    } catch {
-      // silencioso
-    } finally {
-      if (alive) setLoadingAssets(false);
-    }
-  })();
+    // ASSETS
+    (async () => {
+      try {
+        const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
+          `/.netlify/functions/assets?site=${encodeURIComponent(user!.siteSlug!)}`,
+          CARDS_TIMEOUT_MS
+        ).catch(() => ({ ok: true, items: [] as any[] }));
 
-  // cleanup
-  return () => {
-    alive = false;
-  };
-}, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
+        if (!alive) return;
+
+        const mapped = new Map<string, string>();
+        assets.items.forEach((a) => mapped.set(a.key, a.url));
+        setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
+      } catch {
+        // silencioso
+      } finally {
+        if (alive) setLoadingAssets(false);
+      }
+    })();
+
+    // cleanup
+    return () => {
+      alive = false;
+    };
+  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
 
   /* 3) FEEDBACKS */
   useEffect(() => {
@@ -605,7 +605,7 @@ useEffect(() => {
     saveSiteStructure(updatedStructure);
   };
 
-  function updateSectionField(sectionId: string, field: string, value: any) {
+    function updateSectionField(sectionId: string, field: string, value: any) {
     if (!siteStructure) return;
     const updatedStructure = {
       ...siteStructure,
@@ -636,7 +636,9 @@ useEffect(() => {
           <div className="flex items-center gap-2">
             {vipEnabled ? (
               <>
-                <span className="rounded-xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 px-3 py-1 text-xs font-medium">VIP ativo{DEV_FORCE_VIP ? " (forçado)" : ""}</span>
+                <span className="rounded-xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 px-3 py-1 text-xs font-medium">
+                  VIP ativo{DEV_FORCE_VIP ? " (forçado)" : ""}
+                </span>
                 <input
                   value={vipPin}
                   onChange={(e) => setVipPin(e.target.value)}
@@ -645,11 +647,18 @@ useEffect(() => {
                 />
               </>
             ) : checkingPlan ? (
-              <span className="rounded-xl bg-yellow-500/15 text-yellow-700 border border-yellow-300 px-3 py-1 text-xs font-medium">Verificando…</span>
+              <span className="rounded-xl bg-yellow-500/15 text-yellow-700 border border-yellow-300 px-3 py-1 text-xs font-medium">
+                Verificando…
+              </span>
             ) : (
-              <span className="rounded-xl bg-slate-500/15 text-slate-700 border border-slate-300 px-3 py-1 text-xs font-medium">Plano Essential</span>
+              <span className="rounded-xl bg-slate-500/15 text-slate-700 border border-slate-300 px-3 py-1 text-xs font-medium">
+                Plano Essential
+              </span>
             )}
-            <button onClick={logout} className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm hover:opacity-90">
+            <button
+              onClick={logout}
+              className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm hover:opacity-90"
+            >
               Sair
             </button>
           </div>
@@ -660,7 +669,10 @@ useEffect(() => {
           <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900">
             <div className="flex items-center justify-between">
               <span className="text-sm">{planErr}</span>
-              <button onClick={retryPlan} className="rounded-lg bg-red-500 text-white px-3 py-1 text-xs hover:bg-red-600">
+              <button
+                onClick={retryPlan}
+                className="rounded-lg bg-red-500 text-white px-3 py-1 text-xs hover:bg-red-600"
+              >
                 Tentar novamente
               </button>
             </div>
@@ -669,13 +681,28 @@ useEffect(() => {
 
         {/* RESUMO */}
         <section className="grid md:grid-cols-4 gap-4">
-          <Card title="Status" value={loadingStatus ? "—" : status?.status ? status.status.toUpperCase() : "—"} />
+          <Card
+            title="Status"
+            value={loadingStatus ? "—" : status?.status ? status.status.toUpperCase() : "—"}
+          />
           <Card title="Plano" value={planLabel} />
-          <Card title="Próxima Cobrança" value={loadingStatus ? "—" : fmtDateTime(status?.nextCharge)} />
-          <Card title="Último Pagamento" value={
-            loadingStatus ? "—" :
-              status?.lastPayment ? `${fmtDateTime(status.lastPayment.date)} • R$ ${status.lastPayment.amount?.toFixed?.(2) ?? status.lastPayment.amount}` : "—"
-          }/>
+          <Card
+            title="Próxima Cobrança"
+            value={loadingStatus ? "—" : fmtDateTime(status?.nextCharge)}
+          />
+          <Card
+            title="Último Pagamento"
+            value={
+              loadingStatus
+                ? "—"
+                : status?.lastPayment
+                ? `${fmtDateTime(status.lastPayment.date)} • R$ ${
+                    status.lastPayment.amount?.toFixed?.(2) ??
+                    status.lastPayment.amount
+                  }`
+                : "—"
+            }
+          />
         </section>
 
         {/* ======== BLOCOS VIP (sempre rendem no modo forçado) ======== */}
@@ -783,7 +810,11 @@ useEffect(() => {
         {/* FEATURE MANAGER sempre visível no VIP */}
         {vipEnabled && (
           <section className="space-y-6">
-            <FeatureManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} userPlan={userPlan} />
+            <FeatureManager
+              siteSlug={user.siteSlug || ""}
+              vipPin={vipPin || "FORCED"}
+              userPlan={userPlan}
+            />
           </section>
         )}
 
@@ -804,7 +835,11 @@ useEffect(() => {
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             {/* CONFIGURAÇÕES */}
-            <VipGate enabled={vipEnabled} checking={checkingPlan && !DEV_FORCE_VIP} teaser="Configure aparência, tema e PIN VIP">
+            <VipGate
+              enabled={vipEnabled}
+              checking={checkingPlan && !DEV_FORCE_VIP}
+              teaser="Configure aparência, tema e PIN VIP"
+            >
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <h2 className="text-lg font-semibold">Configurações Gerais</h2>
 
@@ -855,7 +890,9 @@ useEffect(() => {
                     placeholder="Defina um PIN para acessar recursos VIP"
                     className="w-full px-3 py-2 border rounded-lg"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Use este PIN para acessar todas as funcionalidades do painel</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use este PIN para acessar todas as funcionalidades do painel
+                  </p>
                 </div>
 
                 <div>
@@ -866,7 +903,11 @@ useEffect(() => {
                         key={i}
                         onClick={() =>
                           saveSettings({
-                            theme: { primary: pal.colors[1], background: pal.colors[0], accent: pal.colors[2] },
+                            theme: {
+                              primary: pal.colors[1],
+                              background: pal.colors[0],
+                              accent: pal.colors[2],
+                            },
                           })
                         }
                         className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50"
@@ -885,7 +926,11 @@ useEffect(() => {
             </VipGate>
 
             {/* MÍDIAS */}
-            <VipGate enabled={vipEnabled} checking={loadingAssets && !DEV_FORCE_VIP} teaser="Personalize imagens e vídeos do seu site">
+            <VipGate
+              enabled={vipEnabled}
+              checking={loadingAssets && !DEV_FORCE_VIP}
+              teaser="Personalize imagens e vídeos do seu site"
+            >
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <h2 className="text-lg font-semibold">Gerenciar Mídias</h2>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -897,7 +942,11 @@ useEffect(() => {
             </VipGate>
 
             {/* PERSONALIZAÇÃO DE SEÇÕES */}
-            <VipGate enabled={vipEnabled && !!(vipPin || DEV_FORCE_VIP)} checking={loadingStructure && !DEV_FORCE_VIP} teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site">
+            <VipGate
+              enabled={vipEnabled && !!(vipPin || DEV_FORCE_VIP)}
+              checking={loadingStructure && !DEV_FORCE_VIP}
+              teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site"
+            >
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Personalizar Seções do Site</h2>
@@ -909,7 +958,9 @@ useEffect(() => {
                     >
                       🤖 IA
                     </button>
-                    {savingStructure && <span className="text-xs text-blue-600">Salvando...</span>}
+                    {savingStructure && (
+                      <span className="text-xs text-blue-600">Salvando...</span>
+                    )}
                   </div>
                 </div>
 
@@ -920,39 +971,58 @@ useEffect(() => {
                     <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
                   </div>
                 ) : !siteStructure ? (
-                  <div className="text-slate-500 text-sm">Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.</div>
+                  <div className="text-slate-500 text-sm">
+                    Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.
+                  </div>
                 ) : (
                   <div className="space-y-4 max-h-96 overflow-y-auto">
                     <div className="text-xs text-slate-600 mb-4">
-                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado: <strong>{siteStructure.category || "geral"}</strong>
+                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado:{" "}
+                      <strong>{siteStructure.category || "geral"}</strong>
                     </div>
                     {siteStructure.sections?.map((section: any) => (
                       <div key={section.id} className="border rounded-lg p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-sm capitalize">{section.id.replace("-", " ")}</h3>
-                          <span className={`text-xs px-2 py-1 rounded ${section.visible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                          <h3 className="font-medium text-sm capitalize">
+                            {section.id.replace("-", " ")}
+                          </h3>
+                          <span
+                            className={`text-xs px-2 py-1 rounded ${
+                              section.visible
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-500"
+                            }`}
+                          >
                             {section.visible ? "Visível" : "Oculta"}
                           </span>
                         </div>
 
                         <div className="grid gap-3">
                           <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Título</label>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">
+                              Título
+                            </label>
                             <input
                               type="text"
                               value={section.title || ""}
-                              onChange={(e) => updateSectionField(section.id, "title", e.target.value)}
+                              onChange={(e) =>
+                                updateSectionField(section.id, "title", e.target.value)
+                              }
                               placeholder="Título da seção"
                               className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                             />
                           </div>
 
                           <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Subtítulo</label>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">
+                              Subtítulo
+                            </label>
                             <input
                               type="text"
                               value={section.subtitle || ""}
-                              onChange={(e) => updateSectionField(section.id, "subtitle", e.target.value)}
+                              onChange={(e) =>
+                                updateSectionField(section.id, "subtitle", e.target.value)
+                              }
                               placeholder="Subtítulo da seção"
                               className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                             />
@@ -960,10 +1030,14 @@ useEffect(() => {
 
                           {section.description !== undefined && (
                             <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Descrição</label>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">
+                                Descrição
+                              </label>
                               <textarea
                                 value={section.description || ""}
-                                onChange={(e) => updateSectionField(section.id, "description", e.target.value)}
+                                onChange={(e) =>
+                                  updateSectionField(section.id, "description", e.target.value)
+                                }
                                 placeholder="Descrição detalhada da seção"
                                 rows={2}
                                 className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
@@ -973,21 +1047,33 @@ useEffect(() => {
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">URL da Imagem</label>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">
+                                URL da Imagem
+                              </label>
                               <input
                                 type="url"
                                 value={section.image || ""}
-                                onChange={(e) => updateSectionField(section.id, "image", e.target.value)}
+                                onChange={(e) =>
+                                  updateSectionField(section.id, "image", e.target.value)
+                                }
                                 placeholder="https://..."
                                 className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                               />
                             </div>
 
                             <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Visibilidade</label>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">
+                                Visibilidade
+                              </label>
                               <select
                                 value={section.visible ? "true" : "false"}
-                                onChange={(e) => updateSectionField(section.id, "visible", e.target.value === "true")}
+                                onChange={(e) =>
+                                  updateSectionField(
+                                    section.id,
+                                    "visible",
+                                    e.target.value === "true"
+                                  )
+                                }
                                 className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                               >
                                 <option value="true">Visível</option>
@@ -1017,7 +1103,9 @@ useEffect(() => {
                         onClick={saveSiteStructure}
                         disabled={savingStructure}
                         className={`w-full px-4 py-2 rounded-lg font-medium text-sm ${
-                          savingStructure ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
+                          savingStructure
+                            ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                            : "bg-blue-600 text-white hover:bg-blue-700"
                         }`}
                       >
                         {savingStructure ? "Salvando..." : "Salvar Alterações"}
@@ -1035,10 +1123,14 @@ useEffect(() => {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-white">Feedbacks Recentes</h2>
                 <span className="text-xs text-white/60">
-                  {(vipEnabled && (vipPin || DEV_FORCE_VIP)) ? "Todos os feedbacks" : "Apenas aprovados"}
+                  {vipEnabled && (vipPin || DEV_FORCE_VIP)
+                    ? "Todos os feedbacks"
+                    : "Apenas aprovados"}
                 </span>
               </div>
-              <div className="text-xs text-white/60">E-mail e telefone ficam **somente aqui** (não são publicados).</div>
+              <div className="text-xs text-white/60">
+                E-mail e telefone ficam **somente aqui** (não são publicados).
+              </div>
 
               {loadingFeedbacks ? (
                 <div className="space-y-2">
@@ -1074,7 +1166,9 @@ useEffect(() => {
                           </div>
                           <p className="text-sm text-white mt-1 break-words">{f.message}</p>
                           {f.sentiment?.summary && (
-                            <p className="text-xs text-blue-300 mt-1 italic">💡 {f.sentiment.summary}</p>
+                            <p className="text-xs text-blue-300 mt-1 italic">
+                              💡 {f.sentiment.summary}
+                            </p>
                           )}
                           {(f.email || f.phone) && (
                             <div className="text-xs text-white/50 mt-1">
@@ -1085,17 +1179,25 @@ useEffect(() => {
                           )}
                         </div>
 
-                        {(vipEnabled && (vipPin || DEV_FORCE_VIP)) && (
+                        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
                           <div className="flex gap-1">
                             <button
                               onClick={() => setFeedbackApproval(f.id, true)}
-                              className={`px-2 py-1 text-xs rounded ${f.approved ? "bg-emerald-600 text-white" : "bg-white/10 text-white/70 hover:bg-emerald-600"}`}
+                              className={`px-2 py-1 text-xs rounded ${
+                                f.approved
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-white/10 text-white/70 hover:bg-emerald-600"
+                              }`}
                             >
                               ✓
                             </button>
                             <button
                               onClick={() => setFeedbackApproval(f.id, false)}
-                              className={`px-2 py-1 text-xs rounded ${!f.approved ? "bg-red-600 text-white" : "bg-white/10 text-white/70 hover:bg-red-600"}`}
+                              className={`px-2 py-1 text-xs rounded ${
+                                !f.approved
+                                  ? "bg-red-600 text-white"
+                                  : "bg-white/10 text-white/70 hover:bg-red-600"
+                              }`}
                             >
                               ✗
                             </button>
@@ -1119,7 +1221,11 @@ useEffect(() => {
           title="Chat de Suporte Inteligente"
         >
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+            <path
+              fillRule="evenodd"
+              d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
+              clipRule="evenodd"
+            />
           </svg>
         </button>
       )}
@@ -1158,8 +1264,16 @@ function Card({ title, value }: { title: string; value: string }) {
 }
 
 function VipGate({
-  enabled, checking, children, teaser,
-}: { enabled: boolean; checking?: boolean; teaser: string; children: React.ReactNode; }) {
+  enabled,
+  checking,
+  children,
+  teaser,
+}: {
+  enabled: boolean;
+  checking?: boolean;
+  teaser: string;
+  children: React.ReactNode;
+}) {
   if (enabled) return <>{children}</>;
   if (checking) {
     return (
@@ -1195,7 +1309,13 @@ function VipGate({
   );
 }
 
-function MediaSlot({ slot, onUpload }: { slot: ImageSlot; onUpload: (slot: ImageSlot, file: File) => Promise<void> }) {
+function MediaSlot({
+  slot,
+  onUpload,
+}: {
+  slot: ImageSlot;
+  onUpload: (slot: ImageSlot, file: File) => Promise<void>;
+}) {
   const [uploading, setUploading] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
