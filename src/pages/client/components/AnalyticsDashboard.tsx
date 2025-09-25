@@ -86,49 +86,79 @@ const formatSessionDuration = (seconds: number): string => {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Dados simulados para demonstração (será substituído por dados reais)
+// Dados realistas para demonstração (baseados em padrões de pequenos negócios)
 const generateMockData = (siteSlug: string): AnalyticsData => {
   const last30Days = Array.from({ length: 30 }, (_, i) => {
     const date = new Date();
     date.setDate(date.getDate() - (29 - i));
+    
+    // Base diária realista para pequenos negócios locais
+    const baseVisits = 55;
+    const baseVisitors = 45;
+    
+    // Criar variação natural baseada no dia da semana
+    const dayOfWeek = date.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isMonday = dayOfWeek === 1;
+    
+    // Multiplicadores realistas baseados em padrões de negócios
+    let multiplier = 1.0;
+    if (isWeekend) multiplier = 0.7; // Menos tráfego nos fins de semana
+    if (isMonday) multiplier = 1.2; // Pico na segunda-feira
+    if (dayOfWeek >= 2 && dayOfWeek <= 4) multiplier = 1.1; // Bom tráfego terça-quinta
+    
+    // Tendência de crescimento gradual (2% ao mês)
+    const growthFactor = 1 + (0.02 * (30 - i) / 30);
+    
+    // Variação natural de ±15%
+    const variance = 0.85 + (0.3 * ((i * 7 + date.getDate()) % 100) / 100);
+    
+    const visits = Math.floor(baseVisits * multiplier * growthFactor * variance);
+    const uniqueVisitors = Math.floor(baseVisitors * multiplier * growthFactor * variance);
+    const leads = Math.floor(visits * 0.08); // 8% lead rate realista
+    const conversions = Math.floor(leads * 0.4); // 40% conversion rate de leads
+    
     return {
       date: date.toISOString().split('T')[0],
-      visits: Math.floor(Math.random() * 100) + 50,
-      uniqueVisitors: Math.floor(Math.random() * 80) + 30,
-      leads: Math.floor(Math.random() * 10) + 2,
-      conversions: Math.floor(Math.random() * 5) + 1,
+      visits,
+      uniqueVisitors,
+      leads,
+      conversions,
     };
   });
+
+  const totalVisits = last30Days.reduce((sum, d) => sum + d.visits, 0);
+  const totalLeads = last30Days.reduce((sum, d) => sum + d.leads, 0);
 
   return {
     traffic: last30Days.map(d => ({ date: d.date, visits: d.visits, uniqueVisitors: d.uniqueVisitors })),
     conversions: last30Days.map(d => ({ date: d.date, leads: d.leads, conversions: d.conversions })),
     feedback: [
-      { rating: 5, count: 45 },
-      { rating: 4, count: 32 },
-      { rating: 3, count: 15 },
-      { rating: 2, count: 8 },
-      { rating: 1, count: 3 }
+      { rating: 5, count: 28 },
+      { rating: 4, count: 19 },
+      { rating: 3, count: 8 },
+      { rating: 2, count: 3 },
+      { rating: 1, count: 1 }
     ],
     topPages: [
-      { page: '/', visits: 1250 },
-      { page: '/servicos', visits: 850 },
-      { page: '/sobre', visits: 620 },
-      { page: '/contato', visits: 480 },
-      { page: '/produtos', visits: 350 }
+      { page: '/', visits: Math.floor(totalVisits * 0.42) },
+      { page: '/servicos', visits: Math.floor(totalVisits * 0.26) },
+      { page: '/contato', visits: Math.floor(totalVisits * 0.18) },
+      { page: '/sobre', visits: Math.floor(totalVisits * 0.10) },
+      { page: '/galeria', visits: Math.floor(totalVisits * 0.04) }
     ],
     deviceTypes: [
-      { name: 'Mobile', value: 65, color: COLORS[0] },
-      { name: 'Desktop', value: 28, color: COLORS[1] },
-      { name: 'Tablet', value: 7, color: COLORS[2] }
+      { name: 'Mobile', value: 72, color: COLORS[0] },
+      { name: 'Desktop', value: 23, color: COLORS[1] },
+      { name: 'Tablet', value: 5, color: COLORS[2] }
     ],
     summary: {
-      totalVisits: last30Days.reduce((sum, d) => sum + d.visits, 0),
-      totalLeads: last30Days.reduce((sum, d) => sum + d.leads, 0),
-      conversionRate: 3.2,
-      avgRating: 4.2,
-      bounceRate: 35.8,
-      avgSessionDuration: '2:34'
+      totalVisits,
+      totalLeads,
+      conversionRate: totalLeads > 0 ? (totalLeads / totalVisits * 100) : 4.8,
+      avgRating: 4.3,
+      bounceRate: 32.8,
+      avgSessionDuration: '2:22'
     }
   };
 };

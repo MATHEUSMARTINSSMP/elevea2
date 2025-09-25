@@ -413,7 +413,7 @@ async function getAnalyticsFromSheets(siteSlug: string, range: string) {
   }
 }
 
-// Dados mock para desenvolvimento
+// Dados realistas para desenvolvimento (baseados em padrões de pequenos negócios)
 function generateMockAnalyticsData(range: string) {
   const days = range === '7d' ? 7 : range === '30d' ? 30 : 90
   const chartData: Array<{
@@ -423,15 +423,41 @@ function generateMockAnalyticsData(range: string) {
     pageViews: number;
   }> = []
   
+  // Base diária realista para pequenos negócios locais
+  const baseUsers = 45
+  const baseSessions = 55
+  const basePageViews = 120
+  
   for (let i = days - 1; i >= 0; i--) {
     const date = new Date()
     date.setDate(date.getDate() - i)
     
+    // Criar variação natural baseada no dia da semana
+    const dayOfWeek = date.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    const isMonday = dayOfWeek === 1
+    
+    // Multiplicadores realistas baseados em padrões de negócios
+    let multiplier = 1.0
+    if (isWeekend) multiplier = 0.7 // Menos tráfego nos fins de semana
+    if (isMonday) multiplier = 1.2 // Pico na segunda-feira
+    if (dayOfWeek >= 2 && dayOfWeek <= 4) multiplier = 1.1 // Bom tráfego terça-quinta
+    
+    // Tendência de crescimento gradual (2% ao mês)
+    const growthFactor = 1 + (0.02 * (days - i) / 30)
+    
+    // Variação natural de ±15%
+    const variance = 0.85 + (0.3 * ((i * 7 + date.getDate()) % 100) / 100)
+    
+    const users = Math.floor(baseUsers * multiplier * growthFactor * variance)
+    const sessions = Math.floor(baseSessions * multiplier * growthFactor * variance)
+    const pageViews = Math.floor(basePageViews * multiplier * growthFactor * variance)
+    
     chartData.push({
       date: date.toISOString().split('T')[0],
-      users: Math.floor(Math.random() * 1000) + 100,
-      sessions: Math.floor(Math.random() * 1200) + 150,
-      pageViews: Math.floor(Math.random() * 2000) + 300
+      users,
+      sessions,
+      pageViews
     })
   }
   
@@ -440,30 +466,30 @@ function generateMockAnalyticsData(range: string) {
       users: chartData.reduce((sum, day) => sum + day.users, 0),
       sessions: chartData.reduce((sum, day) => sum + day.sessions, 0),
       pageViews: chartData.reduce((sum, day) => sum + day.pageViews, 0),
-      bounceRate: 35.2,
-      avgSessionDuration: 185.5,
-      conversions: Math.floor(Math.random() * 50) + 10
+      bounceRate: 32.8, // Taxa realista para negócios locais
+      avgSessionDuration: 142.3, // ~2:22 min - tempo realista
+      conversions: Math.floor(chartData.reduce((sum, day) => sum + day.sessions, 0) * 0.035) // 3.5% conversão realista
     },
     chartData,
     topPages: [
-      { page: '/', views: 1250 },
-      { page: '/servicos', views: 890 },
-      { page: '/contato', views: 670 },
-      { page: '/sobre', views: 420 },
-      { page: '/blog', views: 310 }
+      { page: '/', views: 987 },
+      { page: '/servicos', views: 623 },
+      { page: '/contato', views: 445 },
+      { page: '/sobre', views: 298 },
+      { page: '/galeria', views: 187 }
     ],
     deviceBreakdown: [
-      { device: 'mobile', sessions: 1200, percentage: 60 },
-      { device: 'desktop', sessions: 600, percentage: 30 },
-      { device: 'tablet', sessions: 200, percentage: 10 }
+      { device: 'mobile', sessions: Math.floor(chartData.reduce((sum, day) => sum + day.sessions, 0) * 0.72), percentage: 72 },
+      { device: 'desktop', sessions: Math.floor(chartData.reduce((sum, day) => sum + day.sessions, 0) * 0.23), percentage: 23 },
+      { device: 'tablet', sessions: Math.floor(chartData.reduce((sum, day) => sum + day.sessions, 0) * 0.05), percentage: 5 }
     ],
     countryBreakdown: [
-      { country: 'Brazil', users: 1800 },
-      { country: 'United States', users: 200 },
-      { country: 'Portugal', users: 100 },
-      { country: 'Argentina', users: 80 }
+      { country: 'Brazil', users: Math.floor(chartData.reduce((sum, day) => sum + day.users, 0) * 0.89) },
+      { country: 'Portugal', users: Math.floor(chartData.reduce((sum, day) => sum + day.users, 0) * 0.05) },
+      { country: 'United States', users: Math.floor(chartData.reduce((sum, day) => sum + day.users, 0) * 0.03) },
+      { country: 'Argentina', users: Math.floor(chartData.reduce((sum, day) => sum + day.users, 0) * 0.03) }
     ],
-    note: 'Dados exemplo - configure Google Analytics para dados reais'
+    note: 'Dados realistas - conecte Google Analytics para métricas reais'
   }
 }
 
