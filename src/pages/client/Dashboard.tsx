@@ -242,10 +242,11 @@ export default function ClientDashboard() {
     }
   };
 
-  const planLabel =
-    plan === null ? "—" :
-    vipEnabled ? (DEV_FORCE_VIP ? "VIP (forçado)" : "VIP") :
-    (plan || "—");
+  // Mostra "VIP" (ou o valor do plano) mesmo se o fetch principal falhar,
+// usando também status.plan como fallback.
+const planLabel = vipEnabled
+  ? (status?.plan?.toUpperCase?.() || plan?.toUpperCase?.() || (DEV_FORCE_VIP ? "VIP (FORÇADO)" : "VIP"))
+  : (plan || status?.plan || "—");
 
   // Redireciona admin
   useEffect(() => {
@@ -355,16 +356,16 @@ export default function ClientDashboard() {
       }
       try {
         const s = await getJSON<StatusResp>(
-          `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
-          CARDS_TIMEOUT_MS
-        );
-        if (!alive) return;
-        setStatus((prev) => ({ ...prev, ...s }));
-      } catch {
-      } finally {
-        if (alive) setLoadingStatus(false);
-      }
-    })();
+  `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
+  CARDS_TIMEOUT_MS
+);
+if (!alive) return;
+setStatus((prev) => ({ ...prev, ...s }));
+
+// >>> ADICIONE ESTAS 2 LINHAS <<<
+if (!plan && s?.plan) setPlan(s.plan);          // hidrata o card "Plano" via status
+// (opcional) se quiser também: if (!status?.nextCharge && s?.nextCharge) {...} etc.
+
 
     // SETTINGS
     (async () => {
