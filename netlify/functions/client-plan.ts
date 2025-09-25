@@ -83,14 +83,37 @@ export const handler: Handler = async (event) => {
     // Manter compatibilidade com nextPayment também
     const nextPayment: string | null = nextCharge;
 
-    const vip = looksVip(plan) || isActiveStatus(status);
+    // 🔧 CORREÇÃO VIP: Também verifica se tem vipPin configurado
+    let vip = looksVip(plan) || isActiveStatus(status);
+    
+    // Se não é VIP pelas regras tradicionais, verifica se tem PIN VIP configurado
+    if (!vip) {
+      try {
+        // Chama client-api para verificar se há vipPin configurado
+        const settingsResp = await fetch(`${base}/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(site)}`, {
+          headers: { cookie: event.headers.cookie || "" }
+        });
+        
+        if (settingsResp.ok) {
+          const settingsData = await settingsResp.json();
+          // Se tem vipPin configurado, considera VIP
+          if (settingsData.settings?.vipPin) {
+            vip = true;
+            console.log(`🎯 VIP detectado via PIN para site: ${site}`);
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao verificar vipPin:', e);
+        // Não falha - apenas não considera VIP por PIN
+      }
+    }
 
     return {
       statusCode: 200,
       headers: CORS,
       body: JSON.stringify({
         ok: true,
-        plan,
+        plan: vip && !looksVip(plan) ? "vip" : plan, // ← Força plan=vip se detectado por PIN
         status,
         nextPayment,      // ← Compatibilidade com código antigo
         nextCharge,       // ← Campo que Dashboard espera
