@@ -407,9 +407,10 @@ if (!plan && s?.plan) setPlan(s.plan);          // hidrata o card "Plano" via st
     })();
 
     return () => {
-      alive = false;
-    };
-  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
+  alive = false;
+};
+// deps deste useEffect:
+}, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
 
   /* 3) FEEDBACKS */
   useEffect(() => {
