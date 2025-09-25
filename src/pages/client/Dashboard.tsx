@@ -77,65 +77,49 @@ type ImageSlot = { key: string; label: string; url?: string };
 
 /* ===== fetch com timeout real (AbortController) ===== */
 async function getJSON<T = any>(url: string, ms: number): Promise<T> {
-  // Se for desenvolvimento local e URL é função Netlify, retorna mock
-  if (typeof window !== 'undefined' && 
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
-      url.includes('/.netlify/functions/')) {
-    
-    console.log('[DEV MOCK] Intercepting:', url);
-    
-    if (url.includes('/client-plan')) {
+  // DEV MOCK: intercepta chamadas a funções Netlify quando rodando em localhost
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") &&
+    url.includes("/.netlify/functions/")
+  ) {
+    console.log("[DEV MOCK] Intercepting:", url);
+
+    if (url.includes("/client-plan")) {
       const mockData = {
         ok: true,
         vip: true,
-        plan: 'vip',
-        status: 'active',
+        plan: "vip",
+        status: "active",
         nextCharge: "2025-10-25T10:00:00.000Z",
         lastPayment: {
           date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          amount: 97.00
-        }
+          amount: 97.0,
+        },
       };
-      console.log('[DEV MOCK] client-plan returning:', mockData);
+      console.log("[DEV MOCK] client-plan returning:", mockData);
       return mockData as T;
     }
-    
-    if (url.includes('/auth-status')) {
+
+    if (url.includes("/auth-status")) {
       const mockData = {
         ok: true,
-        siteSlug: 'demo',
-        status: 'active',
-        plan: 'vip',
+        siteSlug: "demo",
+        status: "active",
+        plan: "vip",
         nextCharge: "2025-10-25T10:00:00.000Z",
         lastPayment: {
           date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          amount: 97.00
+          amount: 97.0,
         },
-        error: null
+        error: null,
       };
-      console.log('[DEV MOCK] auth-status returning:', mockData);
+      console.log("[DEV MOCK] auth-status returning:", mockData);
       return mockData as T;
     }
   }
 
-// Normaliza feedbacks vindos da função (por segurança no front)
-function normalizeFeedbackItemsFront(items: any[]): Feedback[] {
-  if (!Array.isArray(items)) return [];
-  return items.map((it) => ({
-    id: String(it.id ?? ""),
-    name: String(it.name ?? ""),
-    message: String(it.message ?? it.comment ?? ""),
-    timestamp: String(it.timestamp ?? it.ts ?? ""),
-    approved: String(it.approved ?? "").toLowerCase() === "true",
-    email: it.email ? String(it.email) : undefined,
-    phone: it.phone ? String(it.phone) : undefined,
-    sentiment: it.sentiment || undefined,
-  }));
-}
-
-  
-
-  // Chamada original
+  // Chamada real com timeout
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
@@ -151,8 +135,8 @@ async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T>
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
-    // Use mock interceptor em desenvolvimento local para funções Netlify
-    const r = await interceptNetlifyFunctions(url, (fetchUrl) => 
+    // Usa o interceptor de mocks em dev (quando for função Netlify)
+    const r = await interceptNetlifyFunctions(url, (fetchUrl) =>
       fetch(fetchUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -166,6 +150,21 @@ async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T>
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Normaliza feedbacks vindos do backend/Netlify para um único formato no front
+function normalizeFeedbackItemsFront(items: any[]): Feedback[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((it) => ({
+    id: String(it.id ?? ""),
+    name: String(it.name ?? ""),
+    message: String(it.message ?? it.comment ?? ""),
+    timestamp: String(it.timestamp ?? it.ts ?? ""),
+    approved: String(it.approved ?? "").toLowerCase() === "true",
+    email: it.email ? String(it.email) : undefined,
+    phone: it.phone ? String(it.phone) : undefined,
+    sentiment: it.sentiment || undefined,
+  }));
 }
 
 /* ===== helpers ===== */
