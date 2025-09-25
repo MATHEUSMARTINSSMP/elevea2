@@ -443,13 +443,21 @@ export default function ClientDashboard() {
       try {
         let fb: { ok: boolean; items: Feedback[] };
 
-        if ((vipEnabled && vipPin) || DEV_FORCE_VIP) {
+        // VIP pode ver feedbacks seguros se tiver PIN, senão vê básicos
+        if (canPerformVipAction(true)) { // true = requer PIN para feedbacks seguros
           fb = await postJSON<{ ok: boolean; items: Feedback[] }>(
             "/.netlify/functions/client-api",
             { action: "list_feedbacks_secure", site: user!.siteSlug!, pin: vipPin || "FORCED" },
             CARDS_TIMEOUT_MS
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
+        } else if (vipEnabled) {
+          // VIP sem PIN ainda pode ver feedbacks básicos
+          fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
+            `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
+            CARDS_TIMEOUT_MS
+          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         } else {
+          // Não VIP vê feedbacks básicos
           fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
             `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
             CARDS_TIMEOUT_MS
@@ -460,8 +468,8 @@ export default function ClientDashboard() {
         const items = fb.items || [];
         setFeedbacks(items);
 
-        // análise automática (não bloqueia)
-        if ((vipEnabled || DEV_FORCE_VIP) && items.length > 0) {
+        // análise automática (não bloqueia) - VIP tem acesso independente de PIN
+        if (vipEnabled && items.length > 0) {
           (async () => {
             try {
               const toAnalyze = items.filter(f => !f.sentiment && f.message?.trim()).slice(0, 10);
@@ -499,7 +507,8 @@ export default function ClientDashboard() {
 
   /* 4) ESTRUTURA DO SITE */
   useEffect(() => {
-    if (!canQuery || !(vipEnabled || DEV_FORCE_VIP) || !(vipPin || DEV_FORCE_VIP)) {
+    // VIP pode ver estrutura, mas precisa de PIN para salvar
+    if (!canQuery || !vipEnabled) {
       setSiteStructure(null);
       setLoadingStructure(false);
       return;
@@ -580,7 +589,7 @@ export default function ClientDashboard() {
   }
 
   async function saveSiteStructure(updatedStructure?: any) {
-    if (!canQuery || !(vipPin || DEV_FORCE_VIP)) return;
+    if (!canQuery || !canPerformVipAction(true)) return; // true = requer PIN para salvar
     const structureToSave = updatedStructure || siteStructure;
     if (!structureToSave) return;
 
@@ -721,14 +730,14 @@ export default function ClientDashboard() {
           />
         </section>
 
-        {/* ======== BLOCOS VIP (sempre rendem no modo forçado) ======== */}
-        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
+        {/* ======== BLOCOS VIP (VIP pode ver, PIN só para operações críticas) ======== */}
+        {vipEnabled && (
           <section className="space-y-6">
             <AnalyticsDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {vipEnabled && (vipPin || DEV_FORCE_VIP) && siteStructure && (
+        {vipEnabled && siteStructure && (
           <section className="space-y-6">
             <BusinessInsights
               siteSlug={user.siteSlug || ""}
@@ -760,7 +769,7 @@ export default function ClientDashboard() {
           </section>
         )}
 
-        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
+        {vipEnabled && (
           <section className="space-y-6">
             <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
@@ -835,7 +844,7 @@ export default function ClientDashboard() {
         )}
 
         {/* AI COPYWRITER VIP */}
-        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
+        {vipEnabled && (
           <section className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6">
               <AICopywriter
@@ -1139,8 +1148,10 @@ export default function ClientDashboard() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-white">Feedbacks Recentes</h2>
                 <span className="text-xs text-white/60">
-                  {vipEnabled && (vipPin || DEV_FORCE_VIP)
-                    ? "Todos os feedbacks"
+                  {canPerformVipAction(true)
+                    ? "Todos os feedbacks (com PIN)"
+                    : vipEnabled 
+                    ? "Feedbacks básicos (VIP)"
                     : "Apenas aprovados"}
                 </span>
               </div>
@@ -1195,7 +1206,7 @@ export default function ClientDashboard() {
                           )}
                         </div>
 
-                        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
+                        {vipEnabled && (
                           <div className="flex gap-1">
                             <button
                               onClick={() => setFeedbackApproval(f.id, true)}
