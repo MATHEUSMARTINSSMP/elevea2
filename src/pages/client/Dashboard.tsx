@@ -484,75 +484,113 @@ export default function ClientDashboard() {
   }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
 
   /* 3) FEEDBACKS */
-  useEffect(() => {
-    if (!canQuery) return;
-    let alive = true;
+useEffect(() => {
+  if (!canQuery) return;
 
-    (async () => {
-      try {
-        let fb: { ok: boolean; items: Feedback[] };
+  let alive = true;
 
-        // VIP pode ver feedbacks seguros se tiver PIN, senão vê básicos
-        if (canPerformVipAction(true)) { // true = requer PIN para feedbacks seguros
-          fb = await postJSON<{ ok: boolean; items: Feedback[] }>(
+  async function fetchFeedbacks() {
+    // Estratégia:
+    // 1) Se VIP + PIN, tenta o endpoint seguro (vem com e-mail/telefone e todos os itens).
+    // 2) Se falhar (ou não for VIP), cai no endpoint público (apenas aprovados e sem dados sensíveis).
+    try {
+      let data: { ok: boolean; items: Feedback[] } | null = null;
+
+      if ((vipEnabled && (vipPin || DEV_FORCE_VIP))) {
+        try {
+          data = await postJSON<{ ok: boolean; items: Feedback[] }>(
             "/.netlify/functions/client-api",
-            { action: "list_feedbacks_secure", site: user!.siteSlug!, pin: vipPin || "FORCED" },
+            {
+              action: "list_feedbacks_secure",
+              site: user!.siteSlug!,
+              pin: vipPin || "FORCED",
+            },
             CARDS_TIMEOUT_MS
-          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
-        } else if (vipEnabled) {
-          // VIP sem PIN ainda pode ver feedbacks básicos
-          fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
-            `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
-            CARDS_TIMEOUT_MS
-          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
-        } else {
-          // Não VIP vê feedbacks básicos
-          fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
-            `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
-            CARDS_TIMEOUT_MS
-          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
+          );
+        } catch {
+          // se der pau, continua para o público
+          data = null;
         }
-
-        if (!alive) return;
-        const items = fb.items || [];
-        setFeedbacks(items);
-
-        // análise automática (não bloqueia) - VIP tem acesso independente de PIN
-        if (vipEnabled && items.length > 0) {
-          (async () => {
-            try {
-              const toAnalyze = items.filter(f => !f.sentiment && f.message?.trim()).slice(0, 10);
-              if (toAnalyze.length === 0) return;
-              const resp = await fetch("/.netlify/functions/ai-sentiment", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({
-                  batch: toAnalyze.map(f => ({ id: f.id, feedback: f.message, clientName: f.name })),
-                }),
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                if (data.ok && data.results) {
-                  setFeedbacks(prev => prev.map(f => {
-                    const a = data.results.find((r: any) => r.id === f.id && r.success);
-                    return a ? { ...f, sentiment: a.analysis } : f;
-                  }));
-                }
-              }
-            } catch {}
-          })();
-        }
-      } catch {
-      } finally {
-        if (alive) setLoadingFeedbacks(false);
       }
-    })();
 
-    return () => {
-      alive = false;
-    };
-  }, [canQuery, user?.siteSlug, vipEnabled, vipPin, DEV_FORCE_VIP]);
+      if (!data) {
+        // público (somente aprovados, sem e-mail/telefone)
+        data = await getJSON<{ ok: boolean; items: Feedback[] }>(
+          `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(
+            user!.siteSlug!
+          )}`,
+          CARDS_TIMEOUT_MS
+        ).catch(() => ({ ok: true, items: [] as Feedback[] }));
+      }
+
+      if (!alive) return;
+
+      const items = Array.isArray(data?.items) ? data!.items.slice() : [];
+
+      // Normaliza / ordena por data desc (se vier string, ainda funciona)
+      items.sort((a, b) => {
+        const ta = new Date(a.timestamp as any).getTime();
+        const tb = new Date(b.timestamp as any).getTime();
+        return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+      });
+
+      setFeedbacks(items);
+
+      // Dispara análise de sentimento em background para os sem análise (VIP)
+      if ((vipEnabled || DEV_FORCE_VIP) && items.length > 0) {
+        (async () => {
+          try {
+            const toAnalyze = items
+              .filter((f) => !f.sentiment && f.message?.trim())
+              .slice(0, 10);
+
+            if (toAnalyze.length === 0) return;
+
+            const resp = await fetch("/.netlify/functions/ai-sentiment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                batch: toAnalyze.map((f) => ({
+                  id: f.id,
+                  feedback: f.message,
+                  clientName: f.name,
+                })),
+              }),
+            });
+
+            if (!resp.ok) return;
+            const payload = await resp.json().catch(() => null);
+            if (!payload?.ok || !Array.isArray(payload.results)) return;
+
+            if (!alive) return;
+
+            setFeedbacks((prev) =>
+              prev.map((f) => {
+                const up = payload.results.find(
+                  (r: any) => r.id === f.id && r.success && r.analysis
+                );
+                return up ? { ...f, sentiment: up.analysis } : f;
+              })
+            );
+          } catch {}
+        })();
+      }
+    } catch {
+      if (!alive) return;
+      setFeedbacks([]);
+    } finally {
+      if (alive) setLoadingFeedbacks(false);
+    }
+  }
+
+  setLoadingFeedbacks(true);
+  fetchFeedbacks();
+
+  return () => {
+    alive = false;
+  };
+}, [canQuery, user?.siteSlug, vipEnabled, vipPin, DEV_FORCE_VIP, CARDS_TIMEOUT_MS]);
 
   /* 4) ESTRUTURA DO SITE */
   useEffect(() => {
