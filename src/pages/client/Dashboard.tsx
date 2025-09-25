@@ -390,27 +390,27 @@ if (!plan && s?.plan) setPlan(s.plan);          // hidrata o card "Plano" via st
     })();
 
     // ASSETS
-    (async () => {
-      try {
-        const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
-          `/.netlify/functions/assets?site=${encodeURIComponent(user!.siteSlug!)}`,
-          CARDS_TIMEOUT_MS
-        ).catch(() => ({ ok: true, items: [] as any[] }));
-        if (!alive) return;
-        const mapped = new Map<string, string>();
-        assets.items.forEach((a) => mapped.set(a.key, a.url));
-        setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
-      } catch {
-      } finally {
-        if (alive) setLoadingAssets(false);
-      }
-    })();
+(async () => {
+  try {
+    const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
+      `/.netlify/functions/assets?site=${encodeURIComponent(user!.siteSlug!)}`,
+      CARDS_TIMEOUT_MS
+    ).catch(() => ({ ok: true, items: [] as any[] }));
+    if (!alive) return;
+    const mapped = new Map<string, string>();
+    assets.items.forEach((a) => mapped.set(a.key, a.url));
+    setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
+  } catch {
+  } finally {
+    if (alive) setLoadingAssets(false);
+  }
+})();
 
-    return () => {
+return () => {
   alive = false;
 };
-// deps deste useEffect:
-} [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
+}, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
+
 
   /* 3) FEEDBACKS */
   useEffect(() => {
