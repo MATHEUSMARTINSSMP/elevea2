@@ -332,85 +332,91 @@ const planLabel = vipEnabled
     setPlanFetchTick((n) => n + 1);
   };
 
-  /* 2) Cards em paralelo */
-  useEffect(() => {
-    if (!canQuery) {
-      setLoadingAssets(false);
-      setLoadingSettings(false);
-      setLoadingStructure(false);
-      setLoadingFeedbacks(false);
-      setFeaturesLoaded(true);
+  /* 2) Cards em paralelo (não bloqueiam a decisão VIP) */
+useEffect(() => {
+  if (!canQuery) {
+    setLoadingAssets(false);
+    setLoadingSettings(false);
+    setLoadingStructure(false);
+    setLoadingFeedbacks(false);
+    setFeaturesLoaded(true);
+    return;
+  }
+
+  let alive = true;
+
+  // STATUS (atualiza se necessário)
+  (async () => {
+    if (DEV_FORCE_VIP) {
+      setLoadingStatus(false);
       return;
     }
-    let alive = true;
+    if (status?.nextCharge && status?.lastPayment) {
+      setLoadingStatus(false);
+      return; // já tem dados do plano
+    }
 
-    // STATUS extra
-    (async () => {
-      if (DEV_FORCE_VIP) {
-        setLoadingStatus(false);
-        return;
-      }
-      if (status?.nextCharge && status?.lastPayment) {
-        setLoadingStatus(false);
-        return;
-      }
-      try {
-        const s = await getJSON<StatusResp>(
-  `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
-  CARDS_TIMEOUT_MS
-);
-if (!alive) return;
-setStatus((prev) => ({ ...prev, ...s }));
+    try {
+      const s = await getJSON<StatusResp>(
+        `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
+        CARDS_TIMEOUT_MS
+      );
+      if (!alive) return;
+      setStatus(prev => ({ ...prev, ...s }));
+    } catch {
+      // silencioso
+    } finally {
+      if (alive) setLoadingStatus(false);
+    }
+  })();
 
-// >>> ADICIONE ESTAS 2 LINHAS <<<
-if (!plan && s?.plan) setPlan(s.plan);          // hidrata o card "Plano" via status
-// (opcional) se quiser também: if (!status?.nextCharge && s?.nextCharge) {...} etc.
+  // SETTINGS
+  (async () => {
+    try {
+      const st = await getJSON<{ ok: boolean; settings?: ClientSettings }>(
+        `/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(user!.siteSlug!)}`,
+        CARDS_TIMEOUT_MS
+      ).catch(() => ({ ok: true, settings: {} as ClientSettings }));
+      if (!alive) return;
+      setSettings(st.settings || {});
+      setVipPin(st.settings?.vipPin || "");
+    } catch {
+      // silencioso
+    } finally {
+      if (alive) setLoadingSettings(false);
+    }
+  })();
 
+  // FUNCIONALIDADES DO USUÁRIO
+  (async () => {
+    await loadUserFeatures();
+  })();
 
-    // SETTINGS
-    (async () => {
-      try {
-        const st = await getJSON<{ ok: boolean; settings?: ClientSettings }>(
-          `/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(user!.siteSlug!)}`,
-          CARDS_TIMEOUT_MS
-        ).catch(() => ({ ok: true, settings: {} as ClientSettings }));
-        if (!alive) return;
-        setSettings(st.settings || {});
-        // Se não há pin vindo da URL/session, use o dos settings
-        setVipPin((prev) => prev || st.settings?.vipPin || "");
-      } catch {
-      } finally {
-        if (alive) setLoadingSettings(false);
-      }
-    })();
+  // ASSETS
+  (async () => {
+    try {
+      const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
+        `/.netlify/functions/assets?site=${encodeURIComponent(user!.siteSlug!)}`,
+        CARDS_TIMEOUT_MS
+      ).catch(() => ({ ok: true, items: [] as any[] }));
 
-    // FUNCIONALIDADES DO USUÁRIO
-    (async () => {
-      await loadUserFeatures();
-    })();
+      if (!alive) return;
 
-    // ASSETS
-(async () => {
-  try {
-    const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
-      `/.netlify/functions/assets?site=${encodeURIComponent(user!.siteSlug!)}`,
-      CARDS_TIMEOUT_MS
-    ).catch(() => ({ ok: true, items: [] as any[] }));
-    if (!alive) return;
-    const mapped = new Map<string, string>();
-    assets.items.forEach((a) => mapped.set(a.key, a.url));
-    setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
-  } catch {
-  } finally {
-    if (alive) setLoadingAssets(false);
-  }
-})();
+      const mapped = new Map<string, string>();
+      assets.items.forEach((a) => mapped.set(a.key, a.url));
+      setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
+    } catch {
+      // silencioso
+    } finally {
+      if (alive) setLoadingAssets(false);
+    }
+  })();
 
-return () => {
-  alive = false;
-};
+  // cleanup
+  return () => {
+    alive = false;
+  };
 }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
-
 
   /* 3) FEEDBACKS */
   useEffect(() => {
