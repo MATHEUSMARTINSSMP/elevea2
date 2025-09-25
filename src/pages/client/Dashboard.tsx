@@ -485,60 +485,33 @@ export default function ClientDashboard() {
 
   /* 3) FEEDBACKS */
   useEffect(() => {
-    console.log('🚀 DASHBOARD FEEDBACKS - useEffect iniciado');
-    console.log('📊 canQuery:', canQuery);
-    console.log('👤 user:', user);
-    console.log('🎯 vipEnabled:', vipEnabled);
-    console.log('🔐 vipPin:', !!vipPin);
-    console.log('⚡ canPerformVipAction(true):', canPerformVipAction(true));
-    
-    if (!canQuery) {
-      console.log('❌ DASHBOARD FEEDBACKS - canQuery = false, saindo');
-      return;
-    }
+    if (!canQuery) return;
     let alive = true;
 
     (async () => {
       try {
-        console.log('📋 DASHBOARD FEEDBACKS - iniciando fetch');
         let fb: { ok: boolean; items: Feedback[] };
 
         // VIP pode ver feedbacks seguros se tiver PIN, senão vê básicos
         if (canPerformVipAction(true)) { // true = requer PIN para feedbacks seguros
-          console.log('🔐 DASHBOARD FEEDBACKS - usando list_feedbacks_secure (VIP com PIN)');
-          console.log('📝 Payload:', { action: "list_feedbacks_secure", site: user!.siteSlug!, pin: vipPin || "FORCED" });
-          
           fb = await postJSON<{ ok: boolean; items: Feedback[] }>(
             "/.netlify/functions/client-api",
             { action: "list_feedbacks_secure", site: user!.siteSlug!, pin: vipPin || "FORCED" },
             CARDS_TIMEOUT_MS
-          ).catch((error) => {
-            console.log('❌ DASHBOARD FEEDBACKS - erro na chamada secure:', error);
-            return { ok: true, items: [] as Feedback[] };
-          });
+          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         } else if (vipEnabled) {
-          console.log('👑 DASHBOARD FEEDBACKS - usando list_feedbacks (VIP sem PIN)');
           // VIP sem PIN ainda pode ver feedbacks básicos
           fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
             `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
             CARDS_TIMEOUT_MS
-          ).catch((error) => {
-            console.log('❌ DASHBOARD FEEDBACKS - erro na chamada VIP básica:', error);
-            return { ok: true, items: [] as Feedback[] };
-          });
+          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         } else {
-          console.log('🔓 DASHBOARD FEEDBACKS - usando list_feedbacks (não VIP)');
           // Não VIP vê feedbacks básicos
           fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
             `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
             CARDS_TIMEOUT_MS
-          ).catch((error) => {
-            console.log('❌ DASHBOARD FEEDBACKS - erro na chamada não VIP:', error);
-            return { ok: true, items: [] as Feedback[] };
-          });
+          ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         }
-        
-        console.log('📦 DASHBOARD FEEDBACKS - resposta recebida:', fb);
 
         if (!alive) return;
         const items = fb.items || [];
