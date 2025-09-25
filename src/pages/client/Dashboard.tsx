@@ -118,6 +118,23 @@ async function getJSON<T = any>(url: string, ms: number): Promise<T> {
     }
   }
 
+// Normaliza feedbacks vindos da função (por segurança no front)
+function normalizeFeedbackItemsFront(items: any[]): Feedback[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((it) => ({
+    id: String(it.id ?? ""),
+    name: String(it.name ?? ""),
+    message: String(it.message ?? it.comment ?? ""),
+    timestamp: String(it.timestamp ?? it.ts ?? ""),
+    approved: String(it.approved ?? "").toLowerCase() === "true",
+    email: it.email ? String(it.email) : undefined,
+    phone: it.phone ? String(it.phone) : undefined,
+    sentiment: it.sentiment || undefined,
+  }));
+}
+
+  
+
   // Chamada original
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
@@ -534,7 +551,7 @@ useEffect(() => {
         return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
       });
 
-      setFeedbacks(items);
+      setFeedbacks(normalizeFeedbackItemsFront(items));
 
       // Dispara análise de sentimento em background para os sem análise (VIP)
       if ((vipEnabled || DEV_FORCE_VIP) && items.length > 0) {
