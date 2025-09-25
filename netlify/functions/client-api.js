@@ -76,8 +76,24 @@ export const handler = async (event) => {
         const size = Number(qs.size || 20) || 20;
         // SEGURANÇA: usa list_feedbacks_public para GET público (apenas feedbacks aprovados)
         const url = `${GAS_BASE_URL}?type=list_feedbacks_public&site=${encodeURIComponent(site)}&page=${page}&pageSize=${size}`;
+        
+        console.log('🔍 DEBUG FEEDBACKS - client-api.js');
+        console.log('📝 Parâmetros recebidos:', { action, site, page, size });
+        console.log('🌐 URL construída:', url);
+        console.log('🔗 GAS_BASE_URL:', GAS_BASE_URL);
+        
         const r = await fetch(url);
-        const j = await r.json().catch(() => ({}));
+        console.log('📡 Status da resposta GAS:', r.status, r.statusText);
+        
+        const j = await r.json().catch((e) => {
+          console.log('❌ Erro ao parsear JSON do GAS:', e);
+          return {};
+        });
+        
+        console.log('📦 Resposta completa do GAS:', JSON.stringify(j, null, 2));
+        console.log('🔢 Total de feedbacks retornados:', j.total || 0);
+        console.log('📋 Itens retornados:', j.items?.length || 0);
+        
         return { statusCode: 200, headers, body: JSON.stringify(j) };
       }
 
