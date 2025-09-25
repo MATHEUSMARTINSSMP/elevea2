@@ -1,242 +1,92 @@
 // netlify/functions/client-api.js
-// Proxy entre o frontend e o seu Apps Script.
-//
-// GETs
-//  ?action=get_settings&site=SLUG
-//  ?action=list_leads&site=SLUG&page=1&size=20
-//  ?action=list_feedbacks&site=SLUG&page=1&size=20
-//  ?action=get_traffic&site=SLUG&range=30d
-//
-// POSTs (JSON)
-//  action=save_settings   { site, settings, pin? }
-//  action=record_hit      { site, meta }
-//  action=create_lead     { site, name, email, phone, extra? }
-//  action=create_feedback { site, rating, comment, name?, email? }
-//  action=feedback_set_approval { site, id, approved, pin }
-//
-// Requer no Netlify: GAS_BASE_URL=https://script.google.com/macros/s/XXXX/exec
-const GAS_BASE_URL = process.env.GAS_BASE_URL || process.env.ELEVEA_GAS_EXEC_URL || process.env.SHEETS_WEBAPP_URL || "";
+// Node 18+ (Netlify default). Sem dependências externas.
 
-function cors() {
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "OPTIONS,GET,POST",
+};
+
+// *** IMPORTANTES ***
+// Configure no painel do Netlify:
+// GAS_BASE_URL = https://script.google.com/macros/s/SEU_ID/exec   (sem / no final opcional)
+// Ex.: https://script.google.com/macros/s/AKfycbx123.../exec
+const GAS_BASE_URL = process.env.GAS_BASE_URL;
+
+function json(status, body, extra = {}) {
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS,PUT", // Added PUT for assets
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Cache-Control": "no-store",
-    "Content-Type": "application/json",
+    statusCode: status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS, ...extra },
+    body: JSON.stringify(body),
   };
 }
 
-export const handler = async (event) => {
-  const headers = cors();
-
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers, body: "" };
-  }
-  if (!GAS_BASE_URL) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ ok: false, error: "missing_GAS_BASE_URL" }),
-    };
-  }
+exports.handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return json(200, { ok: true });
 
   try {
-    // ===== GETs =====
-    if (event.httpMethod === "GET") {
-      const qs = event.queryStringParameters || {};
-      const action = String(qs.action || "").toLowerCase();
-      const site = String(qs.site || "").trim().toUpperCase();
-      if (!site) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ ok: false, error: "missing_site" }),
-        };
-      }
+    const isPost = event.httpMethod === "POST";
+    const params = new URLSearchParams(event.queryStringParameters || {});
+    const body = isPost && event.body ? JSON.parse(event.body) : {};
+    const action = (params.get("action") || body.action || "").trim();
+    const site = (params.get("site") || body.site || "").trim();
+    const pin = (params.get("pin") || body.pin || "").trim();
 
-      if (action === "get_settings") {
-        const url = `${GAS_BASE_URL}?type=get_settings&site=${encodeURIComponent(site)}`;
-        const r = await fetch(url);
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
+    if (!GAS_BASE_URL) {
+      return json(500, { ok: false, error: "GAS_BASE_URL não configurado no Netlify." });
+    }
+    if (!site) return json(400, { ok: false, error: "Parâmetro 'site' é obrigatório." });
 
-      if (action === "list_leads") {
-        const page = Number(qs.page || 1) || 1;
-        const size = Number(qs.size || 20) || 20;
-        const url = `${GAS_BASE_URL}?type=list_leads&site=${encodeURIComponent(site)}&page=${page}&pageSize=${size}`;
-        const r = await fetch(url);
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      if (action === "list_feedbacks") {
-        const page = Number(qs.page || 1) || 1;
-        const size = Number(qs.size || 20) || 20;
-        // SEGURANÇA: usa list_feedbacks_public para GET público (apenas feedbacks aprovados)
-        const url = `${GAS_BASE_URL}?type=list_feedbacks_public&site=${encodeURIComponent(site)}&page=${page}&pageSize=${size}`;
-        const r = await fetch(url);
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      if (action === "get_traffic") {
-        const range = String(qs.range || "30d");
-        const url = `${GAS_BASE_URL}?type=get_traffic&site=${encodeURIComponent(site)}&range=${encodeURIComponent(range)}`;
-        const r = await fetch(url);
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      if (action === "get_status") {
-        const url = `${GAS_BASE_URL}?type=status&site=${encodeURIComponent(site)}`;
-        const r = await fetch(url);
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ ok: false, error: "unknown_action_get" }),
-      };
+    // util: chamada simples ao GAS
+    async function callGAS(path, query) {
+      const url = new URL(GAS_BASE_URL.replace(/\/$/, "") + path);
+      Object.entries(query || {}).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+      });
+      const resp = await fetch(url.toString(), { method: "GET" });
+      if (!resp.ok) throw new Error(`GAS HTTP ${resp.status}`);
+      return await resp.json();
     }
 
-    // ===== POSTs =====
-    if (event.httpMethod === "POST") {
-      const body = JSON.parse(event.body || "{}");
-      const action = String(body.action || "").toLowerCase();
-
-      if (action === "save_settings") {
-        const site = String(body.site || "").trim().toUpperCase();
-        if (!site || typeof body.settings !== "object") {
-          return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: "missing_site_or_settings" }) };
-        }
-        const r = await fetch(`${GAS_BASE_URL}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            type: "save_settings", 
-            site: site, 
-            settings: body.settings, 
-            pin: body.pin 
-          }),
-        });
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      if (action === "record_hit") {
-        const site = String(body.site || "").trim().toUpperCase();
-        const meta = body.meta || {};
-        if (!site) {
-          return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: "missing_site" }) };
-        }
-        const r = await fetch(`${GAS_BASE_URL}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            type: "record_hit", 
-            site: site, 
-            path: meta.path || "/",
-            ip: meta.ip || "",
-            userAgent: meta.userAgent || ""
-          }),
-        });
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      if (action === "create_lead") {
-        const site = String(body.site || "").trim().toUpperCase();
-        if (!site) return { statusCode: 400, headers, body: JSON.stringify({ ok:false, error:"missing_site" }) };
-        const r = await fetch(`${GAS_BASE_URL}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "lead_new",
-            site: site,
-            name: body.name || "",
-            email: body.email || "",
-            phone: body.phone || "",
-            source: body.source || "site"
-          }),
-        });
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      if (action === "create_feedback") {
-        const site = String(body.site || "").trim().toUpperCase();
-        if (!site) return { statusCode: 400, headers, body: JSON.stringify({ ok:false, error:"missing_site" }) };
-        const r = await fetch(`${GAS_BASE_URL}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "feedback_new",
-            site: site,
-            rating: body.rating,
-            comment: body.comment || "",
-            name: body.name || "",
-            email: body.email || "",
-            phone: body.phone || ""
-          }),
-        });
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      if (action === "feedback_set_approval") {
-        const site = String(body.site || "").trim().toUpperCase();
-        if (!site) return { statusCode: 400, headers, body: JSON.stringify({ ok:false, error:"missing_site" }) };
-        const r = await fetch(`${GAS_BASE_URL}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "feedback_set_approval",
-            site: site,
-            id: body.id,
-            approved: body.approved,
-            pin: body.pin
-          }),
-        });
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      // NOVO: endpoint seguro para listar feedbacks com PIN (VIP vê todos, sem PIN vê só públicos)
-      if (action === "list_feedbacks_secure") {
-        const site = String(body.site || "").trim().toUpperCase();
-        if (!site) return { statusCode: 400, headers, body: JSON.stringify({ ok:false, error:"missing_site" }) };
-        const r = await fetch(`${GAS_BASE_URL}`, {
-          method: "POST", 
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "list_feedbacks_secure",
-            site: site,
-            page: body.page || 1,
-            pageSize: body.pageSize || 20,
-            pin: body.pin || ""
-          }),
-        });
-        const j = await r.json().catch(() => ({}));
-        return { statusCode: 200, headers, body: JSON.stringify(j) };
-      }
-
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ ok: false, error: "unknown_action_post" }),
-      };
+    if (action === "list_feedbacks") {
+      // público — somente aprovados; sem e-mail/telefone
+      // No seu GAS, exponha algo como ?endpoint=feedbacks_public
+      const data = await callGAS("/feedbacks", { site, scope: "public" }).catch(() => ({ ok: true, items: [] }));
+      // Normaliza estrutura esperada
+      const items = Array.isArray(data.items) ? data.items.map((f) => ({
+        id: String(f.id ?? ""),
+        name: f.name ?? "",
+        message: f.message ?? "",
+        timestamp: f.timestamp ?? new Date().toISOString(),
+        approved: Boolean(f.approved ?? true),
+        // sem email/phone aqui
+      })) : [];
+      return json(200, { ok: true, items });
     }
 
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ ok: false, error: "method_not_allowed" }),
-    };
+    if (action === "list_feedbacks_secure") {
+      // seguro — exige PIN, retorna todos + dados sensíveis
+      if (!pin) return json(403, { ok: false, error: "PIN obrigatório." });
+      // No GAS, valide PIN e retorne { ok, items, authorized }
+      const data = await callGAS("/feedbacks", { site, scope: "secure", pin }).catch(() => null);
+      if (!data?.ok || data.authorized === false) {
+        return json(403, { ok: false, error: "PIN inválido ou não autorizado." });
+      }
+      const items = Array.isArray(data.items) ? data.items.map((f) => ({
+        id: String(f.id ?? ""),
+        name: f.name ?? "",
+        message: f.message ?? "",
+        timestamp: f.timestamp ?? new Date().toISOString(),
+        approved: Boolean(f.approved ?? false),
+        email: f.email ?? "",
+        phone: f.phone ?? "",
+      })) : [];
+      return json(200, { ok: true, items });
+    }
+
+    // outras ações que você já tenha podem continuar aqui...
+    return json(400, { ok: false, error: "Ação inválida." });
   } catch (e) {
-    return { statusCode: 500, headers, body: JSON.stringify({ ok: false, error: String(e) }) };
+    return json(500, { ok: false, error: e?.message || "Erro inesperado" });
   }
 };
