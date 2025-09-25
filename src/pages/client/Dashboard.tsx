@@ -20,7 +20,8 @@ import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
 /* ================= CONFIG ================= */
-const PLAN_TIMEOUT_MS = 3000;
+const PLAN_TIMEOUT_MS = 8000; // Increased from 3s to 8s for better reliability
+const PLAN_RETRY_COUNT = 2; // Number of retries for plan validation
 const CARDS_TIMEOUT_MS = 5000;
 const UPGRADE_URL =
   (import.meta as any).env?.VITE_UPGRADE_URL ||
@@ -199,10 +200,18 @@ export default function ClientDashboard() {
   }, [vipPin]);
 
   // VIP habilita se QUALQUER fonte indicar isso (ou DEV force)
+  // Agora também considera cache e fallbacks para resilência
   const vipEnabledRaw =
     looksVip(plan || undefined) ||
     looksVip(status?.plan) ||
-    isActiveStatus(status?.status);
+    isActiveStatus(status?.status) ||
+    (function() {
+      // Fallback: verifica cache de último plano VIP conhecido
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        return cached && looksVip(cached);
+      } catch { return false; }
+    })();
 
   const vipEnabled = DEV_FORCE_VIP || vipEnabledRaw;
 
@@ -210,6 +219,13 @@ export default function ClientDashboard() {
   const isFeatureEnabled = (featureId: string) => {
     if (vipEnabled) return true; // VIP real ou forçado vê tudo
     return enabledFeatures.includes(featureId);
+  };
+
+  // Helper para operações VIP que requerem PIN (operações críticas)
+  const canPerformVipAction = (requirePin: boolean = false) => {
+    if (DEV_FORCE_VIP) return true; // Force VIP ignora PIN
+    if (!vipEnabled) return false; // Não VIP não pode
+    return requirePin ? !!vipPin : true; // Se requer PIN, verifica se tem
   };
 
   const loadUserFeatures = async () => {
