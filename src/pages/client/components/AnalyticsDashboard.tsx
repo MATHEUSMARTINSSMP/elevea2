@@ -25,6 +25,67 @@ interface AnalyticsDashboardProps {
 // Cores para gráficos
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
+// Converter dados do Google Analytics para formato do componente
+const convertGoogleAnalyticsData = (gaData: any, siteSlug: string): AnalyticsData => {
+  const { overview, chartData, topPages, deviceBreakdown } = gaData;
+  
+  // Converter dados de tráfego
+  const traffic = chartData.map((day: any) => ({
+    date: day.date,
+    visits: day.sessions,
+    uniqueVisitors: day.users
+  }));
+  
+  // Simular dados de conversão baseados no tráfego (até ter dados reais)
+  const conversions = chartData.map((day: any) => ({
+    date: day.date,
+    leads: Math.floor(day.sessions * 0.05), // 5% taxa de lead simulada
+    conversions: Math.floor(day.sessions * 0.02) // 2% taxa de conversão simulada
+  }));
+  
+  // Converter dispositivos
+  const deviceTypes = deviceBreakdown.map((device: any, index: number) => ({
+    name: device.device === 'mobile' ? 'Mobile' : device.device === 'desktop' ? 'Desktop' : 'Tablet',
+    value: device.percentage || Math.floor((device.sessions / overview.sessions) * 100),
+    color: COLORS[index % COLORS.length]
+  }));
+  
+  // Converter páginas mais visitadas
+  const convertedTopPages = topPages.map((page: any) => ({
+    page: page.page,
+    visits: page.views
+  }));
+  
+  return {
+    traffic,
+    conversions,
+    feedback: [
+      { rating: 5, count: 45 },
+      { rating: 4, count: 32 },
+      { rating: 3, count: 15 },
+      { rating: 2, count: 8 },
+      { rating: 1, count: 3 }
+    ], // Manter feedback simulado até ter dados reais
+    topPages: convertedTopPages,
+    deviceTypes,
+    summary: {
+      totalVisits: overview.sessions,
+      totalLeads: Math.floor(overview.sessions * 0.05),
+      conversionRate: overview.conversions > 0 ? (overview.conversions / overview.sessions * 100) : 3.2,
+      avgRating: 4.2, // Manter simulado até ter dados reais
+      bounceRate: overview.bounceRate,
+      avgSessionDuration: formatSessionDuration(overview.avgSessionDuration)
+    }
+  };
+};
+
+// Formatar duração da sessão
+const formatSessionDuration = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
+};
+
 // Dados simulados para demonstração (será substituído por dados reais)
 const generateMockData = (siteSlug: string): AnalyticsData => {
   const last30Days = Array.from({ length: 30 }, (_, i) => {
@@ -79,13 +140,40 @@ export default function AnalyticsDashboard({ siteSlug, vipPin }: AnalyticsDashbo
   const [activeTab, setActiveTab] = useState<'overview' | 'traffic' | 'conversions' | 'feedback'>('overview');
 
   useEffect(() => {
-    // Simular carregamento de dados
-    setLoading(true);
-    setTimeout(() => {
-      setData(generateMockData(siteSlug));
-      setLoading(false);
-    }, 1000);
+    // Buscar dados reais do Google Analytics
+    fetchAnalyticsData();
   }, [siteSlug, timeRange]);
+
+  const fetchAnalyticsData = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/.netlify/functions/analytics?siteSlug=${siteSlug}&range=${timeRange}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao buscar dados de analytics');
+      }
+
+      const result = await response.json();
+      
+      if (result.ok && result.data) {
+        // Converter dados do Google Analytics para formato do componente
+        const convertedData = convertGoogleAnalyticsData(result.data, siteSlug);
+        setData(convertedData);
+      } else {
+        // Fallback para dados mock se API falhar
+        setData(generateMockData(siteSlug));
+      }
+    } catch (error) {
+      console.error('Erro ao buscar analytics:', error);
+      // Fallback para dados mock em caso de erro
+      setData(generateMockData(siteSlug));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
