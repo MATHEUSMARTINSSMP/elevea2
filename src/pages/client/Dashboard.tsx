@@ -43,221 +43,172 @@ type StatusResp = {
   status?: string;
   plan?: string;
   nextCharge?: string | null;
-  lastPayment?: { date: string; amount: number } | null;
-};
-
-type Feedback = {
-  id: string;
-  name?: string;
-  message: string;
-  timestamp: string;
-  approved?: boolean;
-  email?: string;
-  phone?: string;
-  sentiment?: {
-    rating: number;
-    confidence: number;
-    emotion: string;
-    summary: string;
-  };
+  lastPayment?: string | null;
 };
 
 type ClientSettings = {
   showBrand?: boolean;
   showPhone?: boolean;
-  showWhatsApp?: boolean;
-  whatsAppNumber?: string;
-  footerText?: string;
-  theme?: { primary: string; background: string; accent: string };
-  customCSS?: string;
-  vipPin?: string;
+  phone?: string;
+  primaryColor?: string;
+  palette?: string;
 };
 
-type ImageSlot = { key: string; label: string; url?: string };
+type Feedback = {
+  id: string;
+  name: string;
+  email?: string;
+  rating: number;
+  message?: string;
+  sentiment?: any;
+  approved?: boolean;
+  createdAt?: string;
+};
 
-/* ===== fetch com timeout real (AbortController) ===== */
-async function getJSON<T = any>(url: string, ms: number): Promise<T> {
-  // Se for desenvolvimento local e URL é função Netlify, retorna mock
-  if (typeof window !== 'undefined' && 
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
-      url.includes('/.netlify/functions/')) {
-    
-    console.log('[DEV MOCK] Intercepting:', url);
-    
-    if (url.includes('/client-plan')) {
-      const mockData = {
-        ok: true,
-        vip: true,
-        plan: 'vip',
-        status: 'active',
-        nextCharge: "2025-10-25T10:00:00.000Z",
-        lastPayment: {
-          date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          amount: 97.00
+type ImageSlot = {
+  key: string;
+  label: string;
+  url?: string;
+};
+
+interface SiteStructure {
+  description?: string;
+  category?: string;
+  sections: Array<{
+    id: string;
+    title: string;
+    subtitle?: string;
+    description?: string;
+  }>;
+}
+
+/* ===== MOCK FUNCTIONS ===== */
+function getJSON<T>(url: string, timeoutMs = 10000): Promise<T> {
+  interceptNetlifyFunctions();
+
+  const devMode = (import.meta as any).env?.DEV;
+  if (devMode && (url.includes("client-plan") || url.includes("auth-status"))) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    return fetch(url, { signal: controller.signal })
+      .then(async (r) => {
+        clearTimeout(timeoutId);
+        if (url.includes("client-plan")) {
+          const mockData = {
+            ok: true,
+            siteSlug: "MATHEUS",
+            status: "active",
+            plan: "vip",
+            nextCharge: "2025-02-25",
+            lastPayment: "2025-01-25"
+          };
+          console.log('[DEV MOCK] client-plan returning:', mockData);
+          return mockData as T;
         }
-      };
-      console.log('[DEV MOCK] client-plan returning:', mockData);
-      return mockData as T;
-    }
-    
-    if (url.includes('/auth-status')) {
-      const mockData = {
-        ok: true,
-        siteSlug: 'demo',
-        status: 'active',
-        plan: 'vip',
-        nextCharge: "2025-10-25T10:00:00.000Z",
-        lastPayment: {
-          date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          amount: 97.00
-        },
-        error: null
-      };
-      console.log('[DEV MOCK] auth-status returning:', mockData);
-      return mockData as T;
-    }
-  }
-
-  // Chamada original
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), ms);
-  try {
-    const r = await fetch(url, { signal: ctl.signal, credentials: "include" });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), ms);
-  try {
-    // Use mock interceptor em desenvolvimento local para funções Netlify
-    const r = await interceptNetlifyFunctions(url, (fetchUrl) => 
-      fetch(fetchUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: ctl.signal,
-        credentials: "include",
+        if (url.includes("auth-status")) {
+          const mockData = {
+            ok: true,
+            user: { email: "matheus@elevea.com.br", siteSlug: "MATHEUS", role: "client" },
+            authenticated: true
+          };
+          console.log('[DEV MOCK] auth-status returning:', mockData);
+          return mockData as T;
+        }
+        return await r.json();
       })
-    );
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  } finally {
-    clearTimeout(timer);
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        throw error;
+      });
   }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  return fetch(url, { signal: controller.signal })
+    .then(async (r) => {
+      clearTimeout(timeoutId);
+      return await r.json();
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      throw error;
+    });
 }
 
-/* ===== helpers ===== */
-const norm = (s?: string) => String(s ?? "").trim().toLowerCase();
-const looksVip = (p?: string) => !!p && (norm(p) === "vip" || norm(p).includes("vip"));
-const isActiveStatus = (s?: string) =>
-  ["approved", "authorized", "active", "processing", "in_process", "charged", "authorized_pending_capture"].includes(norm(s));
+function postJSON<T>(url: string, data: any, timeoutMs = 10000): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    signal: controller.signal,
+  })
+    .then(async (r) => {
+      clearTimeout(timeoutId);
+      return await r.json();
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      throw error;
+    });
+}
 
-const fmtDateTime = (s?: string | null) => {
-  if (!s) return "—";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return s as string;
-  return (
-    d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
-    " • " +
-    d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-  );
-};
+function looksVip(plan?: string) {
+  return ["vip", "pro", "premium", "plus"].some(p => plan?.toLowerCase().includes(p));
+}
 
-/* Helpers de query-string */
-const getQS = (key: string) => {
-  try { return new URLSearchParams(window.location.search).get(key) ?? undefined; } catch { return undefined; }
-};
-const getQSBool = (key: string) => {
-  const v = getQS(key);
-  return v === "1" || v === "true";
-};
-
-/* ================= Página ================= */
-export default function ClientDashboard() {
+/* ================= MAIN COMPONENT ================= */
+export default function Dashboard() {
   const { user } = useSession();
   const { logout: authLogout } = useAuth();
   const canQuery = !!user?.email && !!user?.siteSlug && user?.role === "client";
 
   /* ------- DEV FORCE VIP ------- */
-  const DEV_FORCE_VIP =
-    typeof window !== "undefined" &&
-    (getQSBool("forceVIP") || localStorage.getItem("elevea:forceVIP") === "1");
+  const devMode = (import.meta as any).env?.DEV;
+  const DEV_FORCE_VIP = devMode && user?.email === "matheus@elevea.com.br";
 
-  /* Plano / gate VIP */
-  const [plan, setPlan] = useState<string | null>(null);
+  // Estados
+  const [plan, setPlan] = useState<string>(""); 
   const [checkingPlan, setCheckingPlan] = useState(false);
-  const [planErr, setPlanErr] = useState<string | null>(null);
-  const cacheKey = `dashboard:lastPlan:${user?.siteSlug || ""}`;
-  const onceRef = useRef(false);
-  const [planFetchTick, setPlanFetchTick] = useState(0);
-
-  /* Outros cards */
   const [status, setStatus] = useState<StatusResp | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(true);
-
-  const [settings, setSettings] = useState<ClientSettings>({});
-  const [loadingSettings, setLoadingSettings] = useState(true);
-
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [loadingFeedbacks, setLoadingFeedbacks] = useState(true);
-
-  const [slots, setSlots] = useState<ImageSlot[]>(
-    Array.from({ length: 6 }).map((_, i) => ({ key: `media_${i + 1}`, label: `Mídia ${i + 1}` }))
-  );
-  const [loadingAssets, setLoadingAssets] = useState(true);
-
-  const [vipPin, setVipPin] = useState<string>(() => {
-    // Prioridade: ?pin=... > sessionStorage > vazio (será preenchido pelos settings depois)
-    try {
-      const qsPin = getQS("pin");
-      if (qsPin) return qsPin;
-      const ss = sessionStorage.getItem("dashboard:vipPin") || "";
-      return ss;
-    } catch {
-      return "";
-    }
-  });
-  const [saving, setSaving] = useState(false);
-
-  /* Gerenciamento de Funcionalidades */
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
-  const [userPlan, setUserPlan] = useState<"essential" | "vip">("essential");
   const [featuresLoaded, setFeaturesLoaded] = useState(false);
 
-  /* Chat AI */
-  const [showAIChat, setShowAIChat] = useState(false);
-
-  /* Gerador de Conteúdo IA */
-  const [showContentGenerator, setShowContentGenerator] = useState(false);
-
-  /* Estrutura do site (personalização VIP) */
-  const [siteStructure, setSiteStructure] = useState<any>(null);
+  // Cards
+  const [settings, setSettings] = useState<ClientSettings>({});
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [slots, setSlots] = useState<ImageSlot[]>([]);
+  const [loadingAssets, setLoadingAssets] = useState(true);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [loadingFeedbacks, setLoadingFeedbacks] = useState(true);
+  const [siteStructure, setSiteStructure] = useState<SiteStructure | null>(null);
   const [loadingStructure, setLoadingStructure] = useState(true);
-  const [savingStructure, setSavingStructure] = useState(false);
 
-  // Persistir vipPin sempre que mudar
-  useEffect(() => {
-    try { sessionStorage.setItem("dashboard:vipPin", vipPin || ""); } catch {}
-  }, [vipPin]);
+  // Misc
+  const [saving, setSaving] = useState(false);
+  const [vipPin, setVipPin] = useState("");
+  const [planFetchTick, setPlanFetchTick] = useState(0);
+  const [showAIChat, setShowAIChat] = useState(false);
+  const [showContentGenerator, setShowContentGenerator] = useState(false);
+  const [savingStructure, setSavingStructure] = useState(false);
 
   // VIP habilita se QUALQUER fonte indicar isso (ou DEV force)
   // Agora também considera cache e fallbacks para resilência
   const vipEnabledRaw =
     looksVip(plan || undefined) ||
     looksVip(status?.plan) ||
-    isActiveStatus(status?.status) ||
-    (function() {
-      // Fallback: verifica cache de último plano VIP conhecido
-      try {
-        const cached = sessionStorage.getItem(cacheKey);
-        return cached && looksVip(cached);
-      } catch { return false; }
-    })();
+    looksVip(localStorage.getItem("last_plan") || undefined);
+
+  // Força "VIP ativo" para Matheus no dev, mesmo se o fetch falhar
+  useEffect(() => {
+    if (DEV_FORCE_VIP && !vipPin) {
+      setVipPin("123456"); // PIN automático para dev
+    }
+  }, [DEV_FORCE_VIP, vipPin]);
 
   const vipEnabled = DEV_FORCE_VIP || vipEnabledRaw;
 
@@ -280,120 +231,104 @@ export default function ClientDashboard() {
       return;
     }
     try {
-      const response = await fetch("/.netlify/functions/feature-management", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "get_user_features",
-          siteSlug: user?.siteSlug,
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.ok) {
-          setEnabledFeatures(result.userSettings.enabledFeatures || []);
-          setUserPlan(result.userSettings.plan || "essential");
-        }
+      const resp = await getJSON<{ ok: boolean; features: string[] }>(
+        `/.netlify/functions/features?site=${encodeURIComponent(user!.siteSlug!)}`,
+        3000
+      );
+      if (resp.ok && resp.features) {
+        setEnabledFeatures(resp.features);
       }
-    } catch (error) {
-      console.error("Erro ao carregar funcionalidades:", error);
-      // não bloqueie a UI em caso de erro
+    } catch {
+      // silencioso, usa default vazio
     } finally {
       setFeaturesLoaded(true);
     }
   };
 
-  // Mostra "VIP" (ou o valor do plano) mesmo se o fetch principal falhar,
-  // usando também status.plan como fallback.
+  // Chama loadUserFeatures uma vez ao montar
+  useEffect(() => {
+    loadUserFeatures();
+  }, [canQuery]);
+
+  // Cache do último plano no localStorage para resilência
   const planLabel = vipEnabled
     ? (status?.plan?.toUpperCase?.() || plan?.toUpperCase?.() || (DEV_FORCE_VIP ? "VIP (FORÇADO)" : "VIP"))
     : (plan || status?.plan || "—");
-
-  // Redireciona admin
-  useEffect(() => {
-    if (user?.role === "admin") window.location.replace("/admin/dashboard");
-  }, [user?.role]);
 
   /* 1) Carrega plano principal */
   useEffect(() => {
     if (!canQuery) return;
 
     // abre com último plano conhecido (se existir)
-    if (!onceRef.current) {
-      onceRef.current = true;
-      try {
-        const last = sessionStorage.getItem(cacheKey);
-        if (last) setPlan(last);
-      } catch {}
-    }
-
-    // se forçado, não bloqueia a página
-    if (DEV_FORCE_VIP) {
-      setCheckingPlan(false);
-      setLoadingStatus(false);
-      return;
-    }
+    const lastKnown = localStorage.getItem("last_plan");
+    if (lastKnown && !plan) setPlan(lastKnown);
 
     let alive = true;
+    setCheckingPlan(true);
+
     (async () => {
-      setCheckingPlan(true);
-      setPlanErr(null);
-      try {
-        const r = await getJSON<{
-          ok: boolean;
-          vip: boolean;
-          plan: string;
-          status?: string;
-          nextCharge?: string | null;
-          lastPayment?: { date: string; amount: number } | null;
-        }>(
-          `/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}&email=${encodeURIComponent(
-            user!.email
-          )}`,
-          PLAN_TIMEOUT_MS
-        );
-
-        if (!alive) return;
-        // Se backend retorna vip=true, forçar plan="vip"
-        const resolvedPlan = r.vip ? "vip" : (r.plan || "");
-        setPlan(resolvedPlan);
-        
+      const MAX_ATTEMPTS = PLAN_RETRY_COUNT;
+      let attempt = 0;
+      
+      while (attempt < MAX_ATTEMPTS && alive) {
         try {
-          sessionStorage.setItem(cacheKey, resolvedPlan);
-        } catch {}
+          attempt++;
+          
+          // Tenta buscar plano e status em paralelo para melhor UX
+          const [planResp, statusResp] = await Promise.allSettled([
+            getJSON<{ ok: boolean; plan?: string }>(`/.netlify/functions/client-plan?site=${encodeURIComponent(user!.siteSlug!)}`, PLAN_TIMEOUT_MS),
+            getJSON<StatusResp>(`/.netlify/functions/subscription-status?site=${encodeURIComponent(user!.siteSlug!)}`, PLAN_TIMEOUT_MS)
+          ]);
 
-        // hidrata status com o que já veio
-        setStatus({
-          ok: true,
-          siteSlug: user!.siteSlug!,
-          status: r.status,
-          nextCharge: r.nextCharge,
-          lastPayment: r.lastPayment,
-          plan: resolvedPlan,
-        });
+          if (!alive) return;
 
-        setLoadingStatus(false);
-      } catch (e: any) {
-        setPlanErr("Não foi possível validar sua assinatura agora.");
-      } finally {
-        if (alive) setCheckingPlan(false);
+          // Processa resposta do plano
+          if (planResp.status === "fulfilled" && planResp.value?.ok) {
+            const newPlan = planResp.value.plan || "";
+            setPlan(newPlan);
+            if (newPlan) localStorage.setItem("last_plan", newPlan);
+          }
+
+          // Processa resposta do status
+          if (statusResp.status === "fulfilled" && statusResp.value?.ok) {
+            setStatus(statusResp.value);
+            if (statusResp.value.plan) {
+              localStorage.setItem("last_plan", statusResp.value.plan);
+            }
+          }
+
+          // Se conseguiu pelo menos uma resposta bem-sucedida, para de tentar
+          if (planResp.status === "fulfilled" || statusResp.status === "fulfilled") {
+            break;
+          }
+
+        } catch (error) {
+          console.warn(`Attempt ${attempt}/${MAX_ATTEMPTS} failed:`, error);
+          if (attempt < MAX_ATTEMPTS) {
+            // Espera exponencial entre tentativas
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          }
+        }
       }
-    })();
+    })().finally(() => {
+      if (alive) setCheckingPlan(false);
+    });
 
+    // cleanup
     return () => {
       alive = false;
     };
   }, [canQuery, user?.siteSlug, user?.email, planFetchTick, DEV_FORCE_VIP]);
 
   const retryPlan = () => {
-    try {
-      sessionStorage.removeItem(cacheKey);
-    } catch {}
-    setPlan(null);
-    setPlanErr(null);
-    setLoadingStatus(true);
-    setPlanFetchTick((n) => n + 1);
+    setPlanFetchTick(prev => prev + 1);
+  };
+
+  // Função auxiliar para buscar settings em paralelo
+  const fetchSettings = async () => {
+    const url = `/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(user!.siteSlug!)}`;
+    const r = await getJSON<{ ok: boolean; settings?: ClientSettings }>(url, CARDS_TIMEOUT_MS);
+    return r.settings || {};
   };
 
   /* 2) Cards em paralelo (não bloqueiam a decisão VIP) */
@@ -401,50 +336,16 @@ export default function ClientDashboard() {
     if (!canQuery) {
       setLoadingAssets(false);
       setLoadingSettings(false);
-      setLoadingStructure(false);
-      setLoadingFeedbacks(false);
-      setFeaturesLoaded(true);
       return;
     }
-
     let alive = true;
 
-    // STATUS (atualiza se necessário)
-    (async () => {
-      if (DEV_FORCE_VIP) {
-        setLoadingStatus(false);
-        return;
-      }
-      // Se já tem dados válidos da primeira chamada, não faz segunda chamada
-      if (status?.nextCharge || status?.lastPayment) {
-        setLoadingStatus(false);
-        return; // já tem dados do plano
-      }
-
-      try {
-        const s = await getJSON<StatusResp>(
-          `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
-          CARDS_TIMEOUT_MS
-        );
-        if (!alive) return;
-        setStatus(prev => ({ ...prev, ...s }));
-      } catch {
-        // silencioso
-      } finally {
-        if (alive) setLoadingStatus(false);
-      }
-    })();
-
-    // SETTINGS
+    // 2a) Settings
     (async () => {
       try {
-        const st = await getJSON<{ ok: boolean; settings?: ClientSettings }>(
-          `/.netlify/functions/client-api?action=get_settings&site=${encodeURIComponent(user!.siteSlug!)}`,
-          CARDS_TIMEOUT_MS
-        ).catch(() => ({ ok: true, settings: {} as ClientSettings }));
+        const settings = await fetchSettings();
         if (!alive) return;
-        setSettings(st.settings || {});
-        setVipPin(st.settings?.vipPin || "");
+        setSettings(settings);
       } catch {
         // silencioso
       } finally {
@@ -452,12 +353,7 @@ export default function ClientDashboard() {
       }
     })();
 
-    // FUNCIONALIDADES DO USUÁRIO
-    (async () => {
-      await loadUserFeatures();
-    })();
-
-    // ASSETS
+    // 2b) Assets
     (async () => {
       try {
         const assets = await getJSON<{ ok: boolean; items: Array<{ key: string; url: string }> }>(
@@ -562,24 +458,20 @@ export default function ClientDashboard() {
       setLoadingStructure(false);
       return;
     }
-
     let alive = true;
+
     (async () => {
-      setLoadingStructure(true);
       try {
-        const response = await getJSON<{
-          ok: boolean;
-          structure?: any;
-          isDefault?: boolean;
-        }>(
-          `/.netlify/functions/site-structure?site=${encodeURIComponent(user!.siteSlug!)}`,
+        const resp = await getJSON<{ ok: boolean; structure?: SiteStructure }>(
+          `/.netlify/functions/client-api?action=get_structure&site=${encodeURIComponent(user!.siteSlug!)}`,
           CARDS_TIMEOUT_MS
         );
-
         if (!alive) return;
-        if (response.ok && response.structure) setSiteStructure(response.structure);
-      } catch (e) {
-        console.log("Erro ao carregar estrutura:", e);
+        if (resp.ok && resp.structure) {
+          setSiteStructure(resp.structure);
+        }
+      } catch {
+        // silencioso
       } finally {
         if (alive) setLoadingStructure(false);
       }
@@ -593,14 +485,17 @@ export default function ClientDashboard() {
     if (!canQuery) return;
     setSaving(true);
     try {
-      const payload = { ...settings, ...partial };
-      const res = await postJSON<{ ok: boolean }>(
-        "/.netlify/functions/client-api",
-        { action: "save_settings", site: user!.siteSlug!, settings: payload, pin: vipPin || undefined },
-        CARDS_TIMEOUT_MS
-      );
-      if (!res.ok) throw new Error("Falha ao salvar");
-      setSettings(payload);
+      const response = await fetch("/.netlify/functions/client-api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_settings",
+          site: user!.siteSlug!,
+          settings: { ...settings, ...partial },
+        }),
+      });
+      if (!response.ok) throw new Error("Falha ao salvar configurações");
+      setSettings((prev) => ({ ...prev, ...partial }));
     } catch (e: any) {
       alert(e?.message || "Erro ao salvar configurações");
     } finally {
@@ -612,47 +507,37 @@ export default function ClientDashboard() {
     if (!canQuery) return;
     const fd = new FormData();
     fd.append("site", user!.siteSlug!);
-    fd.append("section", "generic");
     fd.append("key", slot.key);
     fd.append("file", file);
-    fd.append("email", user!.email);
-    const r = await fetch("/.netlify/functions/assets", { method: "PUT", body: fd, credentials: "include" });
-    const data = await r.json().catch(() => ({} as any));
-    if (!r.ok || data.ok === false) throw new Error(data?.error || `Falha no upload (${r.status})`);
-    const newUrl: string = data.url;
-    setSlots((prev) => prev.map((s) => (s.key === slot.key ? { ...s, url: newUrl } : s)));
+    const r = await fetch("/.netlify/functions/upload-drive", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "Erro no upload");
+    setSlots((prev) => prev.map((s) => (s.key === slot.key ? { ...s, url: j.url } : s)));
   }
 
-  async function setFeedbackApproval(id: string, approved: boolean) {
+  // Inicializa slots básicos
+  useEffect(() => {
+    setSlots([
+      { key: "hero-image", label: "Imagem Principal" },
+      { key: "about-image", label: "Imagem Sobre" },
+      { key: "services-bg", label: "Fundo Serviços" },
+    ]);
+  }, []);
+
+  async function saveSiteStructure(structureToSave: SiteStructure) {
     if (!canQuery) return;
-    try {
-      await postJSON(
-        "/.netlify/functions/client-api",
-        { action: "feedback_set_approval", site: user!.siteSlug!, id, approved, pin: vipPin || undefined },
-        CARDS_TIMEOUT_MS
-      );
-      setFeedbacks((prev) => prev.map((f) => (f.id === id ? { ...f, approved } : f)));
-    } catch (e: any) {
-      alert(e?.message || "Não foi possível atualizar a aprovação.");
-    }
-  }
-
-  async function saveSiteStructure(updatedStructure?: any) {
-    if (!canQuery || !canPerformVipAction(true)) return; // true = requer PIN para salvar
-    const structureToSave = updatedStructure || siteStructure;
-    if (!structureToSave) return;
-
     setSavingStructure(true);
     try {
-      const response = await postJSON<{ ok: boolean }>(
-        "/.netlify/functions/site-structure",
-        {
-          structure: structureToSave,
-          pin: vipPin || "FORCED",
+      const response = await fetch("/.netlify/functions/client-api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_structure",
           site: user!.siteSlug!,
-        },
-        CARDS_TIMEOUT_MS
-      );
+          structure: structureToSave,
+          pin: vipPin || "FORCED"
+        }),
+      });
       if (!response.ok) throw new Error("Falha ao salvar estrutura");
       setSiteStructure(structureToSave);
     } catch (e: any) {
@@ -679,7 +564,7 @@ export default function ClientDashboard() {
     saveSiteStructure(updatedStructure);
   };
 
-    function updateSectionField(sectionId: string, field: string, value: any) {
+  function updateSectionField(sectionId: string, field: string, value: any) {
     if (!siteStructure) return;
     const updatedStructure = {
       ...siteStructure,
@@ -738,468 +623,262 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        {/* ERRO DE PLANO — só mostra se NÃO estiver VIP */}
-        {planErr && !vipEnabled && (
-          <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900">
-            <div className="flex items-center justify-between">
-              <span className="text-sm">{planErr}</span>
-              <button
-                onClick={retryPlan}
-                className="rounded-lg bg-red-500 text-white px-3 py-1 text-xs hover:bg-red-600"
-              >
-                Tentar novamente
-              </button>
-            </div>
+        {/* RETRY BUTTON PARA PLANO */}
+        {(!vipEnabled && !checkingPlan && !DEV_FORCE_VIP) && (
+          <div className="rounded-2xl border border-amber-300/30 bg-amber-500/10 p-4 text-center">
+            <p className="text-sm text-amber-200 mb-3">
+              Não foi possível verificar seu plano automaticamente.
+            </p>
+            <button
+              onClick={retryPlan}
+              className="rounded-xl bg-amber-500 text-black px-4 py-2 text-sm font-medium hover:bg-amber-400"
+            >
+              Tentar novamente
+            </button>
           </div>
         )}
 
-        {/* RESUMO */}
-        <section className="grid md:grid-cols-4 gap-4">
-          <Card
-            title="Status"
-            value={loadingStatus ? "—" : status?.status ? status.status.toUpperCase() : "—"}
-          />
-          <Card title="Plano" value={planLabel} />
-          <Card
-            title="Próxima Cobrança"
-            value={loadingStatus ? "—" : fmtDateTime(status?.nextCharge)}
-          />
-          <Card
-            title="Último Pagamento"
-            value={
-              loadingStatus
-                ? "—"
-                : status?.lastPayment
-                ? `${fmtDateTime(status.lastPayment.date)} • R$ ${
-                    status.lastPayment.amount?.toFixed?.(2) ??
-                    status.lastPayment.amount
-                  }`
-                : "—"
-            }
-          />
-        </section>
+        {/* Analytics do Site */}
+        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+          <h2 className="text-lg font-semibold mb-4">Analytics do Site</h2>
+          <p className="text-sm text-white/60 mb-4">Dados dos últimos 30 dias</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Card title="VISITAS TOTAIS" value="1.609" />
+            <Card title="LEADS GERADOS" value="80" />
+            <Card title="AVALIAÇÃO MÉDIA" value="4.2" />
+          </div>
 
-        {/* ======== BLOCOS VIP (VIP pode ver, PIN só para operações críticas) ======== */}
-        {vipEnabled && (
-          <section className="space-y-6">
-            <AnalyticsDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && siteStructure && (
-          <section className="space-y-6">
-            <BusinessInsights
-              siteSlug={user.siteSlug || ""}
-              businessType={siteStructure?.category || "geral"}
-              businessName={user?.siteSlug || "seu negócio"}
-              vipPin={vipPin || "FORCED"}
-              analytics={{
-                totalVisits: 1847,
-                conversionRate: 4.8,
-                bounceRate: 32.8,
-                avgSessionDuration: "2:22",
-                topPages: [
-                  { page: "/", visits: 776 },
-                  { page: "/servicos", visits: 480 },
-                  { page: "/contato", visits: 332 },
-                  { page: "/sobre", visits: 185 },
-                  { page: "/galeria", visits: 74 },
-                ],
-                deviceTypes: [
-                  { name: "Mobile", value: 72 },
-                  { name: "Desktop", value: 23 },
-                  { name: "Tablet", value: 5 },
-                ],
-              }}
-              feedback={{
-                avgRating: 4.3,
-                recentFeedbacks: [
-                  { rating: 5, comment: "Excelente atendimento! Superou minhas expectativas.", sentiment: "positive" },
-                  { rating: 4, comment: "Muito bom serviço, recomendo!", sentiment: "positive" },
-                  { rating: 5, comment: "Profissionais competentes e pontuais.", sentiment: "positive" },
-                ],
-              }}
-            />
-          </section>
-        )}
-
-        {vipEnabled && (
-          <section className="space-y-6">
-            <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("whatsapp-chatbot") && (
-          <section className="space-y-6">
-            <WhatsAppManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("lead-scoring") && (
-          <section className="space-y-6">
-            <LeadScoring siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("multi-language") && (
-          <section className="space-y-6">
-            <MultiLanguageManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("appointment-scheduling") && (
-          <section className="space-y-6">
-            <AppointmentScheduling siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("ecommerce") && (
-          <section className="space-y-6">
-            <EcommerceDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("premium-templates") && (
-          <section className="space-y-6">
-            <TemplateMarketplace siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("audit-logs") && (
-          <section className="space-y-6">
-            <AuditLogs siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
-
-        {vipEnabled && isFeatureEnabled("auto-seo") && (
-          <section className="space-y-6">
-            <SEOOptimizer
-              siteSlug={user.siteSlug || ""}
-              vipPin={vipPin || "FORCED"}
-              businessData={{
-                name: user.siteSlug || "seu negócio",
-                type: siteStructure?.category || "negócio",
-                location: "Brasil",
-                description: siteStructure?.description || "",
-              }}
-            />
-          </section>
-        )}
-
-        {/* FEATURE MANAGER sempre visível no VIP */}
-        {vipEnabled && (
-          <section className="space-y-6">
-            <FeatureManager
-              siteSlug={user.siteSlug || ""}
-              vipPin={vipPin || "FORCED"}
-              userPlan={userPlan}
-            />
-          </section>
-        )}
-
-        {/* AI COPYWRITER VIP */}
-        {vipEnabled && (
-          <section className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6">
-              <AICopywriter
-                businessName={user.siteSlug || "seu negócio"}
-                businessType={siteStructure?.category || "negócio"}
-                businessDescription={siteStructure?.description || ""}
-              />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <div className="text-sm text-white/80">Visão Geral</div>
             </div>
-          </section>
-        )}
+            <div className="rounded-xl bg-blue-600 px-3 py-2">
+              <div className="text-sm text-white">Tráfego</div>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <div className="text-sm text-white/80">Conversões</div>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <div className="text-sm text-white/80">Feedbacks</div>
+            </div>
+          </div>
+        </div>
 
-        {/* CONTEÚDO PRINCIPAL */}
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            {/* CONFIGURAÇÕES */}
-            <VipGate
-              enabled={vipEnabled}
-              checking={checkingPlan && !DEV_FORCE_VIP}
-              teaser="Configure aparência, tema e PIN VIP"
-            >
-              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
-                <h2 className="text-lg font-semibold">Configurações Gerais</h2>
+        {/* Grid Principal de Funcionalidades */}
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* CONFIGURAÇÕES */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={checkingPlan && !DEV_FORCE_VIP}
+            teaser="Configure aparência, tema e PIN VIP"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h2 className="text-lg font-semibold mb-4">Configurações Gerais</h2>
+              
+              {loadingSettings && !DEV_FORCE_VIP ? (
+                <DashboardCardSkeleton />
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={settings.showBrand ?? true}
+                        onChange={(e) => saveSettings({ showBrand: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Mostrar marca no rodapé</span>
+                    </label>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.showBrand ?? true}
-                      onChange={(e) => saveSettings({ showBrand: e.target.checked })}
-                      className="rounded"
-                    />
-                    <span className="text-sm">Mostrar marca no rodapé</span>
-                  </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={settings.showPhone ?? false}
+                        onChange={(e) => saveSettings({ showPhone: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Mostrar telefone</span>
+                    </label>
+                  </div>
 
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.showPhone ?? false}
-                      onChange={(e) => saveSettings({ showPhone: e.target.checked })}
-                      className="rounded"
-                    />
-                    <span className="text-sm">Mostrar telefone</span>
-                  </label>
-                </div>
-
-                {settings.showPhone && (
                   <div>
                     <label className="block text-sm font-medium mb-1">Número WhatsApp</label>
                     <input
                       type="tel"
-                      value={settings.whatsAppNumber || ""}
-                      onChange={(e) => saveSettings({ whatsAppNumber: e.target.value })}
-                      placeholder="(11) 99999-9999"
+                      value={settings.phone || ""}
+                      onChange={(e) => saveSettings({ phone: e.target.value })}
+                      placeholder="(00) 00000-0000"
                       className="w-full px-3 py-2 border rounded-lg"
                     />
                   </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">PIN VIP</label>
-                  <input
-                    type="password"
-                    value={vipPin}
-                    onChange={(e) => {
-                      setVipPin(e.target.value);
-                      saveSettings({ vipPin: e.target.value });
-                    }}
-                    placeholder="Defina um PIN para acessar recursos VIP"
-                    className="w-full px-3 py-2 border rounded-lg"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use este PIN para acessar todas as funcionalidades do painel
-                  </p>
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Paleta de cores</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {PALETAS.map((pal, i) => (
-                      <button
-                        key={i}
-                        onClick={() =>
-                          saveSettings({
-                            theme: {
-                              primary: pal.colors[1],
-                              background: pal.colors[0],
-                              accent: pal.colors[2],
-                            },
-                          })
-                        }
-                        className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50"
-                      >
-                        <div className="flex gap-1">
-                          {pal.colors.map((c, j) => (
-                            <div key={j} className="w-4 h-4 rounded" style={{ backgroundColor: c }} />
-                          ))}
-                        </div>
-                        <span className="text-xs">{pal.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            </VipGate>
+              <div>
+                <label className="block text-sm font-medium mb-1">PIN VIP</label>
+                <input
+                  type="password"
+                  value={vipPin}
+                  onChange={(e) => setVipPin(e.target.value)}
+                  placeholder="Use um PIN para acessar recursos VIP"
+                  disabled={saving}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Use um PIN para acessar todas as funcionalidades VIP
+                </p>
+              </div>
 
-            {/* MÍDIAS */}
-            <VipGate
-              enabled={vipEnabled}
-              checking={loadingAssets && !DEV_FORCE_VIP}
-              teaser="Personalize imagens e vídeos do seu site"
-            >
-              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
-                <h2 className="text-lg font-semibold">Gerenciar Mídias</h2>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {slots.map((slot) => (
-                    <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />
+              <div>
+                <label className="block text-sm font-medium mb-2">Paleta de Cores</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {PALETAS.map((p) => (
+                    <button
+                      key={p.name}
+                      onClick={() => saveSettings({ palette: p.name })}
+                      className={`p-2 rounded-lg border text-left ${
+                        settings.palette === p.name
+                          ? "border-blue-500 bg-blue-500/10"
+                          : "border-white/20 hover:border-white/40"
+                      }`}
+                    >
+                      <div className="text-sm font-medium mb-1">{p.name}</div>
+                      <div className="flex gap-1">
+                        {p.colors.map((color, i) => (
+                          <div
+                            key={i}
+                            className="w-4 h-4 rounded"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      </div>
+                    </button>
                   ))}
                 </div>
-              </section>
-            </VipGate>
+              </div>
 
-            {/* PERSONALIZAÇÃO DE SEÇÕES */}
-            <VipGate
-              enabled={vipEnabled && !!(vipPin || DEV_FORCE_VIP)}
-              checking={loadingStructure && !DEV_FORCE_VIP}
-              teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site"
-            >
-              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Personalizar Seções do Site</h2>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowContentGenerator(true)}
-                      className="px-3 py-1 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 transition-colors"
-                      title="Gerar conteúdo com IA"
-                    >
-                      🤖 IA
-                    </button>
-                    {savingStructure && (
-                      <span className="text-xs text-blue-600">Salvando...</span>
-                    )}
-                  </div>
-                </div>
+              {saving && (
+                <div className="text-center text-blue-400 text-sm">Salvando...</div>
+              )}
+            </div>
+          </VipGate>
 
-                {loadingStructure ? (
-                  <div className="space-y-3">
-                    <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
-                    <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4"></div>
-                    <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
-                  </div>
-                ) : !siteStructure ? (
-                  <div className="text-slate-500 text-sm">
-                    Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.
-                  </div>
-                ) : (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    <div className="text-xs text-slate-600 mb-4">
-                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado:{" "}
-                      <strong>{siteStructure.category || "geral"}</strong>
-                    </div>
-                    {siteStructure.sections?.map((section: any) => (
-                      <div key={section.id} className="border rounded-lg p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-sm capitalize">
-                            {section.id.replace("-", " ")}
-                          </h3>
-                          <span
-                            className={`text-xs px-2 py-1 rounded ${
-                              section.visible
-                                ? "bg-green-100 text-green-700"
-                                : "bg-gray-100 text-gray-500"
-                            }`}
-                          >
-                            {section.visible ? "Visível" : "Oculta"}
-                          </span>
-                        </div>
+          {/* MÍDIAS */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={loadingAssets && !DEV_FORCE_VIP}
+            teaser="Personalize imagens e vídeos do seu site"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h2 className="text-lg font-semibold mb-4">Mídias do Site</h2>
+              <div className="grid gap-4">
+                {slots.map((slot) => (
+                  <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />
+                ))}
+              </div>
+            </div>
+          </VipGate>
 
-                        <div className="grid gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">
-                              Título
-                            </label>
-                            <input
-                              type="text"
-                              value={section.title || ""}
-                              onChange={(e) =>
-                                updateSectionField(section.id, "title", e.target.value)
-                              }
-                              placeholder="Título da seção"
-                              className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">
-                              Subtítulo
-                            </label>
-                            <input
-                              type="text"
-                              value={section.subtitle || ""}
-                              onChange={(e) =>
-                                updateSectionField(section.id, "subtitle", e.target.value)
-                              }
-                              placeholder="Subtítulo da seção"
-                              className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                            />
-                          </div>
-
-                          {section.description !== undefined && (
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                Descrição
-                              </label>
-                              <textarea
-                                value={section.description || ""}
-                                onChange={(e) =>
-                                  updateSectionField(section.id, "description", e.target.value)
-                                }
-                                placeholder="Descrição detalhada da seção"
-                                rows={2}
-                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                              />
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                URL da Imagem
-                              </label>
-                              <input
-                                type="url"
-                                value={section.image || ""}
-                                onChange={(e) =>
-                                  updateSectionField(section.id, "image", e.target.value)
-                                }
-                                placeholder="https://..."
-                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                Visibilidade
-                              </label>
-                              <select
-                                value={section.visible ? "true" : "false"}
-                                onChange={(e) =>
-                                  updateSectionField(
-                                    section.id,
-                                    "visible",
-                                    e.target.value === "true"
-                                  )
-                                }
-                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                              >
-                                <option value="true">Visível</option>
-                                <option value="false">Oculta</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-
-                        {section.image && (
-                          <div className="mt-2">
-                            <img
-                              src={section.image}
-                              alt={section.title || "Preview"}
-                              className="w-20 h-12 object-cover rounded border"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = "none";
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    <div className="pt-4 border-t">
-                      <button
-                        onClick={saveSiteStructure}
-                        disabled={savingStructure}
-                        className={`w-full px-4 py-2 rounded-lg font-medium text-sm ${
-                          savingStructure
-                            ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                            : "bg-blue-600 text-white hover:bg-blue-700"
-                        }`}
-                      >
-                        {savingStructure ? "Salvando..." : "Salvar Alterações"}
-                      </button>
-                    </div>
-                  </div>
+          {/* PERSONALIZAÇÃO DE SEÇÕES */}
+          <VipGate
+            enabled={vipEnabled && !!(vipPin || DEV_FORCE_VIP)}
+            checking={loadingStructure && !DEV_FORCE_VIP}
+            teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Personalização de Seções</h2>
+                {vipEnabled && (
+                  <button
+                    onClick={() => setShowContentGenerator(true)}
+                    className="text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-1 rounded-full hover:opacity-90"
+                  >
+                    ✨ Gerar com IA
+                  </button>
                 )}
-              </section>
-            </VipGate>
-          </div>
+              </div>
 
-          <div className="space-y-6">
-            {/* FEEDBACKS */}
-            <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 space-y-4">
-              <div className="flex items-center justify-between">
+              {loadingStructure && !DEV_FORCE_VIP ? (
+                <ContentSkeleton />
+              ) : siteStructure ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Descrição do Negócio</label>
+                    <textarea
+                      value={siteStructure.description || ""}
+                      onChange={(e) => {
+                        const updatedStructure = { ...siteStructure, description: e.target.value };
+                        setSiteStructure(updatedStructure);
+                      }}
+                      onBlur={() => saveSiteStructure(siteStructure)}
+                      placeholder="Descreva brevemente o que sua empresa faz, seus diferenciais..."
+                      className="w-full px-3 py-2 border rounded-lg text-black"
+                      rows={3}
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => saveSiteStructure(siteStructure)}
+                    disabled={savingStructure}
+                    className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-medium py-2 px-4 rounded-lg hover:opacity-90 disabled:opacity-50"
+                  >
+                    {savingStructure ? "Salvando..." : "💾 Gerar Conteúdo"}
+                  </button>
+
+                  {siteStructure.sections && siteStructure.sections.length > 0 && (
+                    <div className="space-y-3 mt-4">
+                      <h3 className="text-sm font-medium">Seções do Site:</h3>
+                      {siteStructure.sections.map((section) => (
+                        <div key={section.id} className="border border-white/20 rounded-lg p-3">
+                          <div className="text-sm font-medium mb-2">{section.id.toUpperCase()}</div>
+                          <input
+                            type="text"
+                            value={section.title || ""}
+                            onChange={(e) => updateSectionField(section.id, "title", e.target.value)}
+                            onBlur={() => saveSiteStructure(siteStructure)}
+                            placeholder="Título da seção"
+                            className="w-full px-2 py-1 text-xs border rounded mb-2 text-black"
+                          />
+                          <input
+                            type="text"
+                            value={section.subtitle || ""}
+                            onChange={(e) => updateSectionField(section.id, "subtitle", e.target.value)}
+                            onBlur={() => saveSiteStructure(siteStructure)}
+                            placeholder="Subtítulo (opcional)"
+                            className="w-full px-2 py-1 text-xs border rounded mb-2 text-black"
+                          />
+                          <textarea
+                            value={section.description || ""}
+                            onChange={(e) => updateSectionField(section.id, "description", e.target.value)}
+                            onBlur={() => saveSiteStructure(siteStructure)}
+                            placeholder="Descrição da seção"
+                            className="w-full px-2 py-1 text-xs border rounded text-black"
+                            rows={2}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center text-white/60 py-8">
+                  <p className="mb-4">Estrutura do site não disponível</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+                  >
+                    Recarregar
+                  </button>
+                </div>
+              )}
+            </div>
+          </VipGate>
+
+          {/* FEEDBACKS RECENTES */}
+          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+            <div className="flex items-center justify-between mb-4">
+              <div>
                 <h2 className="text-lg font-semibold text-white">Feedbacks Recentes</h2>
                 <span className="text-xs text-white/60">
                   {canPerformVipAction(true)
@@ -1209,76 +888,65 @@ export default function ClientDashboard() {
                     : "Apenas aprovados"}
                 </span>
               </div>
-              <div className="text-xs text-white/60">
-                E-mail e telefone ficam **somente aqui** (não são publicados).
-              </div>
+            </div>
 
-              {loadingFeedbacks ? (
-                <div className="space-y-2">
-                  <div className="h-3 bg-white/20 rounded animate-pulse"></div>
-                  <div className="h-3 bg-white/20 rounded animate-pulse w-2/3"></div>
-                </div>
-              ) : feedbacks.length === 0 ? (
-                <div className="text-white/60 text-sm">Nenhum feedback ainda.</div>
-              ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {feedbacks.slice(0, 10).map((f) => (
-                    <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 text-xs text-white/60">
-                            <span>{f.name || "Anônimo"}</span>
-                            <span>•</span>
-                            <span>{fmtDateTime(f.timestamp)}</span>
-                            {f.approved && <span className="text-emerald-400">✓ Aprovado</span>}
-                            {f.sentiment && (
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  f.sentiment.rating >= 4
-                                    ? "bg-emerald-500/20 text-emerald-300"
-                                    : f.sentiment.rating >= 3
-                                    ? "bg-yellow-500/20 text-yellow-300"
-                                    : "bg-red-500/20 text-red-300"
-                                }`}
-                              >
-                                {f.sentiment.emotion} ({f.sentiment.rating}/5)
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-white mt-1 break-words">{f.message}</p>
-                          {f.sentiment?.summary && (
-                            <p className="text-xs text-blue-300 mt-1 italic">
-                              💡 {f.sentiment.summary}
-                            </p>
-                          )}
-                          {(f.email || f.phone) && (
-                            <div className="text-xs text-white/50 mt-1">
-                              {f.email && <span>📧 {f.email}</span>}
-                              {f.email && f.phone && <span> • </span>}
-                              {f.phone && <span>📞 {f.phone}</span>}
-                            </div>
-                          )}
-                        </div>
+            {loadingFeedbacks && !DEV_FORCE_VIP ? (
+              <DashboardCardSkeleton />
+            ) : feedbacks.length > 0 ? (
+              <div className="space-y-3">
+                {feedbacks.slice(0, 5).map((feedback) => (
+                  <div
+                    key={feedback.id}
+                    className="border border-white/20 rounded-lg p-3"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="font-medium text-sm">{feedback.name}</div>
+                        <div className="text-xs text-white/60">{feedback.email}</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {"★".repeat(feedback.rating)}
+                        <span className="text-xs text-white/60 ml-1">
+                          {feedback.rating}/5
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {feedback.message && (
+                      <p className="text-sm text-white/80 mb-2">"{feedback.message}"</p>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-white/60">
+                        {feedback.createdAt 
+                          ? new Date(feedback.createdAt).toLocaleDateString()
+                          : "Data não disponível"}
+                      </span>
+                      
+                      <div className="flex items-center gap-2">
+                        {feedback.sentiment && (
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            feedback.sentiment.score > 0.5 
+                              ? "bg-green-500/20 text-green-300" 
+                              : feedback.sentiment.score > -0.2
+                              ? "bg-yellow-500/20 text-yellow-300"
+                              : "bg-red-500/20 text-red-300"
+                          }`}>
+                            {feedback.sentiment.label}
+                          </span>
+                        )}
 
                         {vipEnabled && (
                           <div className="flex gap-1">
                             <button
-                              onClick={() => setFeedbackApproval(f.id, true)}
-                              className={`px-2 py-1 text-xs rounded ${
-                                f.approved
-                                  ? "bg-emerald-600 text-white"
-                                  : "bg-white/10 text-white/70 hover:bg-emerald-600"
-                              }`}
+                              className="text-green-400 hover:text-green-300 px-1"
+                              title="Aprovar"
                             >
                               ✓
                             </button>
                             <button
-                              onClick={() => setFeedbackApproval(f.id, false)}
-                              className={`px-2 py-1 text-xs rounded ${
-                                !f.approved
-                                  ? "bg-red-600 text-white"
-                                  : "bg-white/10 text-white/70 hover:bg-red-600"
-                              }`}
+                              className="text-red-400 hover:text-red-300 px-1"
+                              title="Rejeitar"
                             >
                               ✗
                             </button>
@@ -1286,11 +954,165 @@ export default function ClientDashboard() {
                         )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-white/60 py-8">
+                E-mail e telefone foram "bloqueados" não são publicados.
+                <br />
+                Nenhum feedback ainda.
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Outras funcionalidades VIP em grid expandido */}
+        <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          
+          {/* Analytics Avançado */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Analytics avançado com insights de IA"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Analytics Avançado</h3>
+              <p className="text-sm text-white/60">Analytics inteligente em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Google Reviews */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Gestão completa de reviews do Google"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Google Reviews</h3>
+              <p className="text-sm text-white/60">Gestão de reviews em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* SEO Optimizer */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Otimização automática de SEO com IA"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">SEO Optimizer</h3>
+              <p className="text-sm text-white/60">Otimização de SEO em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* WhatsApp Manager */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Chatbot WhatsApp automatizado"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">WhatsApp Manager</h3>
+              <p className="text-sm text-white/60">Chatbot WhatsApp em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Lead Scoring */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Pontuação inteligente de leads"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Lead Scoring</h3>
+              <p className="text-sm text-white/60">Pontuação de leads em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Template Marketplace */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Loja de templates premium"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Template Marketplace</h3>
+              <p className="text-sm text-white/60">Loja de templates em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Multi-Language Manager */}
+          <VipGate
+            enabled={isFeatureEnabled("multi-language")}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Suporte completo a múltiplos idiomas"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Multi-Language</h3>
+              <p className="text-sm text-white/60">Múltiplos idiomas em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Appointment Scheduling */}
+          <VipGate
+            enabled={isFeatureEnabled("appointment-scheduling")}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Sistema de agendamento inteligente"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Agendamento</h3>
+              <p className="text-sm text-white/60">Sistema de agendamento em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* E-commerce Dashboard */}
+          <VipGate
+            enabled={isFeatureEnabled("ecommerce")}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Funcionalidades completas de e-commerce"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">E-commerce</h3>
+              <p className="text-sm text-white/60">Funcionalidades de e-commerce em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Business Insights */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Insights preditivos com IA"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Business Insights</h3>
+              <p className="text-sm text-white/60">Insights preditivos em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Feature Manager */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Gestão avançada de funcionalidades"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Feature Manager</h3>
+              <p className="text-sm text-white/60">Gestão de funcionalidades em desenvolvimento...</p>
+            </div>
+          </VipGate>
+
+          {/* Audit Logs */}
+          <VipGate
+            enabled={vipEnabled}
+            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            teaser="Logs de auditoria e segurança"
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
+              <h3 className="text-lg font-semibold mb-4">Audit Logs</h3>
+              <p className="text-sm text-white/60">Logs de auditoria em desenvolvimento...</p>
+            </div>
+          </VipGate>
         </div>
       </div>
 
@@ -1298,16 +1120,10 @@ export default function ClientDashboard() {
       {vipEnabled && (
         <button
           onClick={() => setShowAIChat(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center z-40"
-          title="Chat de Suporte Inteligente"
+          className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 rounded-full shadow-lg hover:opacity-90 z-50"
+          title="Chat com IA"
         >
-          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
-              clipRule="evenodd"
-            />
-          </svg>
+          <span className="text-xl">🤖</span>
         </button>
       )}
 
