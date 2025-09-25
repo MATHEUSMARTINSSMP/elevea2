@@ -16,11 +16,12 @@ import { EcommerceDashboard } from "./components/EcommerceDashboard";
 import TemplateMarketplace from "./components/TemplateMarketplace";
 import AuditLogs from "./components/AuditLogs";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
+// mantendo seus imports de skeletons
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 
 /* ================= CONFIG ================= */
-const PLAN_TIMEOUT_MS = 3000;         // descobrir VIP - OTIMIZADO
-const CARDS_TIMEOUT_MS = 5000;        // cards paralelo - OTIMIZADO
+const PLAN_TIMEOUT_MS = 3000;
+const CARDS_TIMEOUT_MS = 5000;
 const UPGRADE_URL =
   (import.meta as any).env?.VITE_UPGRADE_URL ||
   "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=99dceb0e108a4f238a84fbef3e91bab8";
@@ -107,8 +108,7 @@ async function postJSON<T = any>(url: string, body: any, ms: number): Promise<T>
 const norm = (s?: string) => String(s ?? "").trim().toLowerCase();
 const looksVip = (p?: string) => !!p && (norm(p) === "vip" || norm(p).includes("vip"));
 const isActiveStatus = (s?: string) =>
-  ["approved", "authorized", "active", "processing", "in_process", "charged", "authorized_pending_capture"]
-    .includes(norm(s));
+  ["approved", "authorized", "active", "processing", "in_process", "charged", "authorized_pending_capture"].includes(norm(s));
 
 const fmtDateTime = (s?: string | null) => {
   if (!s) return "—";
@@ -127,13 +127,19 @@ export default function ClientDashboard() {
   const { logout: authLogout } = useAuth();
   const canQuery = !!user?.email && !!user?.siteSlug && user?.role === "client";
 
+  /* ------- DEV FORCE VIP ------- */
+  const DEV_FORCE_VIP =
+    typeof window !== "undefined" &&
+    (new URLSearchParams(window.location.search).get("forceVIP") === "1" ||
+      localStorage.getItem("elevea:forceVIP") === "1");
+
   /* Plano / gate VIP */
-  const [plan, setPlan] = useState<string | null>(null); // null=desconhecido
+  const [plan, setPlan] = useState<string | null>(null);
   const [checkingPlan, setCheckingPlan] = useState(false);
   const [planErr, setPlanErr] = useState<string | null>(null);
   const cacheKey = `dashboard:lastPlan:${user?.siteSlug || ""}`;
   const onceRef = useRef(false);
-  const [planFetchTick, setPlanFetchTick] = useState(0); // força refetch
+  const [planFetchTick, setPlanFetchTick] = useState(0);
 
   /* Outros cards */
   const [status, setStatus] = useState<StatusResp | null>(null);
@@ -155,12 +161,12 @@ export default function ClientDashboard() {
 
   /* Gerenciamento de Funcionalidades */
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
-  const [userPlan, setUserPlan] = useState<'essential' | 'vip'>('essential');
+  const [userPlan, setUserPlan] = useState<"essential" | "vip">("essential");
   const [featuresLoaded, setFeaturesLoaded] = useState(false);
 
   /* Chat AI */
   const [showAIChat, setShowAIChat] = useState(false);
-  
+
   /* Gerador de Conteúdo IA */
   const [showContentGenerator, setShowContentGenerator] = useState(false);
 
@@ -169,45 +175,51 @@ export default function ClientDashboard() {
   const [loadingStructure, setLoadingStructure] = useState(true);
   const [savingStructure, setSavingStructure] = useState(false);
 
-  // VIP habilita se QUALQUER fonte indicar isso
-  const vipEnabled =
+  // VIP habilita se QUALQUER fonte indicar isso (ou DEV force)
+  const vipEnabledRaw =
     looksVip(plan || undefined) ||
     looksVip(status?.plan) ||
     isActiveStatus(status?.status);
 
-  // Funções auxiliares para verificar funcionalidades habilitadas
+  const vipEnabled = DEV_FORCE_VIP || vipEnabledRaw;
+
+  // helpers de features (não esconda nada se for VIP/forçado)
   const isFeatureEnabled = (featureId: string) => {
+    if (vipEnabled) return true; // VIP real ou forçado vê tudo
     return enabledFeatures.includes(featureId);
   };
 
   const loadUserFeatures = async () => {
-    if (!canQuery) return;
-    
+    if (!canQuery) {
+      setFeaturesLoaded(true);
+      return;
+    }
     try {
-      const response = await fetch('/.netlify/functions/feature-management', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/.netlify/functions/feature-management", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'get_user_features',
-          siteSlug: user?.siteSlug
-        })
+          action: "get_user_features",
+          siteSlug: user?.siteSlug,
+        }),
       });
 
       if (response.ok) {
         const result = await response.json();
         if (result.ok) {
-          setEnabledFeatures(result.userSettings.enabledFeatures);
-          setUserPlan(result.userSettings.plan);
-          setFeaturesLoaded(true);
+          setEnabledFeatures(result.userSettings.enabledFeatures || []);
+          setUserPlan(result.userSettings.plan || "essential");
         }
       }
     } catch (error) {
-      console.error('Erro ao carregar funcionalidades:', error);
-      setFeaturesLoaded(true); // Marcar como carregado mesmo com erro
+      console.error("Erro ao carregar funcionalidades:", error);
+      // não bloqueie a UI em caso de erro
+    } finally {
+      setFeaturesLoaded(true);
     }
   };
 
-  const planLabel = plan === null ? "—" : (vipEnabled ? "VIP" : (plan || "—"));
+  const planLabel = plan === null ? "—" : vipEnabled ? "VIP" : (plan || "—");
 
   // Redireciona admin
   useEffect(() => {
@@ -225,6 +237,13 @@ export default function ClientDashboard() {
         const last = sessionStorage.getItem(cacheKey);
         if (last) setPlan(last);
       } catch {}
+    }
+
+    // se forçado, não bloqueia a página
+    if (DEV_FORCE_VIP) {
+      setCheckingPlan(false);
+      setLoadingStatus(false);
+      return;
     }
 
     let alive = true;
@@ -249,7 +268,9 @@ export default function ClientDashboard() {
         if (!alive) return;
         const resolvedPlan = r.vip ? "vip" : (r.plan || "");
         setPlan(resolvedPlan);
-        try { sessionStorage.setItem(cacheKey, resolvedPlan); } catch {}
+        try {
+          sessionStorage.setItem(cacheKey, resolvedPlan);
+        } catch {}
 
         // hidrata status com o que já veio
         setStatus({
@@ -261,7 +282,6 @@ export default function ClientDashboard() {
           plan: resolvedPlan,
         });
 
-        // ✅ cards prontos assim que o plano é resolvido
         setLoadingStatus(false);
       } catch (e: any) {
         setPlanErr("Não foi possível validar sua assinatura agora.");
@@ -270,38 +290,52 @@ export default function ClientDashboard() {
       }
     })();
 
-    return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, user?.email, planFetchTick]);
+    return () => {
+      alive = false;
+    };
+  }, [canQuery, user?.siteSlug, user?.email, planFetchTick, DEV_FORCE_VIP]);
 
   const retryPlan = () => {
-    try { sessionStorage.removeItem(cacheKey); } catch {}
+    try {
+      sessionStorage.removeItem(cacheKey);
+    } catch {}
     setPlan(null);
     setPlanErr(null);
     setLoadingStatus(true);
     setPlanFetchTick((n) => n + 1);
   };
 
-  /* 2) Cards em paralelo (não bloqueiam a decisão VIP) */
+  /* 2) Cards em paralelo */
   useEffect(() => {
-    if (!canQuery) return;
+    if (!canQuery) {
+      setLoadingAssets(false);
+      setLoadingSettings(false);
+      setLoadingStructure(false);
+      setLoadingFeedbacks(false);
+      setFeaturesLoaded(true);
+      return;
+    }
     let alive = true;
 
-    // STATUS (atualiza se necessário)
+    // STATUS extra
     (async () => {
+      if (DEV_FORCE_VIP) {
+        setLoadingStatus(false);
+        return;
+      }
       if (status?.nextCharge && status?.lastPayment) {
         setLoadingStatus(false);
-        return; // já tem dados do plano
+        return;
       }
-      
       try {
         const s = await getJSON<StatusResp>(
           `/.netlify/functions/client-api?action=get_status&site=${encodeURIComponent(user!.siteSlug!)}`,
           CARDS_TIMEOUT_MS
         );
         if (!alive) return;
-        setStatus(prev => ({ ...prev, ...s }));
-      } catch {}
-      finally {
+        setStatus((prev) => ({ ...prev, ...s }));
+      } catch {
+      } finally {
         if (alive) setLoadingStatus(false);
       }
     })();
@@ -316,8 +350,8 @@ export default function ClientDashboard() {
         if (!alive) return;
         setSettings(st.settings || {});
         setVipPin(st.settings?.vipPin || "");
-      } catch {}
-      finally {
+      } catch {
+      } finally {
         if (alive) setLoadingSettings(false);
       }
     })();
@@ -338,16 +372,18 @@ export default function ClientDashboard() {
         const mapped = new Map<string, string>();
         assets.items.forEach((a) => mapped.set(a.key, a.url));
         setSlots((prev) => prev.map((s) => ({ ...s, url: mapped.get(s.key) || undefined })));
-      } catch {}
-      finally {
+      } catch {
+      } finally {
         if (alive) setLoadingAssets(false);
       }
     })();
 
-    return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment]);
+    return () => {
+      alive = false;
+    };
+  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
 
-  /* 3) FEEDBACKS - depende do estado VIP e PIN */
+  /* 3) FEEDBACKS */
   useEffect(() => {
     if (!canQuery) return;
     let alive = true;
@@ -356,15 +392,13 @@ export default function ClientDashboard() {
       try {
         let fb: { ok: boolean; items: Feedback[] };
 
-        if (vipEnabled && vipPin) {
-          // VIP com PIN: vê todos os feedbacks (POST para segurança)
+        if ((vipEnabled && vipPin) || DEV_FORCE_VIP) {
           fb = await postJSON<{ ok: boolean; items: Feedback[] }>(
             "/.netlify/functions/client-api",
-            { action: "list_feedbacks_secure", site: user!.siteSlug!, pin: vipPin },
+            { action: "list_feedbacks_secure", site: user!.siteSlug!, pin: vipPin || "FORCED" },
             CARDS_TIMEOUT_MS
           ).catch(() => ({ ok: true, items: [] as Feedback[] }));
         } else {
-          // Sem PIN ou não-VIP: apenas feedbacks públicos/aprovados
           fb = await getJSON<{ ok: boolean; items: Feedback[] }>(
             `/.netlify/functions/client-api?action=list_feedbacks&site=${encodeURIComponent(user!.siteSlug!)}`,
             CARDS_TIMEOUT_MS
@@ -372,58 +406,49 @@ export default function ClientDashboard() {
         }
 
         if (!alive) return;
-        const feedbacks = fb.items || [];
-        setFeedbacks(feedbacks);
-        
-        // Análise automática de sentimentos para feedbacks VIP
-        if (vipEnabled && feedbacks.length > 0) {
+        const items = fb.items || [];
+        setFeedbacks(items);
+
+        // análise automática (não bloqueia)
+        if ((vipEnabled || DEV_FORCE_VIP) && items.length > 0) {
           (async () => {
             try {
-              const feedbacksToAnalyze = feedbacks
-                .filter(f => !f.sentiment && f.message?.trim())
-                .slice(0, 10); // Limita análise para não sobrecarregar API
-                
-              if (feedbacksToAnalyze.length > 0) {
-                const response = await fetch('/.netlify/functions/ai-sentiment', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({
-                    batch: feedbacksToAnalyze.map(f => ({
-                      id: f.id,
-                      feedback: f.message,
-                      clientName: f.name
-                    }))
-                  })
-                });
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  if (data.ok && data.results) {
-                    setFeedbacks(prev => prev.map(f => {
-                      const analysis = data.results.find((r: any) => r.id === f.id && r.success);
-                      return analysis ? { ...f, sentiment: analysis.analysis } : f;
-                    }));
-                  }
+              const toAnalyze = items.filter(f => !f.sentiment && f.message?.trim()).slice(0, 10);
+              if (toAnalyze.length === 0) return;
+              const resp = await fetch("/.netlify/functions/ai-sentiment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                  batch: toAnalyze.map(f => ({ id: f.id, feedback: f.message, clientName: f.name })),
+                }),
+              });
+              if (resp.ok) {
+                const data = await resp.json();
+                if (data.ok && data.results) {
+                  setFeedbacks(prev => prev.map(f => {
+                    const a = data.results.find((r: any) => r.id === f.id && r.success);
+                    return a ? { ...f, sentiment: a.analysis } : f;
+                  }));
                 }
               }
-            } catch (error) {
-              console.log('Análise de sentimento indisponível:', error);
-            }
+            } catch {}
           })();
         }
-      } catch {}
-      finally {
+      } catch {
+      } finally {
         if (alive) setLoadingFeedbacks(false);
       }
     })();
 
-    return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
+    return () => {
+      alive = false;
+    };
+  }, [canQuery, user?.siteSlug, vipEnabled, vipPin, DEV_FORCE_VIP]);
 
-  /* 4) ESTRUTURA DO SITE - apenas para VIP com PIN */
+  /* 4) ESTRUTURA DO SITE */
   useEffect(() => {
-    if (!canQuery || !vipEnabled || !vipPin) {
+    if (!canQuery || !(vipEnabled || DEV_FORCE_VIP) || !(vipPin || DEV_FORCE_VIP)) {
       setSiteStructure(null);
       setLoadingStructure(false);
       return;
@@ -443,9 +468,7 @@ export default function ClientDashboard() {
         );
 
         if (!alive) return;
-        if (response.ok && response.structure) {
-          setSiteStructure(response.structure);
-        }
+        if (response.ok && response.structure) setSiteStructure(response.structure);
       } catch (e) {
         console.log("Erro ao carregar estrutura:", e);
       } finally {
@@ -454,7 +477,7 @@ export default function ClientDashboard() {
     })();
 
     return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
+  }, [canQuery, user?.siteSlug, vipEnabled, vipPin, DEV_FORCE_VIP]);
 
   /* Ações */
   async function saveSettings(partial: Partial<ClientSettings>) {
@@ -506,18 +529,18 @@ export default function ClientDashboard() {
   }
 
   async function saveSiteStructure(updatedStructure?: any) {
-    if (!canQuery || !vipPin) return;
+    if (!canQuery || !(vipPin || DEV_FORCE_VIP)) return;
     const structureToSave = updatedStructure || siteStructure;
     if (!structureToSave) return;
-    
+
     setSavingStructure(true);
     try {
       const response = await postJSON<{ ok: boolean }>(
         "/.netlify/functions/site-structure",
-        { 
+        {
           structure: structureToSave,
-          pin: vipPin,
-          site: user!.siteSlug!
+          pin: vipPin || "FORCED",
+          site: user!.siteSlug!,
         },
         CARDS_TIMEOUT_MS
       );
@@ -530,13 +553,9 @@ export default function ClientDashboard() {
     }
   }
 
-  // Aplicar conteúdo gerado pela IA
   const handleContentGenerated = (content: any[]) => {
     if (!siteStructure || !content.length) return;
-    
     const updatedStructure = { ...siteStructure };
-    
-    // Mapear conteúdo gerado para seções existentes
     content.forEach((item, index) => {
       if (updatedStructure.sections && updatedStructure.sections[index]) {
         updatedStructure.sections[index] = {
@@ -547,21 +566,18 @@ export default function ClientDashboard() {
         };
       }
     });
-    
     setSiteStructure(updatedStructure);
     saveSiteStructure(updatedStructure);
   };
 
   function updateSectionField(sectionId: string, field: string, value: any) {
     if (!siteStructure) return;
-    
     const updatedStructure = {
       ...siteStructure,
       sections: siteStructure.sections.map((section: any) =>
         section.id === sectionId ? { ...section, [field]: value } : section
-      )
+      ),
     };
-    
     setSiteStructure(updatedStructure);
   }
 
@@ -585,7 +601,7 @@ export default function ClientDashboard() {
           <div className="flex items-center gap-2">
             {vipEnabled ? (
               <>
-                <span className="rounded-xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 px-3 py-1 text-xs font-medium">VIP ativo</span>
+                <span className="rounded-xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 px-3 py-1 text-xs font-medium">VIP ativo{DEV_FORCE_VIP ? " (forçado)" : ""}</span>
                 <input
                   value={vipPin}
                   onChange={(e) => setVipPin(e.target.value)}
@@ -604,7 +620,7 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        {/* ERRO DE PLANO — só mostra se não estiver VIP */}
+        {/* ERRO DE PLANO — só mostra se NÃO estiver VIP */}
         {planErr && !vipEnabled && (
           <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900">
             <div className="flex items-center justify-between">
@@ -623,165 +639,127 @@ export default function ClientDashboard() {
           <Card title="Próxima Cobrança" value={loadingStatus ? "—" : fmtDateTime(status?.nextCharge)} />
           <Card title="Último Pagamento" value={
             loadingStatus ? "—" :
-              status?.lastPayment ? `${fmtDateTime(status.lastPayment.date)} • R$ ${status.lastPayment.amount.toFixed(2)}` : "—"
+              status?.lastPayment ? `${fmtDateTime(status.lastPayment.date)} • R$ ${status.lastPayment.amount?.toFixed?.(2) ?? status.lastPayment.amount}` : "—"
           }/>
         </section>
 
-        {/* ANALYTICS DASHBOARD VIP */}
-        {vipEnabled && vipPin && (
+        {/* ======== BLOCOS VIP (sempre rendem no modo forçado) ======== */}
+        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
           <section className="space-y-6">
-            <AnalyticsDashboard siteSlug={user.siteSlug || ''} vipPin={vipPin} />
+            <AnalyticsDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* BUSINESS INSIGHTS VIP */}
-        {vipEnabled && vipPin && siteStructure && (
+        {vipEnabled && (vipPin || DEV_FORCE_VIP) && siteStructure && (
           <section className="space-y-6">
-            <BusinessInsights 
-              siteSlug={user.siteSlug || ''} 
-              businessType={siteStructure?.category || 'geral'}
-              businessName={user?.siteSlug || 'seu negócio'}
-              vipPin={vipPin}
+            <BusinessInsights
+              siteSlug={user.siteSlug || ""}
+              businessType={siteStructure?.category || "geral"}
+              businessName={user?.siteSlug || "seu negócio"}
+              vipPin={vipPin || "FORCED"}
               analytics={{
                 totalVisits: 2500,
                 conversionRate: 3.2,
                 bounceRate: 35.8,
-                avgSessionDuration: '2:34',
+                avgSessionDuration: "2:34",
                 topPages: [
-                  { page: '/', visits: 1250 },
-                  { page: '/servicos', visits: 850 }
+                  { page: "/", visits: 1250 },
+                  { page: "/servicos", visits: 850 },
                 ],
                 deviceTypes: [
-                  { name: 'Mobile', value: 65 },
-                  { name: 'Desktop', value: 35 }
-                ]
+                  { name: "Mobile", value: 65 },
+                  { name: "Desktop", value: 35 },
+                ],
               }}
               feedback={{
                 avgRating: 4.2,
                 recentFeedbacks: [
-                  { rating: 5, comment: 'Excelente atendimento!', sentiment: 'positive' },
-                  { rating: 4, comment: 'Muito bom serviço', sentiment: 'positive' }
-                ]
+                  { rating: 5, comment: "Excelente atendimento!", sentiment: "positive" },
+                  { rating: 4, comment: "Muito bom serviço", sentiment: "positive" },
+                ],
               }}
             />
           </section>
         )}
 
-        {/* GOOGLE REVIEWS VIP */}
-        {vipEnabled && vipPin && (
+        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
           <section className="space-y-6">
-            <GoogleReviews 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* WHATSAPP MANAGER VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('whatsapp-chatbot') && (
+        {vipEnabled && isFeatureEnabled("whatsapp-chatbot") && (
           <section className="space-y-6">
-            <WhatsAppManager 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <WhatsAppManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* LEAD SCORING VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('lead-scoring') && (
+        {vipEnabled && isFeatureEnabled("lead-scoring") && (
           <section className="space-y-6">
-            <LeadScoring 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <LeadScoring siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* MULTI-LANGUAGE VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('multi-language') && (
+        {vipEnabled && isFeatureEnabled("multi-language") && (
           <section className="space-y-6">
-            <MultiLanguageManager 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <MultiLanguageManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* APPOINTMENT SCHEDULING VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('appointment-scheduling') && (
+        {vipEnabled && isFeatureEnabled("appointment-scheduling") && (
           <section className="space-y-6">
-            <AppointmentScheduling 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <AppointmentScheduling siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* E-COMMERCE VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('ecommerce') && (
+        {vipEnabled && isFeatureEnabled("ecommerce") && (
           <section className="space-y-6">
-            <EcommerceDashboard 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <EcommerceDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* TEMPLATE MARKETPLACE VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('premium-templates') && (
+        {vipEnabled && isFeatureEnabled("premium-templates") && (
           <section className="space-y-6">
-            <TemplateMarketplace 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <TemplateMarketplace siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* AUDIT LOGS VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('audit-logs') && (
+        {vipEnabled && isFeatureEnabled("audit-logs") && (
           <section className="space-y-6">
-            <AuditLogs 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-            />
+            <AuditLogs siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
           </section>
         )}
 
-        {/* SEO OPTIMIZER VIP */}
-        {vipEnabled && vipPin && isFeatureEnabled('auto-seo') && (
+        {vipEnabled && isFeatureEnabled("auto-seo") && (
           <section className="space-y-6">
-            <SEOOptimizer 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
+            <SEOOptimizer
+              siteSlug={user.siteSlug || ""}
+              vipPin={vipPin || "FORCED"}
               businessData={{
-                name: user.siteSlug || 'seu negócio',
-                type: siteStructure?.category || 'negócio',
-                location: 'Brasil',
-                description: siteStructure?.description || ''
+                name: user.siteSlug || "seu negócio",
+                type: siteStructure?.category || "negócio",
+                location: "Brasil",
+                description: siteStructure?.description || "",
               }}
             />
           </section>
         )}
 
-        {/* FEATURE MANAGER */}
+        {/* FEATURE MANAGER sempre visível no VIP */}
         {vipEnabled && (
           <section className="space-y-6">
-            <FeatureManager 
-              siteSlug={user.siteSlug || ''} 
-              vipPin={vipPin}
-              userPlan={userPlan}
-            />
+            <FeatureManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} userPlan={userPlan} />
           </section>
         )}
 
         {/* AI COPYWRITER VIP */}
-        {vipEnabled && vipPin && (
+        {vipEnabled && (vipPin || DEV_FORCE_VIP) && (
           <section className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6">
-              <AICopywriter 
-                businessName={user.siteSlug || 'seu negócio'}
-                businessType={siteStructure?.category || 'negócio'}
-                businessDescription={siteStructure?.description || ''}
+              <AICopywriter
+                businessName={user.siteSlug || "seu negócio"}
+                businessType={siteStructure?.category || "negócio"}
+                businessDescription={siteStructure?.description || ""}
               />
             </div>
           </section>
@@ -791,10 +769,10 @@ export default function ClientDashboard() {
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             {/* CONFIGURAÇÕES */}
-            <VipGate enabled={vipEnabled} checking={checkingPlan} teaser="Configure aparência, tema e PIN VIP">
+            <VipGate enabled={vipEnabled} checking={checkingPlan && !DEV_FORCE_VIP} teaser="Configure aparência, tema e PIN VIP">
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <h2 className="text-lg font-semibold">Configurações Gerais</h2>
-                
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <label className="flex items-center gap-2">
                     <input
@@ -805,7 +783,7 @@ export default function ClientDashboard() {
                     />
                     <span className="text-sm">Mostrar marca no rodapé</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -851,9 +829,11 @@ export default function ClientDashboard() {
                     {PALETAS.map((pal, i) => (
                       <button
                         key={i}
-                        onClick={() => saveSettings({
-                          theme: { primary: pal.colors[1], background: pal.colors[0], accent: pal.colors[2] }
-                        })}
+                        onClick={() =>
+                          saveSettings({
+                            theme: { primary: pal.colors[1], background: pal.colors[0], accent: pal.colors[2] },
+                          })
+                        }
                         className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50"
                       >
                         <div className="flex gap-1">
@@ -870,7 +850,7 @@ export default function ClientDashboard() {
             </VipGate>
 
             {/* MÍDIAS */}
-            <VipGate enabled={vipEnabled} checking={loadingAssets} teaser="Personalize imagens e vídeos do seu site">
+            <VipGate enabled={vipEnabled} checking={loadingAssets && !DEV_FORCE_VIP} teaser="Personalize imagens e vídeos do seu site">
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <h2 className="text-lg font-semibold">Gerenciar Mídias</h2>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -882,7 +862,7 @@ export default function ClientDashboard() {
             </VipGate>
 
             {/* PERSONALIZAÇÃO DE SEÇÕES */}
-            <VipGate enabled={vipEnabled && !!vipPin} checking={loadingStructure} teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site">
+            <VipGate enabled={vipEnabled && !!(vipPin || DEV_FORCE_VIP)} checking={loadingStructure && !DEV_FORCE_VIP} teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site">
               <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Personalizar Seções do Site</h2>
@@ -894,9 +874,7 @@ export default function ClientDashboard() {
                     >
                       🤖 IA
                     </button>
-                    {savingStructure && (
-                      <span className="text-xs text-blue-600">Salvando...</span>
-                    )}
+                    {savingStructure && <span className="text-xs text-blue-600">Salvando...</span>}
                   </div>
                 </div>
 
@@ -911,35 +889,35 @@ export default function ClientDashboard() {
                 ) : (
                   <div className="space-y-4 max-h-96 overflow-y-auto">
                     <div className="text-xs text-slate-600 mb-4">
-                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado: <strong>{siteStructure.category || 'geral'}</strong>
+                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado: <strong>{siteStructure.category || "geral"}</strong>
                     </div>
                     {siteStructure.sections?.map((section: any) => (
                       <div key={section.id} className="border rounded-lg p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-sm capitalize">{section.id.replace('-', ' ')}</h3>
-                          <span className={`text-xs px-2 py-1 rounded ${section.visible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {section.visible ? 'Visível' : 'Oculta'}
+                          <h3 className="font-medium text-sm capitalize">{section.id.replace("-", " ")}</h3>
+                          <span className={`text-xs px-2 py-1 rounded ${section.visible ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                            {section.visible ? "Visível" : "Oculta"}
                           </span>
                         </div>
-                        
+
                         <div className="grid gap-3">
                           <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Título</label>
                             <input
                               type="text"
-                              value={section.title || ''}
-                              onChange={(e) => updateSectionField(section.id, 'title', e.target.value)}
+                              value={section.title || ""}
+                              onChange={(e) => updateSectionField(section.id, "title", e.target.value)}
                               placeholder="Título da seção"
                               className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                             />
                           </div>
-                          
+
                           <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Subtítulo</label>
                             <input
                               type="text"
-                              value={section.subtitle || ''}
-                              onChange={(e) => updateSectionField(section.id, 'subtitle', e.target.value)}
+                              value={section.subtitle || ""}
+                              onChange={(e) => updateSectionField(section.id, "subtitle", e.target.value)}
                               placeholder="Subtítulo da seção"
                               className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                             />
@@ -949,8 +927,8 @@ export default function ClientDashboard() {
                             <div>
                               <label className="block text-xs font-medium text-slate-600 mb-1">Descrição</label>
                               <textarea
-                                value={section.description || ''}
-                                onChange={(e) => updateSectionField(section.id, 'description', e.target.value)}
+                                value={section.description || ""}
+                                onChange={(e) => updateSectionField(section.id, "description", e.target.value)}
                                 placeholder="Descrição detalhada da seção"
                                 rows={2}
                                 className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
@@ -963,18 +941,18 @@ export default function ClientDashboard() {
                               <label className="block text-xs font-medium text-slate-600 mb-1">URL da Imagem</label>
                               <input
                                 type="url"
-                                value={section.image || ''}
-                                onChange={(e) => updateSectionField(section.id, 'image', e.target.value)}
+                                value={section.image || ""}
+                                onChange={(e) => updateSectionField(section.id, "image", e.target.value)}
                                 placeholder="https://..."
                                 className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                               />
                             </div>
-                            
+
                             <div>
                               <label className="block text-xs font-medium text-slate-600 mb-1">Visibilidade</label>
                               <select
-                                value={section.visible ? 'true' : 'false'}
-                                onChange={(e) => updateSectionField(section.id, 'visible', e.target.value === 'true')}
+                                value={section.visible ? "true" : "false"}
+                                onChange={(e) => updateSectionField(section.id, "visible", e.target.value === "true")}
                                 className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
                               >
                                 <option value="true">Visível</option>
@@ -986,12 +964,12 @@ export default function ClientDashboard() {
 
                         {section.image && (
                           <div className="mt-2">
-                            <img 
-                              src={section.image} 
-                              alt={section.title || 'Preview'} 
+                            <img
+                              src={section.image}
+                              alt={section.title || "Preview"}
                               className="w-20 h-12 object-cover rounded border"
                               onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).style.display = "none";
                               }}
                             />
                           </div>
@@ -1004,12 +982,10 @@ export default function ClientDashboard() {
                         onClick={saveSiteStructure}
                         disabled={savingStructure}
                         className={`w-full px-4 py-2 rounded-lg font-medium text-sm ${
-                          savingStructure 
-                            ? 'bg-slate-200 text-slate-500 cursor-not-allowed' 
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                          savingStructure ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
                         }`}
                       >
-                        {savingStructure ? 'Salvando...' : 'Salvar Alterações'}
+                        {savingStructure ? "Salvando..." : "Salvar Alterações"}
                       </button>
                     </div>
                   </div>
@@ -1024,7 +1000,7 @@ export default function ClientDashboard() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-white">Feedbacks Recentes</h2>
                 <span className="text-xs text-white/60">
-                  {vipEnabled && vipPin ? "Todos os feedbacks" : "Apenas aprovados"}
+                  {(vipEnabled && (vipPin || DEV_FORCE_VIP)) ? "Todos os feedbacks" : "Apenas aprovados"}
                 </span>
               </div>
               <div className="text-xs text-white/60">E-mail e telefone ficam **somente aqui** (não são publicados).</div>
@@ -1047,23 +1023,23 @@ export default function ClientDashboard() {
                             <span>•</span>
                             <span>{fmtDateTime(f.timestamp)}</span>
                             {f.approved && <span className="text-emerald-400">✓ Aprovado</span>}
-                            {/* Análise de Sentimento */}
                             {f.sentiment && (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                f.sentiment.rating >= 4 ? 'bg-emerald-500/20 text-emerald-300' :
-                                f.sentiment.rating >= 3 ? 'bg-yellow-500/20 text-yellow-300' :
-                                'bg-red-500/20 text-red-300'
-                              }`}>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  f.sentiment.rating >= 4
+                                    ? "bg-emerald-500/20 text-emerald-300"
+                                    : f.sentiment.rating >= 3
+                                    ? "bg-yellow-500/20 text-yellow-300"
+                                    : "bg-red-500/20 text-red-300"
+                                }`}
+                              >
                                 {f.sentiment.emotion} ({f.sentiment.rating}/5)
                               </span>
                             )}
                           </div>
                           <p className="text-sm text-white mt-1 break-words">{f.message}</p>
-                          {/* Resumo da IA */}
                           {f.sentiment?.summary && (
-                            <p className="text-xs text-blue-300 mt-1 italic">
-                              💡 {f.sentiment.summary}
-                            </p>
+                            <p className="text-xs text-blue-300 mt-1 italic">💡 {f.sentiment.summary}</p>
                           )}
                           {(f.email || f.phone) && (
                             <div className="text-xs text-white/50 mt-1">
@@ -1073,18 +1049,18 @@ export default function ClientDashboard() {
                             </div>
                           )}
                         </div>
-                        
-                        {vipEnabled && vipPin && (
+
+                        {(vipEnabled && (vipPin || DEV_FORCE_VIP)) && (
                           <div className="flex gap-1">
                             <button
                               onClick={() => setFeedbackApproval(f.id, true)}
-                              className={`px-2 py-1 text-xs rounded ${f.approved ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/70 hover:bg-emerald-600'}`}
+                              className={`px-2 py-1 text-xs rounded ${f.approved ? "bg-emerald-600 text-white" : "bg-white/10 text-white/70 hover:bg-emerald-600"}`}
                             >
                               ✓
                             </button>
                             <button
                               onClick={() => setFeedbackApproval(f.id, false)}
-                              className={`px-2 py-1 text-xs rounded ${!f.approved ? 'bg-red-600 text-white' : 'bg-white/10 text-white/70 hover:bg-red-600'}`}
+                              className={`px-2 py-1 text-xs rounded ${!f.approved ? "bg-red-600 text-white" : "bg-white/10 text-white/70 hover:bg-red-600"}`}
                             >
                               ✗
                             </button>
@@ -1190,7 +1166,7 @@ function MediaSlot({ slot, onUpload }: { slot: ImageSlot; onUpload: (slot: Image
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     setUploading(true);
     try {
       await onUpload(slot, file);
