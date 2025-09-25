@@ -225,18 +225,38 @@ export const handler = async (event) => {
       if (action === "list_feedbacks_secure") {
         const site = String(body.site || "").trim().toUpperCase();
         if (!site) return { statusCode: 400, headers, body: JSON.stringify({ ok:false, error:"missing_site" }) };
+        
+        console.log('🔍 DEBUG FEEDBACKS SECURE - client-api.js');
+        console.log('📝 Parâmetros recebidos:', { action, site, page: body.page, pageSize: body.pageSize, hasPin: !!body.pin });
+        console.log('🔗 GAS_BASE_URL:', GAS_BASE_URL);
+        
+        const payload = {
+          type: "list_feedbacks_secure",
+          site: site,
+          page: body.page || 1,
+          pageSize: body.pageSize || 20,
+          pin: body.pin || ""
+        };
+        
+        console.log('📦 Payload para GAS:', JSON.stringify(payload, null, 2));
+        
         const r = await fetch(`${GAS_BASE_URL}`, {
           method: "POST", 
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "list_feedbacks_secure",
-            site: site,
-            page: body.page || 1,
-            pageSize: body.pageSize || 20,
-            pin: body.pin || ""
-          }),
+          body: JSON.stringify(payload),
         });
-        const j = await r.json().catch(() => ({}));
+        
+        console.log('📡 Status da resposta GAS:', r.status, r.statusText);
+        
+        const j = await r.json().catch((e) => {
+          console.log('❌ Erro ao parsear JSON do GAS:', e);
+          return {};
+        });
+        
+        console.log('📦 Resposta completa do GAS:', JSON.stringify(j, null, 2));
+        console.log('🔢 Total de feedbacks retornados:', j.total || 0);
+        console.log('📋 Itens retornados:', j.items?.length || 0);
+        
         return { statusCode: 200, headers, body: JSON.stringify(j) };
       }
 
