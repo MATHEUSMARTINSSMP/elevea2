@@ -1,6 +1,8 @@
 // netlify/functions/auth-status.js (ESM)
 const GAS_BASE =
+  process.env.GAS_BASE_URL ||
   process.env.ELEVEA_GAS_URL ||
+  process.env.ELEVEA_GAS_EXEC_URL ||
   process.env.ELEVEA_STATUS_URL ||
   "";
 
