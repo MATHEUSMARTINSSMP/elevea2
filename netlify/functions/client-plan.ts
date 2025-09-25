@@ -61,8 +61,27 @@ export const handler: Handler = async (event) => {
     // Normalização de campos esperados pelo dashboard
     const plan: string | null = data.plan ?? null;
     const status: string | null = data.status ?? null;
-    const nextPayment: string | null = data.nextPayment ?? data.nextCharge ?? null;
     const lastPayment: { date: string; amount?: number } | null = data.lastPayment ?? null;
+    
+    // 🎯 CORREÇÃO: Prioriza nextCharge, fallback para nextPayment, senão calcula
+    let nextCharge: string | null = data.nextCharge ?? data.nextPayment ?? null;
+    
+    // Se não tem próxima cobrança, calcula baseado no último pagamento
+    if (!nextCharge && lastPayment?.date) {
+      try {
+        const lastDate = new Date(lastPayment.date);
+        if (!isNaN(lastDate.getTime())) {
+          const nextDate = new Date(lastDate);
+          nextDate.setMonth(nextDate.getMonth() + 1);
+          nextCharge = nextDate.toISOString();
+        }
+      } catch (e) {
+        console.error('Erro ao calcular próxima cobrança:', e);
+      }
+    }
+    
+    // Manter compatibilidade com nextPayment também
+    const nextPayment: string | null = nextCharge;
 
     const vip = looksVip(plan) || isActiveStatus(status);
 
@@ -73,7 +92,8 @@ export const handler: Handler = async (event) => {
         ok: true,
         plan,
         status,
-        nextPayment,
+        nextPayment,      // ← Compatibilidade com código antigo
+        nextCharge,       // ← Campo que Dashboard espera
         lastPayment,
         vip,
       }),
