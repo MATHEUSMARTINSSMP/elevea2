@@ -82,46 +82,9 @@ interface SiteStructure {
   }>;
 }
 
-/* ===== MOCK FUNCTIONS ===== */
+/* ===== API FUNCTIONS ===== */
 function getJSON<T>(url: string, timeoutMs = 10000): Promise<T> {
-  // Mock data handling for development
-
-  const devMode = (import.meta as any).env?.DEV;
-  if (devMode && (url.includes("client-plan") || url.includes("auth-status"))) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    return fetch(url, { signal: controller.signal })
-      .then(async (r) => {
-        clearTimeout(timeoutId);
-        if (url.includes("client-plan")) {
-          const mockData = {
-            ok: true,
-            siteSlug: "MATHEUS",
-            status: "active",
-            plan: "vip",
-            nextCharge: "2025-02-25",
-            lastPayment: "2025-01-25"
-          };
-          console.log('[DEV MOCK] client-plan returning:', mockData);
-          return mockData as T;
-        }
-        if (url.includes("auth-status")) {
-          const mockData = {
-            ok: true,
-            user: { email: "matheus@elevea.com.br", siteSlug: "MATHEUS", role: "client" },
-            authenticated: true
-          };
-          console.log('[DEV MOCK] auth-status returning:', mockData);
-          return mockData as T;
-        }
-        return await r.json();
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId);
-        throw error;
-      });
-  }
+  // Sempre usa APIs reais - sem mocks
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -167,9 +130,8 @@ export default function Dashboard() {
   const { logout: authLogout } = useAuth();
   const canQuery = !!user?.email && !!user?.siteSlug && user?.role === "client";
 
-  /* ------- DEV FORCE VIP ------- */
-  const devMode = (import.meta as any).env?.DEV;
-  const DEV_FORCE_VIP = devMode && user?.email === "matheus@elevea.com.br";
+  /* ------- PLANOS REAIS APENAS ------- */
+  // Sem simulações - apenas dados reais do Netlify + GAS
 
   // Estados
   const [plan, setPlan] = useState<string>(""); 
@@ -203,14 +165,7 @@ export default function Dashboard() {
     looksVip(status?.plan) ||
     looksVip(localStorage.getItem("last_plan") || undefined);
 
-  // Força "VIP ativo" para Matheus no dev, mesmo se o fetch falhar
-  useEffect(() => {
-    if (DEV_FORCE_VIP && !vipPin) {
-      setVipPin("123456"); // PIN automático para dev
-    }
-  }, [DEV_FORCE_VIP, vipPin]);
-
-  const vipEnabled = DEV_FORCE_VIP || vipEnabledRaw;
+  const vipEnabled = vipEnabledRaw;
 
   // helpers de features (não esconda nada se for VIP/forçado)
   const isFeatureEnabled = (featureId: string) => {
@@ -220,7 +175,6 @@ export default function Dashboard() {
 
   // Helper para operações VIP que requerem PIN (operações críticas)
   const canPerformVipAction = (requirePin: boolean = false) => {
-    if (DEV_FORCE_VIP) return true; // Force VIP ignora PIN
     if (!vipEnabled) return false; // Não VIP não pode
     return requirePin ? !!vipPin : true; // Se requer PIN, verifica se tem
   };
@@ -252,8 +206,8 @@ export default function Dashboard() {
 
   // Cache do último plano no localStorage para resilência
   const planLabel = vipEnabled
-    ? (status?.plan?.toUpperCase?.() || plan?.toUpperCase?.() || (DEV_FORCE_VIP ? "VIP (FORÇADO)" : "VIP"))
-    : (plan || status?.plan || "—");
+    ? (status?.plan?.toUpperCase?.() || plan?.toUpperCase?.() || "VIP")
+    : (plan || status?.plan || "Essential");
 
   /* 1) Carrega plano principal */
   useEffect(() => {
@@ -318,7 +272,7 @@ export default function Dashboard() {
     return () => {
       alive = false;
     };
-  }, [canQuery, user?.siteSlug, user?.email, planFetchTick, DEV_FORCE_VIP]);
+  }, [canQuery, user?.siteSlug, user?.email, planFetchTick]);
 
   const retryPlan = () => {
     setPlanFetchTick(prev => prev + 1);
@@ -377,7 +331,7 @@ export default function Dashboard() {
     return () => {
       alive = false;
     };
-  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment, DEV_FORCE_VIP]);
+  }, [canQuery, user?.siteSlug, status?.nextCharge, status?.lastPayment]);
 
   /* 3) FEEDBACKS */
   useEffect(() => {
@@ -448,7 +402,7 @@ export default function Dashboard() {
     return () => {
       alive = false;
     };
-  }, [canQuery, user?.siteSlug, vipEnabled, vipPin, DEV_FORCE_VIP]);
+  }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
 
   /* 4) ESTRUTURA DO SITE */
   useEffect(() => {
@@ -478,7 +432,7 @@ export default function Dashboard() {
     })();
 
     return () => { alive = false; };
-  }, [canQuery, user?.siteSlug, vipEnabled, vipPin, DEV_FORCE_VIP]);
+  }, [canQuery, user?.siteSlug, vipEnabled, vipPin]);
 
   /* Ações */
   async function saveSettings(partial: Partial<ClientSettings>) {
@@ -596,7 +550,7 @@ export default function Dashboard() {
             {vipEnabled ? (
               <>
                 <span className="rounded-xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 px-3 py-1 text-xs font-medium">
-                  VIP ativo{DEV_FORCE_VIP ? " (forçado)" : ""}
+                  VIP ativo
                 </span>
                 <input
                   value={vipPin}
@@ -624,7 +578,7 @@ export default function Dashboard() {
         </header>
 
         {/* RETRY BUTTON PARA PLANO */}
-        {(!vipEnabled && !checkingPlan && !DEV_FORCE_VIP) && (
+        {(!vipEnabled && !checkingPlan) && (
           <div className="rounded-2xl border border-amber-300/30 bg-amber-500/10 p-4 text-center">
             <p className="text-sm text-amber-200 mb-3">
               Não foi possível verificar seu plano automaticamente.
@@ -670,13 +624,13 @@ export default function Dashboard() {
           {/* CONFIGURAÇÕES */}
           <VipGate
             enabled={vipEnabled}
-            checking={checkingPlan && !DEV_FORCE_VIP}
+            checking={checkingPlan}
             teaser="Configure aparência, tema e PIN VIP"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
               <h2 className="text-lg font-semibold mb-4">Configurações Gerais</h2>
               
-              {loadingSettings && !DEV_FORCE_VIP ? (
+              {loadingSettings ? (
                 <DashboardCardSkeleton />
               ) : (
                 <div className="space-y-4">
@@ -767,7 +721,7 @@ export default function Dashboard() {
           {/* MÍDIAS */}
           <VipGate
             enabled={vipEnabled}
-            checking={loadingAssets && !DEV_FORCE_VIP}
+            checking={loadingAssets}
             teaser="Personalize imagens e vídeos do seu site"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -782,8 +736,8 @@ export default function Dashboard() {
 
           {/* PERSONALIZAÇÃO DE SEÇÕES */}
           <VipGate
-            enabled={vipEnabled && !!(vipPin || DEV_FORCE_VIP)}
-            checking={loadingStructure && !DEV_FORCE_VIP}
+            enabled={vipEnabled && !!vipPin}
+            checking={loadingStructure}
             teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -799,7 +753,7 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {loadingStructure && !DEV_FORCE_VIP ? (
+              {loadingStructure ? (
                 <ContentSkeleton />
               ) : siteStructure ? (
                 <div className="space-y-4">
@@ -890,7 +844,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {loadingFeedbacks && !DEV_FORCE_VIP ? (
+            {loadingFeedbacks ? (
               <DashboardCardSkeleton />
             ) : feedbacks.length > 0 ? (
               <div className="space-y-3">
@@ -973,7 +927,7 @@ export default function Dashboard() {
           {/* Analytics Avançado */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Analytics avançado com insights de IA"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -985,7 +939,7 @@ export default function Dashboard() {
           {/* Google Reviews */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Gestão completa de reviews do Google"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -997,7 +951,7 @@ export default function Dashboard() {
           {/* SEO Optimizer */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Otimização automática de SEO com IA"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1009,7 +963,7 @@ export default function Dashboard() {
           {/* WhatsApp Manager */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Chatbot WhatsApp automatizado"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1021,7 +975,7 @@ export default function Dashboard() {
           {/* Lead Scoring */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Pontuação inteligente de leads"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1033,7 +987,7 @@ export default function Dashboard() {
           {/* Template Marketplace */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Loja de templates premium"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1045,7 +999,7 @@ export default function Dashboard() {
           {/* Multi-Language Manager */}
           <VipGate
             enabled={isFeatureEnabled("multi-language")}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Suporte completo a múltiplos idiomas"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1057,7 +1011,7 @@ export default function Dashboard() {
           {/* Appointment Scheduling */}
           <VipGate
             enabled={isFeatureEnabled("appointment-scheduling")}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Sistema de agendamento inteligente"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1069,7 +1023,7 @@ export default function Dashboard() {
           {/* E-commerce Dashboard */}
           <VipGate
             enabled={isFeatureEnabled("ecommerce")}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Funcionalidades completas de e-commerce"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1081,7 +1035,7 @@ export default function Dashboard() {
           {/* Business Insights */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Insights preditivos com IA"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1093,7 +1047,7 @@ export default function Dashboard() {
           {/* Feature Manager */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Gestão avançada de funcionalidades"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
@@ -1105,7 +1059,7 @@ export default function Dashboard() {
           {/* Audit Logs */}
           <VipGate
             enabled={vipEnabled}
-            checking={!featuresLoaded && !DEV_FORCE_VIP}
+            checking={!featuresLoaded}
             teaser="Logs de auditoria e segurança"
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
