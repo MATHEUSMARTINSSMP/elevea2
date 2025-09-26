@@ -8,10 +8,13 @@ const ADMIN_DASH_TOKEN =
   process.env.ADMIN_TOKEN ||
   "";
 
-function json(status, body) {
+function json(status, body, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      ...extraHeaders,
+    },
   });
 }
 
@@ -58,6 +61,11 @@ async function callGAS(action, payload = {}, method = "POST") {
 
 export default async (req) => {
   try {
+    // ✅ Preflight CORS (o netlify.toml já adiciona os headers; aqui só devolvemos 204)
+    if (req.method === "OPTIONS") {
+      return new Response("", { status: 204 });
+    }
+
     if (req.method !== "POST") {
       return json(405, { ok: false, error: "method_not_allowed" });
     }
@@ -130,6 +138,24 @@ export default async (req) => {
       if (!gas || gas.ok === false) {
         return json(200, { ok: false, error: gas?.error || "gas_failed" });
       }
+      return json(200, { ok: true });
+    }
+
+    // ✅ NOVA ROTA: criar feedback via proxy (evita NetworkError/CORS no GAS direto)
+    if (action === "submit_feedback") {
+      const siteSlug = String(body.site || body.siteSlug || "");
+      const payload = {
+        type: "submit_feedback",
+        siteSlug,
+        id: body.id,
+        name: body.name,
+        rating: body.rating,
+        comment: body.comment,
+        email: body.email,
+        phone: body.phone,
+      };
+      const gas = await callGAS("submit_feedback", payload, "POST");
+      if (!gas || gas.ok === false) return json(200, { ok: false, error: gas?.error || "gas_failed" });
       return json(200, { ok: true });
     }
 
