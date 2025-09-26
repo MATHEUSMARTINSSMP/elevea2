@@ -9,6 +9,7 @@ import GoogleReviews from "./components/GoogleReviews";
 import SEOOptimizer from "./components/SEOOptimizer";
 import WhatsAppManager from "./components/WhatsAppManager";
 import LeadScoring from "./components/LeadScoring";
+import { LeadCapture } from "@/components/dashboard/LeadCapture";
 import MultiLanguageManager from "./components/MultiLanguageManager";
 import AppointmentScheduling from "./components/AppointmentScheduling";
 import FeatureManager from "./components/FeatureManager";
@@ -907,6 +908,13 @@ useEffect(() => {
             {isFeatureEnabled("google-reviews") && (
               <section className="space-y-6">
                 <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+              </section>
+            )}
+
+            {/* Captação de Leads */}
+            {isFeatureEnabled("lead-capture") && (
+              <section className="space-y-6">
+                <LeadCapture siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
               </section>
             )}
 

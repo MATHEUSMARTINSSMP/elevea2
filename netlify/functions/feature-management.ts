@@ -190,6 +190,18 @@ const AVAILABLE_FEATURES: FeatureConfig[] = [
     icon: '📊',
     benefits: ['Histórico completo', 'Auditoria de mudanças', 'Compliance'],
     setupRequired: false
+  },
+  {
+    id: 'lead-capture',
+    name: 'Captação de Leads',
+    description: 'Capture e gerencie contatos interessados',
+    category: 'marketing',
+    plan: 'vip',
+    enabled: true,
+    isCore: false,
+    icon: '📧',
+    benefits: ['Formulários de contato', 'Gestão de leads', 'Análise de conversão'],
+    setupRequired: false
   }
 ]
 
