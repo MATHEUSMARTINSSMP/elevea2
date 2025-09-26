@@ -103,7 +103,7 @@ async function readClaimsFromCookie(cookieHeader: string | undefined) {
     const jsonStr = Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
     const claims = JSON.parse(jsonStr);
     if (!claims?.exp || Date.now() > Number(claims.exp)) return null;
-    return claims as { email:string; role:"admin"|"client"; siteSlug?:string; exp:number };
+    return claims as { email:string; role:"admin"|"client"; siteSlug?:string; plan?:string; exp:number };
   } catch {
     return null;
   }
@@ -130,6 +130,35 @@ export const handler: Handler = async (event) => {
       const password = String(body.password || "").trim();
       if (!email || !password) {
         return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "missing_fields" }) };
+      }
+
+      // Usuário de desenvolvimento - bypass GAS
+      if (email === "dev" && password === "dev1") {
+        const user = { 
+          email: "dev", 
+          role: "client" as const, 
+          siteSlug: "LOUNGERIEAMAPAGARDEN",
+          plan: "dev"
+        };
+
+        if (!SIGN_SECRET) {
+          return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user }) };
+        }
+
+        const payloadObj = {
+          email: user.email,
+          role: user.role,
+          siteSlug: user.siteSlug,
+          plan: user.plan,
+          exp: Date.now() + 1000 * 60 * 60 * 24 * 7,
+        };
+        const payload = Buffer.from(JSON.stringify(payloadObj), "utf8").toString("base64")
+          .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+        const sig = await hmac(payload);
+        const token = `${payload}.${sig}`;
+
+        const headers = { ...CORS, "set-cookie": makeCookie(token) };
+        return { statusCode: 200, headers, body: JSON.stringify({ ok: true, user }) };
       }
 
       const r = await postToGas({ type: "user_login", email, password });
@@ -166,6 +195,18 @@ export const handler: Handler = async (event) => {
       if (!claims?.email) {
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false }) };
       }
+
+      // Usuário dev - retorna dados localmente
+      if (claims.email === "dev") {
+        const user = {
+          email: "dev",
+          role: "client" as const,
+          siteSlug: "LOUNGERIEAMAPAGARDEN", 
+          plan: "dev"
+        };
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, user }) };
+      }
+
       const r = await postToGas({ type: "user_me", email: claims.email });
       if (!r.ok) {
         return { statusCode: 404, headers: CORS, body: JSON.stringify({ ok: false, error: r.data?.error || "user_not_found" }) };

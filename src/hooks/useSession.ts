@@ -4,7 +4,7 @@ export type User = {
   email: string;
   role: "admin" | "client";
   siteSlug?: string;
-  plan?: "vip" | "essential" | string;
+  plan?: "dev" | "vip" | "essential" | string;
 };
 
 const ME_URL = "/.netlify/functions/auth-session?action=me";

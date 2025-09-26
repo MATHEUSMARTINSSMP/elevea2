@@ -16,6 +16,7 @@ import { EcommerceDashboard } from "./components/EcommerceDashboard";
 import TemplateMarketplace from "./components/TemplateMarketplace";
 import AuditLogs from "./components/AuditLogs";
 import { AICopywriter } from "@/components/ui/ai-copywriter";
+import { ComingSoonCard } from "@/components/ui/coming-soon-card";
 // mantendo seus imports de skeletons
 import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
 import { interceptNetlifyFunctions } from "@/utils/devMocks";
@@ -261,12 +262,15 @@ export default function ClientDashboard() {
     try { sessionStorage.setItem("dashboard:vipPin", vipPin || ""); } catch {}
   }, [vipPin]);
 
-  // VIP habilita se QUALQUER fonte indicar isso (ou DEV force)
+  // Detecção de plano: dev (acesso total) ou vip (limitado) ou essential
+  const isDevUser = user?.plan === "dev" || user?.email === "dev";
+  const isVipUser = looksVip(plan || undefined) || looksVip(status?.plan) || isActiveStatus(status?.status);
+  
+  // VIP habilita se QUALQUER fonte indicar isso (ou DEV force) 
   // Agora também considera cache e fallbacks para resilência
   const vipEnabledRaw =
-    looksVip(plan || undefined) ||
-    looksVip(status?.plan) ||
-    isActiveStatus(status?.status) ||
+    isDevUser || // Dev sempre tem acesso total
+    isVipUser ||
     (function() {
       // Fallback: verifica cache de último plano VIP conhecido
       try {
@@ -277,10 +281,41 @@ export default function ClientDashboard() {
 
   const vipEnabled = DEV_FORCE_VIP || vipEnabledRaw;
 
-  // helpers de features (não esconda nada se for VIP/forçado)
+  // helpers de features
   const isFeatureEnabled = (featureId: string) => {
-    if (vipEnabled) return true; // VIP real ou forçado vê tudo
+    // Dev user sempre tem acesso a todas as features
+    if (isDevUser) return true;
+    
+    // VIP tem acesso apenas às 5 funcionalidades permitidas
+    const vipAllowedFeatures = [
+      "whatsapp-chatbot",    // Agente WhatsApp
+      "google-reviews",      // Google Meu Negócio  
+      "feedback-management", // Feedbacks
+      "color-palette",       // Paleta de cores
+      "traffic-analytics"    // Tráfego do site
+    ];
+    
+    if (vipEnabled) {
+      return vipAllowedFeatures.includes(featureId);
+    }
+    
     return enabledFeatures.includes(featureId);
+  };
+
+  const isFeatureInDevelopment = (featureId: string) => {
+    // Se é dev, nada está em desenvolvimento
+    if (isDevUser) return false;
+    
+    // Para VIP, funcionalidades fora da lista permitida estão em desenvolvimento
+    const vipAllowedFeatures = [
+      "whatsapp-chatbot",
+      "google-reviews", 
+      "feedback-management",
+      "color-palette",
+      "traffic-analytics"
+    ];
+    
+    return !vipAllowedFeatures.includes(featureId);
   };
 
   // Helper para operações VIP que requerem PIN (operações críticas)
@@ -845,135 +880,224 @@ useEffect(() => {
           />
         </section>
 
-        {/* ======== BLOCOS VIP (VIP pode ver, PIN só para operações críticas) ======== */}
+        {/* ================== FUNCIONALIDADES VIP FUNCIONAIS ================== */}
         {vipEnabled && (
-          <section className="space-y-6">
-            <AnalyticsDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
+          <>
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-white mb-2">🚀 Funcionalidades Disponíveis</h2>
+              <p className="text-white/60">Ferramentas prontas para uso</p>
+            </div>
+
+            {/* Tráfego do Site - Analytics Dashboard */}
+            {isFeatureEnabled("traffic-analytics") && (
+              <section className="space-y-6">
+                <AnalyticsDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+              </section>
+            )}
+
+            {/* Agente WhatsApp */}
+            {isFeatureEnabled("whatsapp-chatbot") && (
+              <section className="space-y-6">
+                <WhatsAppManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+              </section>
+            )}
+
+            {/* Google Meu Negócio */}
+            {isFeatureEnabled("google-reviews") && (
+              <section className="space-y-6">
+                <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+              </section>
+            )}
+          </>
         )}
 
-        {vipEnabled && siteStructure && (
-          <section className="space-y-6">
-            <BusinessInsights
-              siteSlug={user.siteSlug || ""}
-              businessType={siteStructure?.category || "geral"}
-              businessName={user?.siteSlug || "seu negócio"}
-              vipPin={vipPin || "FORCED"}
-              analytics={{
-                totalVisits: 1847,
-                conversionRate: 4.8,
-                bounceRate: 32.8,
-                avgSessionDuration: "2:22",
-                topPages: [
-                  { page: "/", visits: 776 },
-                  { page: "/servicos", visits: 480 },
-                  { page: "/contato", visits: 332 },
-                  { page: "/sobre", visits: 185 },
-                  { page: "/galeria", visits: 74 },
-                ],
-                deviceTypes: [
-                  { name: "Mobile", value: 72 },
-                  { name: "Desktop", value: 23 },
-                  { name: "Tablet", value: 5 },
-                ],
-              }}
-              feedback={{
-                avgRating: 4.3,
-                recentFeedbacks: [
-                  { rating: 5, comment: "Excelente atendimento! Superou minhas expectativas.", sentiment: "positive" },
-                  { rating: 4, comment: "Muito bom serviço, recomendo!", sentiment: "positive" },
-                  { rating: 5, comment: "Profissionais competentes e pontuais.", sentiment: "positive" },
-                ],
-              }}
-            />
-          </section>
-        )}
+        {/* ================== FUNCIONALIDADES EM DESENVOLVIMENTO ================== */}
+        {vipEnabled && !isDevUser && (
+          <>
+            <div className="mt-12 mb-8">
+              <h2 className="text-2xl font-bold text-white mb-2">🔧 Em Desenvolvimento</h2>
+              <p className="text-white/60">Funcionalidades que serão liberadas em breve</p>
+            </div>
 
-        {vipEnabled && (
-          <section className="space-y-6">
-            <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Business Insights */}
+              <ComingSoonCard
+                title="Business Insights"
+                description="Análises inteligentes do seu negócio com IA"
+                icon={<span>📊</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("whatsapp-chatbot") && (
-          <section className="space-y-6">
-            <WhatsAppManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+              {/* Lead Scoring */}
+              <ComingSoonCard
+                title="Lead Scoring IA"
+                description="Classificação automática e priorização de leads"
+                icon={<span>🎯</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("lead-scoring") && (
-          <section className="space-y-6">
-            <LeadScoring siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+              {/* SEO Automático */}
+              <ComingSoonCard
+                title="SEO Automático"
+                description="Otimização automática para mecanismos de busca"
+                icon={<span>🚀</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("multi-language") && (
-          <section className="space-y-6">
-            <MultiLanguageManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+              {/* AI Copywriter */}
+              <ComingSoonCard
+                title="IA Copywriter"
+                description="Geração automática de textos e conteúdo"
+                icon={<span>✍️</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("appointment-scheduling") && (
-          <section className="space-y-6">
-            <AppointmentScheduling siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+              {/* Multi-idiomas */}
+              <ComingSoonCard
+                title="Multi-idiomas"
+                description="Traduza seu site para múltiplos idiomas"
+                icon={<span>🌍</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("ecommerce") && (
-          <section className="space-y-6">
-            <EcommerceDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+              {/* Sistema de Agendamento */}
+              <ComingSoonCard
+                title="Agendamento Online"
+                description="Calendário online para agendamentos"
+                icon={<span>📅</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("premium-templates") && (
-          <section className="space-y-6">
-            <TemplateMarketplace siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+              {/* E-commerce */}
+              <ComingSoonCard
+                title="Loja Virtual"
+                description="Sistema completo de e-commerce"
+                icon={<span>🛒</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("audit-logs") && (
-          <section className="space-y-6">
-            <AuditLogs siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
-          </section>
-        )}
+              {/* Template Marketplace */}
+              <ComingSoonCard
+                title="Template Marketplace"
+                description="Loja de templates premium"
+                icon={<span>🎨</span>}
+              />
 
-        {vipEnabled && isFeatureEnabled("auto-seo") && (
-          <section className="space-y-6">
-            <SEOOptimizer
-              siteSlug={user.siteSlug || ""}
-              vipPin={vipPin || "FORCED"}
-              businessData={{
-                name: user.siteSlug || "seu negócio",
-                type: siteStructure?.category || "negócio",
-                location: "Brasil",
-                description: siteStructure?.description || "",
-              }}
-            />
-          </section>
-        )}
+              {/* Logs de Auditoria */}
+              <ComingSoonCard
+                title="Logs de Auditoria"
+                description="Monitoramento e segurança avançada"
+                icon={<span>🔒</span>}
+              />
 
-        {/* FEATURE MANAGER sempre visível no VIP */}
-        {vipEnabled && (
-          <section className="space-y-6">
-            <FeatureManager
-              siteSlug={user.siteSlug || ""}
-              vipPin={vipPin || "FORCED"}
-              userPlan={userPlan}
-            />
-          </section>
-        )}
-
-        {/* AI COPYWRITER VIP */}
-        {vipEnabled && (
-          <section className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6">
-              <AICopywriter
-                businessName={user.siteSlug || "seu negócio"}
-                businessType={siteStructure?.category || "negócio"}
-                businessDescription={siteStructure?.description || ""}
+              {/* Chat AI */}
+              <ComingSoonCard
+                title="Chat IA"
+                description="Assistente inteligente para suporte"
+                icon={<span>🤖</span>}
               />
             </div>
-          </section>
+          </>
+        )}
+
+        {/* ================== FUNCIONALIDADES COMPLETAS PARA DEV ================== */}
+        {isDevUser && (
+          <>
+            {/* Business Insights - DEV */}
+            {siteStructure && (
+              <section className="space-y-6">
+                <BusinessInsights
+                  siteSlug={user.siteSlug || ""}
+                  businessType={siteStructure?.category || "geral"}
+                  businessName={user?.siteSlug || "seu negócio"}
+                  vipPin={vipPin || "FORCED"}
+                  analytics={{
+                    totalVisits: 1847,
+                    conversionRate: 4.8,
+                    bounceRate: 32.8,
+                    avgSessionDuration: "2:22",
+                    topPages: [
+                      { page: "/", visits: 776 },
+                      { page: "/servicos", visits: 480 },
+                      { page: "/contato", visits: 332 },
+                      { page: "/sobre", visits: 185 },
+                      { page: "/galeria", visits: 74 },
+                    ],
+                    deviceTypes: [
+                      { name: "Mobile", value: 72 },
+                      { name: "Desktop", value: 23 },
+                      { name: "Tablet", value: 5 },
+                    ],
+                  }}
+                  feedback={{
+                    avgRating: 4.3,
+                    recentFeedbacks: [
+                      { rating: 5, comment: "Excelente atendimento! Superou minhas expectativas.", sentiment: "positive" },
+                      { rating: 4, comment: "Muito bom serviço, recomendo!", sentiment: "positive" },
+                      { rating: 5, comment: "Profissionais competentes e pontuais.", sentiment: "positive" },
+                    ],
+                  }}
+                />
+              </section>
+            )}
+
+            {/* Lead Scoring - DEV */}
+            <section className="space-y-6">
+              <LeadScoring siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+            </section>
+
+            {/* SEO Optimizer - DEV */}
+            <section className="space-y-6">
+              <SEOOptimizer
+                siteSlug={user.siteSlug || ""}
+                vipPin={vipPin || "FORCED"}
+                businessData={{
+                  name: user.siteSlug || "seu negócio",
+                  type: siteStructure?.category || "negócio",
+                  location: "Brasil",
+                  description: siteStructure?.description || "",
+                }}
+              />
+            </section>
+
+            {/* AI Copywriter - DEV */}
+            <section className="space-y-6">
+              <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6">
+                <AICopywriter
+                  businessName={user.siteSlug || "seu negócio"}
+                  businessType={siteStructure?.category || "negócio"}
+                  businessDescription={siteStructure?.description || ""}
+                />
+              </div>
+            </section>
+
+            {/* Multi-Language Manager - DEV */}
+            <section className="space-y-6">
+              <MultiLanguageManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+            </section>
+
+            {/* Appointment Scheduling - DEV */}
+            <section className="space-y-6">
+              <AppointmentScheduling siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+            </section>
+
+            {/* E-commerce Dashboard - DEV */}
+            <section className="space-y-6">
+              <EcommerceDashboard siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+            </section>
+
+            {/* Template Marketplace - DEV */}
+            <section className="space-y-6">
+              <TemplateMarketplace siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+            </section>
+
+            {/* Audit Logs - DEV */}
+            <section className="space-y-6">
+              <AuditLogs siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+            </section>
+
+            {/* Feature Manager - DEV */}
+            <section className="space-y-6">
+              <FeatureManager
+                siteSlug={user.siteSlug || ""}
+                vipPin={vipPin || "FORCED"}
+                userPlan={userPlan}
+              />
+            </section>
+          </>
         )}
 
         {/* CONTEÚDO PRINCIPAL */}
