@@ -69,6 +69,7 @@ type ClientSettings = {
   showWhatsApp?: boolean;
   whatsAppNumber?: string;
   footerText?: string;
+  colorScheme?: string;
   theme?: { primary: string; background: string; accent: string };
   customCSS?: string;
   vipPin?: string;
@@ -908,6 +909,265 @@ useEffect(() => {
                 <GoogleReviews siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
               </section>
             )}
+
+            {/* Layout em Grid para Funcionalidades Básicas */}
+            <div className="grid lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-6">
+                {/* CONFIGURAÇÕES GERAIS */}
+                {isFeatureEnabled("color-palette") && (
+                  <VipGate
+                    enabled={vipEnabled}
+                    checking={checkingPlan && !DEV_FORCE_VIP}
+                    teaser="Configure aparência, tema e PIN VIP"
+                  >
+                    <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
+                      <h2 className="text-lg font-semibold">Configurações Gerais</h2>
+
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={settings.showBrand ?? true}
+                            onChange={(e) => saveSettings({ showBrand: e.target.checked })}
+                            className="rounded"
+                            data-testid="checkbox-show-brand"
+                          />
+                          <span className="text-sm">Mostrar marca no rodapé</span>
+                        </label>
+
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={settings.showPhone ?? false}
+                            onChange={(e) => saveSettings({ showPhone: e.target.checked })}
+                            className="rounded"
+                            data-testid="checkbox-show-phone"
+                          />
+                          <span className="text-sm">Mostrar telefone</span>
+                        </label>
+                      </div>
+
+                      {settings.showPhone && (
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Número WhatsApp</label>
+                          <input
+                            type="tel"
+                            value={settings.whatsAppNumber || ""}
+                            onChange={(e) => saveSettings({ whatsAppNumber: e.target.value })}
+                            placeholder="(11) 99999-9999"
+                            className="w-full px-3 py-2 border rounded-lg"
+                            data-testid="input-whatsapp-number"
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-sm font-medium mb-1">PIN VIP</label>
+                        <input
+                          type="password"
+                          value={vipPin}
+                          onChange={(e) => setVipPin(e.target.value)}
+                          placeholder="Digite seu PIN para acessar recursos VIP"
+                          className="w-full px-3 py-2 border rounded-lg"
+                          data-testid="input-vip-pin"
+                        />
+                        <div className="text-xs text-slate-500 mt-1">
+                          Use seu PIN para acessar todas as funcionalidades do painel.
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Paleta de cores</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            onClick={() => saveSettings({ colorScheme: "azul" })}
+                            className={`flex items-center gap-2 p-2 rounded text-xs ${
+                              settings.colorScheme === "azul" ? "bg-blue-100 text-blue-800" : "bg-slate-100"
+                            }`}
+                            data-testid="button-color-azul"
+                          >
+                            <div className="flex gap-1">
+                              <div className="w-4 h-4 rounded bg-blue-500"></div>
+                              <div className="w-4 h-4 rounded bg-blue-600"></div>
+                              <div className="w-4 h-4 rounded bg-blue-700"></div>
+                            </div>
+                            Azul Futurista
+                          </button>
+
+                          <button
+                            onClick={() => saveSettings({ colorScheme: "roxo" })}
+                            className={`flex items-center gap-2 p-2 rounded text-xs ${
+                              settings.colorScheme === "roxo" ? "bg-purple-100 text-purple-800" : "bg-slate-100"
+                            }`}
+                            data-testid="button-color-roxo"
+                          >
+                            <div className="flex gap-1">
+                              <div className="w-4 h-4 rounded bg-purple-500"></div>
+                              <div className="w-4 h-4 rounded bg-purple-600"></div>
+                              <div className="w-4 h-4 rounded bg-purple-700"></div>
+                            </div>
+                            Roxo Premium
+                          </button>
+
+                          <button
+                            onClick={() => saveSettings({ colorScheme: "verde" })}
+                            className={`flex items-center gap-2 p-2 rounded text-xs ${
+                              settings.colorScheme === "verde" ? "bg-teal-100 text-teal-800" : "bg-slate-100"
+                            }`}
+                            data-testid="button-color-verde"
+                          >
+                            <div className="flex gap-1">
+                              <div className="w-4 h-4 rounded bg-teal-500"></div>
+                              <div className="w-4 h-4 rounded bg-teal-600"></div>
+                              <div className="w-4 h-4 rounded bg-teal-700"></div>
+                            </div>
+                            Verde Tech
+                          </button>
+
+                          <button
+                            onClick={() => saveSettings({ colorScheme: "laranja" })}
+                            className={`flex items-center gap-2 p-2 rounded text-xs ${
+                              settings.colorScheme === "laranja" ? "bg-orange-100 text-orange-800" : "bg-slate-100"
+                            }`}
+                            data-testid="button-color-laranja"
+                          >
+                            <div className="flex gap-1">
+                              <div className="w-4 h-4 rounded bg-orange-500"></div>
+                              <div className="w-4 h-4 rounded bg-orange-600"></div>
+                              <div className="w-4 h-4 rounded bg-orange-700"></div>
+                            </div>
+                            Laranja Energia
+                          </button>
+                        </div>
+                      </div>
+
+                      {saving && (
+                        <div className="flex items-center gap-2 text-blue-600 text-sm">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          Salvando configurações...
+                        </div>
+                      )}
+                    </section>
+                  </VipGate>
+                )}
+
+                {/* GERENCIADOR DE MÍDIAS */}
+                <VipGate
+                  enabled={vipEnabled}
+                  checking={loadingAssets && !DEV_FORCE_VIP}
+                  teaser="Personalize imagens, vídeos e recursos visuais"
+                >
+                  <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
+                    <h2 className="text-lg font-semibold">Gerenciar Mídias</h2>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {slots.map((slot) => (
+                        <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />
+                      ))}
+                    </div>
+                  </section>
+                </VipGate>
+              </div>
+
+              <div className="space-y-6">
+                {/* FEEDBACKS */}
+                {isFeatureEnabled("feedback-management") && (
+                  <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-semibold text-white">Feedbacks Recentes</h2>
+                      <span className="text-xs text-white/60">
+                        {canPerformVipAction(true)
+                          ? "Todos os feedbacks (com PIN)"
+                          : vipEnabled 
+                          ? "Feedbacks básicos (VIP)"
+                          : "Apenas aprovados"}
+                      </span>
+                    </div>
+                    <div className="text-xs text-white/60">
+                      E-mail e telefone ficam **somente aqui** (não são publicados).
+                    </div>
+
+                    {loadingFeedbacks ? (
+                      <div className="space-y-2">
+                        <div className="h-3 bg-white/20 rounded animate-pulse"></div>
+                        <div className="h-3 bg-white/20 rounded animate-pulse w-2/3"></div>
+                      </div>
+                    ) : feedbacks.length === 0 ? (
+                      <div className="text-white/60 text-sm">Nenhum feedback ainda.</div>
+                    ) : (
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {feedbacks.slice(0, 10).map((f) => (
+                          <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 text-xs text-white/60">
+                                  <span>{f.name || "Anônimo"}</span>
+                                  <span>•</span>
+                                  <span>{fmtDateTime(f.timestamp)}</span>
+                                  {f.approved && <span className="text-emerald-400">✓ Aprovado</span>}
+                                  {f.sentiment && (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        f.sentiment.rating >= 4
+                                          ? "bg-emerald-500/20 text-emerald-300"
+                                          : f.sentiment.rating >= 3
+                                          ? "bg-yellow-500/20 text-yellow-300"
+                                          : "bg-red-500/20 text-red-300"
+                                      }`}
+                                    >
+                                      {f.sentiment.emotion} ({f.sentiment.rating}/5)
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-white mt-1 break-words">{f.message}</p>
+                                {f.sentiment?.summary && (
+                                  <p className="text-xs text-blue-300 mt-1 italic">
+                                    💡 {f.sentiment.summary}
+                                  </p>
+                                )}
+                                {(f.email || f.phone) && (
+                                  <div className="text-xs text-white/50 mt-1">
+                                    {f.email && <span>📧 {f.email}</span>}
+                                    {f.email && f.phone && <span> • </span>}
+                                    {f.phone && <span>📞 {f.phone}</span>}
+                                  </div>
+                                )}
+                              </div>
+
+                              {(vipEnabled && isFeatureEnabled("feedback-management")) && (
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => setFeedbackApproval(f.id, true)}
+                                    className={`px-2 py-1 text-xs rounded ${
+                                      f.approved
+                                        ? "bg-emerald-600 text-white"
+                                        : "bg-white/10 text-white/70 hover:bg-emerald-600"
+                                    }`}
+                                    data-testid={`button-approve-feedback-${f.id}`}
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    onClick={() => setFeedbackApproval(f.id, false)}
+                                    className={`px-2 py-1 text-xs rounded ${
+                                      !f.approved
+                                        ? "bg-red-600 text-white"
+                                        : "bg-white/10 text-white/70 hover:bg-red-600"
+                                    }`}
+                                    data-testid={`button-reject-feedback-${f.id}`}
+                                  >
+                                    ✗
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+              </div>
+            </div>
           </>
         )}
 
@@ -1100,390 +1360,6 @@ useEffect(() => {
           </>
         )}
 
-        {/* CONTEÚDO PRINCIPAL */}
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            {/* CONFIGURAÇÕES */}
-            <VipGate
-              enabled={vipEnabled}
-              checking={checkingPlan && !DEV_FORCE_VIP}
-              teaser="Configure aparência, tema e PIN VIP"
-            >
-              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
-                <h2 className="text-lg font-semibold">Configurações Gerais</h2>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.showBrand ?? true}
-                      onChange={(e) => saveSettings({ showBrand: e.target.checked })}
-                      className="rounded"
-                    />
-                    <span className="text-sm">Mostrar marca no rodapé</span>
-                  </label>
-
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.showPhone ?? false}
-                      onChange={(e) => saveSettings({ showPhone: e.target.checked })}
-                      className="rounded"
-                    />
-                    <span className="text-sm">Mostrar telefone</span>
-                  </label>
-                </div>
-
-                {settings.showPhone && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Número WhatsApp</label>
-                    <input
-                      type="tel"
-                      value={settings.whatsAppNumber || ""}
-                      onChange={(e) => saveSettings({ whatsAppNumber: e.target.value })}
-                      placeholder="(11) 99999-9999"
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">PIN VIP</label>
-                  <input
-                    type="password"
-                    value={vipPin}
-                    onChange={(e) => {
-                      setVipPin(e.target.value);
-                      saveSettings({ vipPin: e.target.value });
-                    }}
-                    placeholder="Defina um PIN para acessar recursos VIP"
-                    className="w-full px-3 py-2 border rounded-lg"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use este PIN para acessar todas as funcionalidades do painel
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Paleta de cores</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {PALETAS.map((pal, i) => (
-                      <button
-                        key={i}
-                        onClick={() =>
-                          saveSettings({
-                            theme: {
-                              primary: pal.colors[1],
-                              background: pal.colors[0],
-                              accent: pal.colors[2],
-                            },
-                          })
-                        }
-                        className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50"
-                      >
-                        <div className="flex gap-1">
-                          {pal.colors.map((c, j) => (
-                            <div key={j} className="w-4 h-4 rounded" style={{ backgroundColor: c }} />
-                          ))}
-                        </div>
-                        <span className="text-xs">{pal.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            </VipGate>
-
-            {/* MÍDIAS */}
-            <VipGate
-              enabled={vipEnabled}
-              checking={loadingAssets && !DEV_FORCE_VIP}
-              teaser="Personalize imagens e vídeos do seu site"
-            >
-              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
-                <h2 className="text-lg font-semibold">Gerenciar Mídias</h2>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {slots.map((slot) => (
-                    <MediaSlot key={slot.key} slot={slot} onUpload={handleUpload} />
-                  ))}
-                </div>
-              </section>
-            </VipGate>
-
-            {/* PERSONALIZAÇÃO DE SEÇÕES */}
-            <VipGate
-              enabled={vipEnabled && !!(vipPin || DEV_FORCE_VIP)}
-              checking={loadingStructure && !DEV_FORCE_VIP}
-              teaser="Personalize títulos, subtítulos e conteúdo das seções do seu site"
-            >
-              <section className="rounded-2xl border border-white/10 bg-white text-slate-900 p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Personalizar Seções do Site</h2>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowContentGenerator(true)}
-                      className="px-3 py-1 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 transition-colors"
-                      title="Gerar conteúdo com IA"
-                    >
-                      🤖 IA
-                    </button>
-                    {savingStructure && (
-                      <span className="text-xs text-blue-600">Salvando...</span>
-                    )}
-                  </div>
-                </div>
-
-                {loadingStructure ? (
-                  <div className="space-y-3">
-                    <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
-                    <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4"></div>
-                    <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
-                  </div>
-                ) : !siteStructure ? (
-                  <div className="text-slate-500 text-sm">
-                    Nenhuma estrutura disponível. Certifique-se de ter inserido o PIN VIP correto.
-                  </div>
-                ) : (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    <div className="text-xs text-slate-600 mb-4">
-                      Personalize o conteúdo das seções do seu site. Tipo de negócio detectado:{" "}
-                      <strong>{siteStructure.category || "geral"}</strong>
-                    </div>
-                    {siteStructure.sections?.map((section: any) => (
-                      <div key={section.id} className="border rounded-lg p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-sm capitalize">
-                            {section.id.replace("-", " ")}
-                          </h3>
-                          <span
-                            className={`text-xs px-2 py-1 rounded ${
-                              section.visible
-                                ? "bg-green-100 text-green-700"
-                                : "bg-gray-100 text-gray-500"
-                            }`}
-                          >
-                            {section.visible ? "Visível" : "Oculta"}
-                          </span>
-                        </div>
-
-                        <div className="grid gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">
-                              Título
-                            </label>
-                            <input
-                              type="text"
-                              value={section.title || ""}
-                              onChange={(e) =>
-                                updateSectionField(section.id, "title", e.target.value)
-                              }
-                              placeholder="Título da seção"
-                              className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">
-                              Subtítulo
-                            </label>
-                            <input
-                              type="text"
-                              value={section.subtitle || ""}
-                              onChange={(e) =>
-                                updateSectionField(section.id, "subtitle", e.target.value)
-                              }
-                              placeholder="Subtítulo da seção"
-                              className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                            />
-                          </div>
-
-                          {section.description !== undefined && (
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                Descrição
-                              </label>
-                              <textarea
-                                value={section.description || ""}
-                                onChange={(e) =>
-                                  updateSectionField(section.id, "description", e.target.value)
-                                }
-                                placeholder="Descrição detalhada da seção"
-                                rows={2}
-                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                              />
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                URL da Imagem
-                              </label>
-                              <input
-                                type="url"
-                                value={section.image || ""}
-                                onChange={(e) =>
-                                  updateSectionField(section.id, "image", e.target.value)
-                                }
-                                placeholder="https://..."
-                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                Visibilidade
-                              </label>
-                              <select
-                                value={section.visible ? "true" : "false"}
-                                onChange={(e) =>
-                                  updateSectionField(
-                                    section.id,
-                                    "visible",
-                                    e.target.value === "true"
-                                  )
-                                }
-                                className="w-full px-3 py-2 border border-slate-200 rounded text-sm"
-                              >
-                                <option value="true">Visível</option>
-                                <option value="false">Oculta</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-
-                        {section.image && (
-                          <div className="mt-2">
-                            <img
-                              src={section.image}
-                              alt={section.title || "Preview"}
-                              className="w-20 h-12 object-cover rounded border"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = "none";
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    <div className="pt-4 border-t">
-                      <button
-                        onClick={saveSiteStructure}
-                        disabled={savingStructure}
-                        className={`w-full px-4 py-2 rounded-lg font-medium text-sm ${
-                          savingStructure
-                            ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                            : "bg-blue-600 text-white hover:bg-blue-700"
-                        }`}
-                      >
-                        {savingStructure ? "Salvando..." : "Salvar Alterações"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </section>
-            </VipGate>
-          </div>
-
-          <div className="space-y-6">
-            {/* FEEDBACKS */}
-            <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-white">Feedbacks Recentes</h2>
-                <span className="text-xs text-white/60">
-                  {canPerformVipAction(true)
-                    ? "Todos os feedbacks (com PIN)"
-                    : vipEnabled 
-                    ? "Feedbacks básicos (VIP)"
-                    : "Apenas aprovados"}
-                </span>
-              </div>
-              <div className="text-xs text-white/60">
-                E-mail e telefone ficam **somente aqui** (não são publicados).
-              </div>
-
-              {loadingFeedbacks ? (
-                <div className="space-y-2">
-                  <div className="h-3 bg-white/20 rounded animate-pulse"></div>
-                  <div className="h-3 bg-white/20 rounded animate-pulse w-2/3"></div>
-                </div>
-              ) : feedbacks.length === 0 ? (
-                <div className="text-white/60 text-sm">Nenhum feedback ainda.</div>
-              ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {feedbacks.slice(0, 10).map((f) => (
-                    <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 text-xs text-white/60">
-                            <span>{f.name || "Anônimo"}</span>
-                            <span>•</span>
-                            <span>{fmtDateTime(f.timestamp)}</span>
-                            {f.approved && <span className="text-emerald-400">✓ Aprovado</span>}
-                            {f.sentiment && (
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  f.sentiment.rating >= 4
-                                    ? "bg-emerald-500/20 text-emerald-300"
-                                    : f.sentiment.rating >= 3
-                                    ? "bg-yellow-500/20 text-yellow-300"
-                                    : "bg-red-500/20 text-red-300"
-                                }`}
-                              >
-                                {f.sentiment.emotion} ({f.sentiment.rating}/5)
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-white mt-1 break-words">{f.message}</p>
-                          {f.sentiment?.summary && (
-                            <p className="text-xs text-blue-300 mt-1 italic">
-                              💡 {f.sentiment.summary}
-                            </p>
-                          )}
-                          {(f.email || f.phone) && (
-                            <div className="text-xs text-white/50 mt-1">
-                              {f.email && <span>📧 {f.email}</span>}
-                              {f.email && f.phone && <span> • </span>}
-                              {f.phone && <span>📞 {f.phone}</span>}
-                            </div>
-                          )}
-                        </div>
-
-                        {vipEnabled && (
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => setFeedbackApproval(f.id, true)}
-                              className={`px-2 py-1 text-xs rounded ${
-                                f.approved
-                                  ? "bg-emerald-600 text-white"
-                                  : "bg-white/10 text-white/70 hover:bg-emerald-600"
-                              }`}
-                            >
-                              ✓
-                            </button>
-                            <button
-                              onClick={() => setFeedbackApproval(f.id, false)}
-                              className={`px-2 py-1 text-xs rounded ${
-                                !f.approved
-                                  ? "bg-red-600 text-white"
-                                  : "bg-white/10 text-white/70 hover:bg-red-600"
-                              }`}
-                            >
-                              ✗
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-        </div>
-      </div>
-
       {/* Botão flutuante do Chat AI - apenas para VIP */}
       {vipEnabled && (
         <button
@@ -1630,3 +1506,62 @@ function MediaSlot({
     </div>
   );
 }
+
+      {/* Botão flutuante do Chat AI - apenas para VIP */}
+      {vipEnabled && (
+        <button
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-4">
+      <div className="text-xs text-slate-500 uppercase tracking-wide">{title}</div>
+      <div className="text-lg font-semibold mt-1">{value}</div>
+    </div>
+  );
+}
+
+function VipGate({
+  enabled,
+  checking,
+  children,
+  teaser,
+}: {
+  enabled: boolean;
+  checking?: boolean;
+  teaser: string;
+  children: React.ReactNode;
+}) {
+  if (enabled) return <>{children}</>;
+  if (checking) {
+    return (
+      <div className="relative">
+        <div className="pointer-events-none select-none opacity-70">{children}</div>
+        <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-transparent via-[#0B1220]/80 to-[#0B1220]" />
+        <div className="absolute inset-x-0 bottom-0 p-6">
+          <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur px-4 py-3 text-sm text-white">
+            Verificando sua assinatura…
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="relative">
+      <div className="pointer-events-none select-none blur-[1.1px] opacity-80">{children}</div>
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-transparent via-[#0B1220]/80 to-[#0B1220]" />
+      <div className="absolute inset-x-0 bottom-0 p-6">
+        <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-sm text-white">{teaser}</div>
+          <a
+            href={UPGRADE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-medium text-black hover:bg-emerald-400"
+          >
+            Fazer upgrade
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+      {/* Botão flutuante do Chat AI - apenas para VIP */}
