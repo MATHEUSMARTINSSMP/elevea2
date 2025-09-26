@@ -5,7 +5,8 @@ import type { Handler } from "@netlify/functions";
 const GAS_BASE =
   process.env.ELEVEA_GAS_URL ||
   process.env.ELEVEA_STATUS_URL ||
-  "";
+  // Fallback para desenvolvimento local se não houver env vars
+  (process.env.NODE_ENV === "development" ? "https://script.google.com/macros/s/PLACEHOLDER/exec" : "");
 
 /** === CORS comum === */
 const CORS = {
@@ -24,7 +25,9 @@ function ensureExecUrl(u: string) {
 /** Chama o GAS */
 async function postToGas(body: any) {
   const url = ensureExecUrl(GAS_BASE);
-  if (!url) throw new Error("missing_gas_url");
+  if (!url || url.includes("PLACEHOLDER")) {
+    throw new Error("ELEVEA_GAS_URL environment variable not configured. Please set it in your Netlify dashboard.");
+  }
 
   const resp = await fetch(url, {
     method: "POST",
@@ -41,6 +44,11 @@ async function postToGas(body: any) {
 
 /** === Assinatura/validação do cookie elevea_sess === */
 const SIGN_SECRET = process.env.ADMIN_DASH_TOKEN || process.env.ADMIN_TOKEN || "";
+
+// Log para debug em desenvolvimento (sem expor a secret)
+if (!SIGN_SECRET && process.env.NODE_ENV === "development") {
+  console.warn("⚠️  ADMIN_DASH_TOKEN not set - cookies will not be signed");
+}
 
 // base64-url encode
 const b64url = (buf: ArrayBuffer) =>
@@ -176,7 +184,24 @@ export const handler: Handler = async (event) => {
 
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ ok: false, error: "invalid_action" }) };
   } catch (e: any) {
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: String(e?.message || e) }) };
+    const errorMsg = String(e?.message || e);
+    console.error("Auth session error:", errorMsg);
+    
+    // Mensagem mais específica para problemas de configuração
+    if (errorMsg.includes("ELEVEA_GAS_URL")) {
+      return { 
+        statusCode: 503, 
+        headers: CORS, 
+        body: JSON.stringify({ 
+          ok: false, 
+          error: "configuration_missing",
+          message: "Environment variables not configured. Please set ELEVEA_GAS_URL in your Netlify dashboard.",
+          details: "Go to Site Settings → Environment Variables and add your Google Apps Script URL"
+        }) 
+      };
+    }
+    
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ ok: false, error: errorMsg }) };
   }
 };
 
