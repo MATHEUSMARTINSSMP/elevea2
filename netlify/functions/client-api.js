@@ -1,7 +1,6 @@
-// netlify/functions/client-api.js
 const GAS_BASE_URL =
   process.env.GAS_BASE_URL ||
-  process.env.ELEVEA_GAS_URL || // compat antiga
+  process.env.ELEVEA_GAS_URL ||
   "";
 
 const ADMIN_DASH_TOKEN =
@@ -16,44 +15,30 @@ function json(status, body) {
   });
 }
 
-// Normaliza itens vindos do GAS para um formato único no front
+// Normaliza itens vindos do GAS para formato único no front
 function normalizeFeedbackItems(items) {
   if (!Array.isArray(items)) return [];
   return items.map((it, i) => {
-    const id =
-      String(it.id ?? it.ID ?? it.rowId ?? it.row ?? i + 1);
-    const timestamp =
-      String(it.timestamp ?? it.ts ?? it.created_at ?? it.date ?? "");
-    const name =
-      String(it.name ?? it.author ?? it.user ?? ""); 
-    const message =
-      String(it.message ?? it.comment ?? it.text ?? "");
+    const id = String(it.id ?? it.ID ?? it.rowId ?? it.row ?? i + 1);
+    const timestamp = String(it.timestamp ?? it.ts ?? it.created_at ?? it.date ?? "");
+    const name = String(it.name ?? it.author ?? it.user ?? "");
+    const message = String(it.message ?? it.comment ?? it.text ?? "");
     const email = String(it.email ?? it.mail ?? "");
     const phone = String(it.phone ?? it.tel ?? it.whatsapp ?? "");
     const ratingNum = Number(it.rating ?? it.score ?? it.stars ?? 0) || 0;
-    const approvedBool =
-      String(it.approved ?? it.isApproved ?? it.visible ?? "").toLowerCase() === "true";
-
+    const approvedBool = String(it.approved ?? it.isApproved ?? it.visible ?? "").toLowerCase() === "true";
     return {
-      id,
-      timestamp,
-      name,
-      message,
-      email,
-      phone,
-      rating: ratingNum,
-      approved: approvedBool,
-      // se vier análise de sentimento do GAS algum dia:
+      id, timestamp, name, message, email, phone,
+      rating: ratingNum, approved: approvedBool,
       sentiment: it.sentiment || undefined,
     };
   });
 }
 
-// Helper: chamada ao GAS (GET ou POST) com tolerância
+// Chamada ao GAS (GET ou POST)
 async function callGAS(action, payload = {}, method = "POST") {
-  if (!GAS_BASE_URL) {
-    return { ok: false, error: "missing_GAS_BASE_URL_env" };
-  }
+  if (!GAS_BASE_URL) return { ok: false, error: "missing_GAS_BASE_URL_env" };
+
   const url =
     method === "GET"
       ? `${GAS_BASE_URL}?action=${encodeURIComponent(action)}&${new URLSearchParams(payload).toString()}`
@@ -66,9 +51,7 @@ async function callGAS(action, payload = {}, method = "POST") {
   };
 
   const res = await fetch(url, init);
-  if (!res.ok) {
-    return { ok: false, error: `gas_http_${res.status}` };
-  }
+  if (!res.ok) return { ok: false, error: `gas_http_${res.status}` };
   const data = await res.json().catch(() => ({}));
   return data;
 }
@@ -78,6 +61,7 @@ export default async (req) => {
     if (req.method !== "POST") {
       return json(405, { ok: false, error: "method_not_allowed" });
     }
+
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
 
@@ -86,19 +70,16 @@ export default async (req) => {
       body.adminToken = body.adminToken || ADMIN_DASH_TOKEN || "";
     }
 
-    // Roteamento
+    // ----- ROTAS -----
+
+    // Público (apenas aprovados)
     if (action === "list_feedbacks") {
-      // Público (apenas aprovados)
       const site = String(body.site || body.siteSlug || "");
       const page = Number(body.page || 1);
       const pageSize = Number(body.pageSize || 20);
 
-      // Compatível com suas funções: listFeedbacksPublic_
       const gas = await callGAS("list_feedbacks_public", { site, page, pageSize }, "GET");
-
-      if (!gas || gas.ok === false) {
-        return json(200, { ok: true, items: [] });
-      }
+      if (!gas || gas.ok === false) return json(200, { ok: true, items: [] });
 
       return json(200, {
         ok: true,
@@ -109,24 +90,20 @@ export default async (req) => {
       });
     }
 
+    // Privado (PIN/ADMIN) — passa como POST para o GAS
     if (action === "list_feedbacks_secure") {
-      // Requer PIN correto ou ADMIN token
       const site = String(body.site || body.siteSlug || "");
       const pin = String(body.pin || body.vipPin || "");
       const page = Number(body.page || 1);
       const pageSize = Number(body.pageSize || 50);
 
-      // Compatível com suas funções: listFeedbacksSecure_
       const gas = await callGAS(
         "list_feedbacks_secure",
         { site, pin, page, pageSize, adminToken: body.adminToken },
         "POST"
       );
 
-      if (!gas || gas.ok === false) {
-        // não vaza erro real para o front
-        return json(200, { ok: true, items: [] });
-      }
+      if (!gas || gas.ok === false) return json(200, { ok: true, items: [] });
 
       return json(200, {
         ok: true,
@@ -137,8 +114,8 @@ export default async (req) => {
       });
     }
 
+    // Aprovação (PIN/ADMIN)
     if (action === "feedback_set_approval") {
-      // Atualiza aprovação (exige PIN ou ADMIN)
       const site = String(body.site || body.siteSlug || "");
       const id = String(body.id || "");
       const approved = !!body.approved;
@@ -156,8 +133,7 @@ export default async (req) => {
       return json(200, { ok: true });
     }
 
-    // Outras ações que você já tem podem continuar aqui…
-    // get_status, get_settings, save_settings, etc. (mantidas como estavam)
+    // Outras ações (get_status, get_settings, save_settings, etc.) permanecem no seu arquivo original…
 
     return json(400, { ok: false, error: "unknown_action" });
   } catch (e) {
