@@ -1404,6 +1404,7 @@ useEffect(() => {
           onClose={() => setShowContentGenerator(false)}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -1511,17 +1512,6 @@ function MediaSlot({
         />
       )}
       {uploading && <div className="text-xs text-blue-600">Enviando...</div>}
-    </div>
-  );
-}
-
-      {/* Botão flutuante do Chat AI - apenas para VIP */}
-      {vipEnabled && (
-        <button
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white text-slate-900 p-4">
-      <div className="text-xs text-slate-500 uppercase tracking-wide">{title}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
     </div>
   );
 }
