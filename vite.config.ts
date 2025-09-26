@@ -15,31 +15,15 @@ export default defineConfig(({ mode }) => ({
         target: "http://localhost:8888",
         changeOrigin: true,
         configure: (proxy, options) => {
-          // Fallback inteligente para quando Netlify Dev não está rodando
+          // Fallback para quando Netlify Dev não está rodando
           proxy.on('error', (err, req, res) => {
-            console.warn('Netlify Functions não disponíveis - usando fallback:', err.message);
-            
-            // Para auth-session, redirecionar para uma versão simplificada
-            if (req.url?.includes('auth-session')) {
-              res.writeHead(200, { 
-                'Content-Type': 'application/json',
-                'Set-Cookie': 'elevea_sess=dev-mode-token; HttpOnly; Path=/'
-              });
-              res.end(JSON.stringify({ 
-                ok: true, 
-                mode: 'development',
-                user: { email: 'dev@elevea.com.br', name: 'Modo Desenvolvimento' },
-                message: 'Login simulado para desenvolvimento. Use "npm run dev:netlify" para login real.'
-              }));
-            } else {
-              // Para outras functions, retornar estado não disponível
-              res.writeHead(503, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ 
-                ok: false, 
-                error: 'dev_functions_unavailable',
-                message: 'Execute "npm run dev:netlify" para ativar todas as functions'
-              }));
-            }
+            console.warn('Netlify Functions não disponíveis em desenvolvimento:', err.message);
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+              ok: false, 
+              error: 'dev_functions_unavailable',
+              message: 'Execute "npm run dev:netlify" em outro terminal para ativar as functions'
+            }));
           });
         }
       }
