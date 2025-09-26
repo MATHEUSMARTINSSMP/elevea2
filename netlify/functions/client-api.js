@@ -61,7 +61,7 @@ async function callGAS(action, payload = {}, method = "POST") {
 
 export default async (req) => {
   try {
-    // ✅ Preflight CORS (o netlify.toml já adiciona os headers; aqui só devolvemos 204)
+    // Preflight CORS
     if (req.method === "OPTIONS") {
       return new Response("", { status: 204 });
     }
@@ -141,7 +141,7 @@ export default async (req) => {
       return json(200, { ok: true });
     }
 
-    // ✅ NOVA ROTA: criar feedback via proxy (evita NetworkError/CORS no GAS direto)
+    // NOVA ROTA: criar feedback via proxy
     if (action === "submit_feedback") {
       const siteSlug = String(body.site || body.siteSlug || "");
       const payload = {
@@ -159,7 +159,7 @@ export default async (req) => {
       return json(200, { ok: true });
     }
 
-    // Outras ações (get_status, get_settings, save_settings, etc.) permanecem no seu arquivo original…
+    // Outras ações… (deixe as que você já tem aqui abaixo)
 
     return json(400, { ok: false, error: "unknown_action" });
   } catch (e) {
