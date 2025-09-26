@@ -23,6 +23,9 @@ const NEW_FEATURES_CONFIG = {
   STORE_CURRENCY_DEFAULT: 'BRL'
 };
 
+// ---- E-MAIL SWITCH (GAS NÃO ENVIA MAIS) ----
+const SEND_RESET_EMAIL_FROM_GAS = false;
+
 /** === Headers para as novas planilhas === */
 const NEW_SHEET_HEADERS = {
   'feature_settings': ['site', 'plan', 'enabledFeatures', 'onboardingCompleted', 'lastUpdated'],
@@ -425,12 +428,63 @@ function doGet(e) {
       const siteSlug = String(row[idxSite] || "");
       const plan = String(row[idxPlan] || "essential");
 
+      // 🎯 CORREÇÃO: Buscar dados de pagamento do MercadoPago ou planilha de pagamentos
+      var lastPayment = null;
+      var nextCharge = null;
+      
+      // Tentar buscar último pagamento na planilha de pagamentos (se existir)
+      try {
+        var shPagamentos = ss.getSheetByName("pagamentos");
+        if (shPagamentos) {
+          var pagData = shPagamentos.getDataRange().getValues();
+          var pagHeaders = pagData[0].map(h => String(h).trim());
+          var idxSitePag = pagHeaders.indexOf("siteSlug");
+          var idxDate = pagHeaders.indexOf("date") !== -1 ? pagHeaders.indexOf("date") : pagHeaders.indexOf("payment_date");
+          var idxAmount = pagHeaders.indexOf("amount") !== -1 ? pagHeaders.indexOf("amount") : pagHeaders.indexOf("valor");
+          
+          if (idxSitePag !== -1 && idxDate !== -1) {
+            // Buscar último pagamento para este site
+            var pagamentos = pagData.slice(1).filter(function(r) {
+              return String(r[idxSitePag] || "").trim() === siteSlug;
+            });
+            
+            if (pagamentos.length > 0) {
+              // Pegar o mais recente
+              var ultimoPag = pagamentos[pagamentos.length - 1];
+              var payDate = ultimoPag[idxDate];
+              var payAmount = idxAmount !== -1 ? ultimoPag[idxAmount] : 97.0;
+              
+              if (payDate) {
+                lastPayment = {
+                  date: new Date(payDate).toISOString(),
+                  amount: parseFloat(payAmount) || 97.0
+                };
+                
+                // Calcular próxima cobrança (último pagamento + 1 mês)
+                try {
+                  var nextDate = new Date(payDate);
+                  nextDate.setMonth(nextDate.getMonth() + 1);
+                  nextCharge = nextDate.toISOString();
+                } catch (e) {
+                  log_(ss, "nextCharge_calc_error", { error: String(e) });
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        log_(ss, "payment_lookup_error", { error: String(e) });
+      }
+
       const billing = {
         ok: true,
         plan: plan.toLowerCase(),
         status: "pending",
         provider: "mercadopago",
-        siteSlug: siteSlug
+        siteSlug: siteSlug,
+        nextPayment: nextCharge,     // Compatibilidade
+        nextCharge: nextCharge,      // Campo que frontend espera
+        lastPayment: lastPayment     // Dados do último pagamento
       };
 
       try {
@@ -545,16 +599,35 @@ function doPost(e) {
     data = {};
   }
 
-  // ✅ COMPATIBILIDADE: Normalizar 'type'/'action'
-  const type = data.type || data.action;
-  const normalizedData = { ...data, type };
-  
-  log_(ss, "normalized", {
-    originalType: data.type || "",
-    originalAction: data.action || "",
-    normalizedType: type || ""
-  });
+  // ✅ COMPATIBILIDADE: Normalizar tipo a partir de várias chaves e também da querystring
+// - aceita 'type', 'action' ou 'm' no body JSON
+// - se vier via querystring (?type=... ou ?m=...), também promove para o body
+(function normalizeTypeAndPromoteFromQuery() {
+  const qp = (e && e.parameter) ? e.parameter : {};
 
+  // Promove campos importantes da query para o body, se estiverem faltando
+  const promoteKeys = ['type','action','m','email','token','password','site','siteSlug'];
+  for (const k of promoteKeys) {
+    if (qp[k] != null && (data[k] == null || data[k] === '')) {
+      data[k] = qp[k];
+    }
+  }
+
+  // Decide o "tipo" aceitando 'type', 'action' ou 'm'
+  data.type = data.type || data.action || data.m || '';
+})();
+
+const type = String(data.type || '');
+const normalizedData = { ...data, type };
+
+log_(ss, "normalized", {
+  originalType: String(data.type || ""),
+  originalAction: String(data.action || ""),
+  originalM: String(data.m || ""),
+  fromQueryType: String(e && e.parameter && e.parameter.type || ""),
+  fromQueryM: String(e && e.parameter && e.parameter.m || ""),
+  normalizedType: type
+});
 
   // Ping rápido
   if (type === "ping") {
@@ -1175,6 +1248,51 @@ function userLogin_(ss, data) {
   }
 }
 
+// ===== helpers novos =====
+function getLastCadastroForEmail_(ss, emailLc) {
+  var out = { siteSlug: '', plan: '' };
+  var shCad = ss.getSheetByName('cadastros');
+  if (!shCad) return out;
+
+  var head = shCad.getRange(1,1,1,shCad.getLastColumn()).getValues()[0].map(String);
+  var idxEmail = head.indexOf('email');
+  var idxSite  = head.indexOf('siteSlug');
+  var idxPlan  = head.indexOf('plan');
+  if (idxEmail === -1) return out;
+
+  var last = shCad.getLastRow();
+  if (last < 2) return out;
+
+  var rows = shCad.getRange(2,1,last-1,shCad.getLastColumn()).getValues();
+  // percorre de baixo para cima para pegar o mais recente
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var em = String(rows[i][idxEmail] || '').trim().toLowerCase();
+    if (em === emailLc) {
+      out.siteSlug = String(rows[i][idxSite] || '').trim().toUpperCase();
+      out.plan     = String(rows[i][idxPlan] || '').trim();
+      break;
+    }
+  }
+  return out;
+}
+
+function ensureUserFieldsFromCadastros_(ss, shUsers, map, row, emailLc) {
+  var site = String(shUsers.getRange(row, map.siteSlug+1).getValue() || '');
+  var plan = String(shUsers.getRange(row, map.plan+1).getValue() || '');
+  if (site && plan) return { siteSlug: site, plan: plan };
+
+  var cad = getLastCadastroForEmail_(ss, emailLc);
+  if (!site && cad.siteSlug) {
+    site = cad.siteSlug;
+    shUsers.getRange(row, map.siteSlug+1).setValue(site);
+  }
+  if (!plan && cad.plan) {
+    plan = cad.plan;
+    shUsers.getRange(row, map.plan+1).setValue(plan);
+  }
+  return { siteSlug: site, plan: plan };
+}
+
 function userMe_(ss, data) {
   try {
     var email = String(data.email || '').trim().toLowerCase();
@@ -1186,91 +1304,146 @@ function userMe_(ss, data) {
     if (rowIdx === -1) return jsonOut_({ ok:false, error:'user_not_found' });
 
     var actualRow = rowIdx + 2;
-    var siteSlug = String(sh.getRange(actualRow, map.siteSlug + 1).getValue() || '');
-    var role = String(sh.getRange(actualRow, map.role + 1).getValue() || 'client');
-    var plan = String(sh.getRange(actualRow, map.plan + 1).getValue() || 'essential');
+
+    // completa site/plan automaticamente se estiverem vazios
+    var filled = ensureUserFieldsFromCadastros_(ss, sh, map, actualRow, email);
+
+    var siteSlug  = String(filled.siteSlug || sh.getRange(actualRow, map.siteSlug + 1).getValue() || '');
+    var role      = String(sh.getRange(actualRow, map.role + 1).getValue() || 'client');
+    var plan      = String(filled.plan     || sh.getRange(actualRow, map.plan + 1).getValue() || 'essential');
     var lastLogin = String(sh.getRange(actualRow, map.last_login + 1).getValue() || '');
 
     return jsonOut_({
       ok: true,
-      user: {
-        email: email,
-        siteSlug: siteSlug,
-        role: role,
-        plan: plan,
-        lastLogin: lastLogin
-      }
+      user: { email: email, siteSlug: siteSlug, role: role, plan: plan, lastLogin: lastLogin }
     });
   } catch (e) {
     return jsonOut_({ ok:false, error:String(e) });
   }
 }
 
-function passwordResetRequest_(ss, data) {
+/**
+ * data: { token: string, password: string }
+ * Responde: { ok, message } (message: "password_reset_success" | "token_invalid" | "token_expired")
+ */
+function passwordResetConfirm_(ss, data) {
   try {
-    var email = String(data.email || '').trim().toLowerCase();
-    if (!email) return jsonOut_({ ok:false, error:'missing_email' });
+    var token    = String(data && data.token || '').trim();
+    var password = String(data && data.password || '').trim();
+
+    if (!token || !password) return jsonOut_({ ok:false, error:'missing_email_or_token_or_password' });
+    if (password.length < 8)  return jsonOut_({ ok:false, error:'password_too_short' });
 
     var sh = ensureUsuariosSheet_(ss);
     ensureResetColumns_(sh);
     var map = headerIndexMap_(sh);
-    var rowIdx = findUserRowByEmail_(sh, email);
-    if (rowIdx === -1) return jsonOut_({ ok:false, error:'user_not_found' });
 
-    var token = Utilities.getUuid();
-    var expires = new Date(Date.now() + 24*60*60*1000).toISOString(); // 24h
-    var actualRow = rowIdx + 2;
+    var last = sh.getLastRow();
+    if (last < 2) return jsonOut_({ ok:false, error:'token_invalid' });
 
-    sh.getRange(actualRow, map.reset_token + 1).setValue(token);
-    sh.getRange(actualRow, map.reset_expires + 1).setValue(expires);
+    var values = sh.getRange(2, 1, last-1, sh.getLastColumn()).getValues();
+    var foundRow = -1;
 
-    var siteSlug = String(sh.getRange(actualRow, map.siteSlug + 1).getValue() || '');
-    sendWelcomeEmailWithReset_(email, siteSlug, dashUrl_(), token);
+    for (var i=0;i<values.length;i++){
+      var stored = String(values[i][map.reset_token] || '').trim();
+      if (stored === token) { foundRow = i + 2; break; }
+    }
+    if (foundRow === -1) return jsonOut_({ ok:false, error:'token_invalid' });
 
-    return jsonOut_({ ok:true, message:'reset_email_sent' });
+    var expires = values[foundRow - 2][map.reset_expires];
+    var expDate = new Date(String(expires));
+    if (isNaN(expDate.getTime()) || expDate.getTime() < Date.now()) {
+      // limpa token expirado
+      sh.getRange(foundRow, map.reset_token + 1).setValue('');
+      sh.getRange(foundRow, map.reset_expires + 1).setValue('');
+      return jsonOut_({ ok:false, error:'token_expired' });
+    }
+
+    // grava nova senha (hash + salt)
+    var salt = Utilities.getUuid();
+    var hash = sha256Hex_(password + salt);
+    sh.getRange(foundRow, map.password_hash + 1).setValue(hash);
+    sh.getRange(foundRow, map.salt + 1).setValue(salt);
+
+    // limpa token
+    sh.getRange(foundRow, map.reset_token + 1).setValue('');
+    sh.getRange(foundRow, map.reset_expires + 1).setValue('');
+
+    return jsonOut_({ ok:true, message:'password_reset_success' });
   } catch (e) {
     return jsonOut_({ ok:false, error:String(e) });
   }
 }
 
-function passwordResetConfirm_(ss, data) {
+/**
+ * Entrada esperada pelo doPost(type: "password_reset_request")
+ * data: { email: string }
+ * resp: { ok, message, link? }
+ */
+function passwordResetRequest_(ss, data) {
   try {
-    var token = String(data.token || '').trim();
-    var newPwd = String(data.password || '').trim();
-    if (!token || !newPwd) return jsonOut_({ ok:false, error:'missing_fields' });
-
-    var sh = ensureUsuariosSheet_(ss);
-    ensureResetColumns_(sh);
-    var map = headerIndexMap_(sh);
-    var last = sh.getLastRow();
-    if (last < 2) return jsonOut_({ ok:false, error:'no_users' });
-
-    var values = sh.getRange(2, 1, last-1, sh.getLastColumn()).getValues();
-    var foundRow = -1;
-    for (var i = 0; i < values.length; i++) {
-      var storedToken = String(values[i][map.reset_token] || '');
-      var expires = String(values[i][map.reset_expires] || '');
-      if (storedToken === token) {
-        if (new Date(expires) > new Date()) {
-          foundRow = i + 2;
-          break;
-        } else {
-          return jsonOut_({ ok:false, error:'token_expired' });
-        }
-      }
+    var email = String(data && data.email || '').trim().toLowerCase();
+    if (!email) {
+      return jsonOut_({ ok: false, error: 'missing_email' });
     }
 
-    if (foundRow === -1) return jsonOut_({ ok:false, error:'invalid_token' });
+    // Abas e headers
+    var sh = ss.getSheetByName('usuarios');
+    if (!sh) return jsonOut_({ ok:false, error:'sheet_usuarios_not_found' });
 
-    var salt = makeSalt_();
-    var hash = sha256Hex_(newPwd + salt);
+    var last = sh.getLastRow();
+    if (last < 2) return jsonOut_({ ok:true, message:'reset_email_sent' }); // não vaza existência
 
-    sh.getRange(foundRow, map.password_hash + 1).setValue(hash);
-    sh.getRange(foundRow, map.salt + 1).setValue(salt);
-    sh.getRange(foundRow, map.reset_token + 1).setValue('');
-    sh.getRange(foundRow, map.reset_expires + 1).setValue('');
+    var head = sh.getRange(1,1,1, sh.getLastColumn()).getValues()[0].map(String);
+    var idxEmail  = head.indexOf('email');
+    var idxToken  = head.indexOf('reset_token');
+    var idxExpire = head.indexOf('reset_token_expire');
+    if (idxEmail < 0)  return jsonOut_({ ok:false, error:'missing_email_header' });
+    if (idxToken < 0)  return jsonOut_({ ok:false, error:'missing_reset_token_header' });
+    if (idxExpire < 0) return jsonOut_({ ok:false, error:'missing_reset_token_expire_header' });
 
-    return jsonOut_({ ok:true, message:'password_reset_success' });
+    var rng  = sh.getRange(2,1, last-1, sh.getLastColumn());
+    var rows = rng.getValues();
+    var foundRowIndex = -1;
+
+    for (var i=0;i<rows.length;i++){
+      var rowEmail = String(rows[i][idxEmail] || '').trim().toLowerCase();
+      if (rowEmail === email) { foundRowIndex = i; break; }
+    }
+
+    // Não vazar se usuário existe ou não
+    if (foundRowIndex === -1) {
+      // ainda assim responde como sucesso
+      return jsonOut_({ ok:true, message:'reset_email_sent' });
+    }
+
+    // Gera token e validade (ex.: 2 horas)
+    var token  = Utilities.getUuid();
+    var expire = new Date(Date.now() + 2 * 60 * 60 * 1000); // +2h
+
+    rows[foundRowIndex][idxToken]  = token;
+    rows[foundRowIndex][idxExpire] = expire;
+    rng.setValues(rows);
+
+    // DASH_URL das Propriedades do Script (com fallback)
+    var props   = PropertiesService.getScriptProperties();
+    var dashUrl = String(props.getProperty('DASH_URL') || 'https://eleveaagencia.netlify.app/dashboard');
+    dashUrl = dashUrl.replace(/\/+$/, ''); // tira / no fim
+    var base = dashUrl.replace(/\/dashboard$/, ''); // queremos a raiz
+    var link = base + '/reset?email=' + encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
+
+    // Remetente das props; se não houver, usa TEAM_EMAIL
+    var fromAddr = props.getProperty('RESEND_FROM') || props.getProperty('TEAM_EMAIL') || '';
+
+    // Envia e-mail usando sua função existente
+    try {
+      sendPasswordResetEmail_(fromAddr, email, link);
+    } catch (errMail) {
+      // Mesmo que o envio falhe, não revelar ao usuário final
+      Logger.log('sendPasswordResetEmail_ fail: ' + String(errMail));
+    }
+
+    return jsonOut_({ ok:true, message:'reset_email_sent', link: link });
   } catch (e) {
     return jsonOut_({ ok:false, error:String(e) });
   }
@@ -2271,7 +2444,7 @@ function templateMap_(id) {
 }
 
 function buildLovablePrompt_(ctx) {
-  var plan      = String(ctx.plan || "").toLowerCase();          // "vip" | "essential"
+  var plan      = String(ctx.plan || "").toLowerCase();          // "vip" | "essential" | "dev"
   var site      = String(ctx.siteSlug || "").toUpperCase();
   var email     = String(ctx.email || "");
   var logoUrl   = String(ctx.logoUrl || "");
@@ -2285,16 +2458,18 @@ function buildLovablePrompt_(ctx) {
   var L = [];
 
   /* — Objetivo */
-  L.push("Crie uma landing institucional (one-page) completa para um pequeno negócio local.");
-  L.push("Use Vite + React + TypeScript + Tailwind. Uma única rota pública '/' (sem telas logadas).");
-  L.push("Hospedagem Netlify. O repositório terá `src/elevea.sections.json` e um script de pós-deploy que envia esse JSON ao meu GAS.");
+  L.push("Crie uma landing institucional (one-page) completa para um pequeno negócio local com funcionalidades avançadas de IA e automação integradas.");
+  L.push("Use Vite + React + TypeScript + Tailwind + Shadcn/ui. Uma única rota pública '/' (sem telas logadas).");
+  L.push("Arquitetura: Netlify (hospedagem + functions) + GitHub (código) + Google Apps Script (backend principal).");
+  L.push("O repositório terá `src/elevea.sections.json` e um script de pós-deploy que envia esse JSON ao meu GAS.");
 
   /* — ENV VARS (Netlify) que você deve ler no build/runtime */
   L.push("Variáveis do Netlify que DEVEM ser usadas:");
   L.push("- ELEVEA_SITE_SLUG      → slug MAIÚSCULO do site (ex.: ACME-MOTOS)");
   L.push("- ELEVEA_GAS_URL        → URL do GAS (/exec)");
   L.push("- ELEVEA_ADMIN_TOKEN    → token igual ao ADMIN_DASH_TOKEN no GAS (para publicar sections)");
-  L.push("- ELEVEA_STATUS_URL     → (opcional) mesma URL do GAS para checar status e carregar settings");
+  L.push("- ELEVEA_STATUS_URL     → mesma URL do GAS para checar status e carregar settings");
+  L.push("- VITE_GAS_BASE_URL     → URL do GAS para funcionalidades do frontend");
 
   /* — Detecção automática do tipo de negócio */
   var businessText = [historia, produtos].filter(Boolean).join(" ");
@@ -2328,20 +2503,49 @@ if (GAS && SITE && ADMIN && fs.existsSync("src/elevea.sections.json")) {
 [build]
 command = "npm run build"
 publish = "dist"
+
 [[build.lifecycle.onSuccess]]
   command = "node tools/elevea-sync-sections.mjs"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
 `.trim());
 
-  /* — Carregador de settings (status + settings_kv) */
+  /* — Carregador de settings (status + settings_kv) + funcionalidades avançadas */
   L.push("Implemente `src/lib/elevea.ts` com:");
   L.push(`
 const GAS = import.meta.env.ELEVEA_STATUS_URL || import.meta.env.ELEVEA_GAS_URL;
 const SLUG = import.meta.env.ELEVEA_SITE_SLUG;
+
 export async function loadSettings(){
   try{
     const r = await fetch(\`\${GAS}?type=get_settings&site=\${encodeURIComponent(SLUG)}\`, { cache:"no-store" });
-    const j = await r.json(); return j?.settings || {};
+    const j = await r.json(); 
+    return j?.settings || {};
   }catch{ return {}; }
+}
+
+export async function submitLead(leadData: {name: string, email: string, phone: string, source: string}) {
+  try {
+    const r = await fetch(\`\${GAS}?type=createLead_&site=\${encodeURIComponent(SLUG)}\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(leadData)
+    });
+    return await r.json();
+  } catch(e) { 
+    console.error('Erro ao enviar lead:', e);
+    return { ok: false, error: 'network_error' };
+  }
+}
+
+export async function checkSEOStatus() {
+  try {
+    const r = await fetch(\`\${GAS}?type=get_seo_analysis&site=\${encodeURIComponent(SLUG)}\`);
+    return await r.json();
+  } catch { return { ok: false }; }
 }
 `.trim());
 
@@ -2361,16 +2565,122 @@ export async function loadSettings(){
   L.push("Cabeçalho fixo (flutuante), menu com âncoras (#sobre, #servicos, #depoimentos, #contato), botão flutuante do WhatsApp.");
   L.push("Rodapé com endereço (texto), link 'Como chegar' (maps), redes sociais (se preenchidas), e e-mail/WhatsApp.");
 
-  /* — VIP vs Essencial */
-  if (plan === "vip") {
-    L.push("Plano VIP: destaque áreas editáveis (títulos/textos/imagens/cores) e inclua seção 'Depoimentos' com placeholder (será alimentada via back-end).");
+  /* — Sistema de Captura de Leads Integrado */
+  L.push("SISTEMA DE CAPTURA DE LEADS:");
+  L.push("- Implemente formulários de contato em múltiplas seções (Hero, Contato, CTA)");
+  L.push("- Use a função `submitLead()` do elevea.ts para enviar leads ao GAS");
+  L.push("- Campos obrigatórios: nome, email, telefone, source (automático da seção)");
+  L.push("- Feedback visual: loading states, toast de sucesso/erro");
+  L.push("- Validação: email válido, telefone brasileiro, nome mínimo 2 caracteres");
+  L.push("- Integração com função GAS `createLead_` existente");
+
+  /* — VIP vs Essencial vs Desenvolvimento */
+  if (plan === "dev") {
+    L.push("PLANO DESENVOLVIMENTO: Acesso total a todas as funcionalidades para testes e depuração.");
+    L.push("- Inclua todas as funcionalidades VIP + ferramentas de debug");
+    L.push("- Console de desenvolvimento para testar integração GAS");
+    L.push("- Botões de teste para envio de leads e verificação de settings");
+    L.push("- Destaque áreas editáveis (títulos/textos/imagens/cores) com bordas de debug");
+    L.push("- Seção 'Depoimentos' com placeholder alimentada via back-end");
+    L.push("- Ferramentas de desenvolvimento visíveis no footer");
+  } else if (plan === "vip") {
+    L.push("PLANO VIP: Funcionalidades avançadas com IA, automação e áreas editáveis.");
+    L.push("- Destaque áreas editáveis (títulos/textos/imagens/cores) com indicadores visuais discretos");
+    L.push("- Seção 'Depoimentos' com placeholder (será alimentada via back-end)");
+    L.push("- Auto-SEO: Meta tags otimizadas, Open Graph, estruturação semântica");
+    L.push("- WhatsApp Business: Botão integrado com mensagem personalizada e chatbot");
+    L.push("- Lead Scoring: Classificação automática Hot/Warm/Cold (visual discreto)");
+    L.push("- Depoimentos dinâmicos: Carregados via GAS (se disponíveis)");
+    L.push("- Chatbot visual: Widget que simula atendimento automatizado");
+    L.push("- Analytics integrados: Google Analytics 4 + Facebook Pixel (se configurados)");
+    L.push("- Schema markup: Dados estruturados para LocalBusiness");
+    L.push("- Sistema de gestão de conteúdo simplificado");
   } else {
-    L.push("Plano Essencial: mantenha a mesma estrutura, porém como conteúdo estático (sem UI de edição).");
+    L.push("PLANO ESSENCIAL: Funcionalidades básicas com conteúdo estático.");
+    L.push("- Mantenha a mesma estrutura, porém como conteúdo estático (sem UI de edição)");
+    L.push("- SEO básico: Meta tags essenciais apenas");
+    L.push("- WhatsApp simples: Link direto para conversa");
+    L.push("- Formulário de contato: Envio básico de leads");
+    L.push("- Depoimentos estáticos: Placeholder fixo sem carregamento dinâmico");
+    L.push("- Sem chatbot ou automações avançadas");
+    L.push("- Sem indicadores de áreas editáveis");
+  }
+
+  /* — Componentes Específicos Obrigatórios */
+  L.push("COMPONENTES OBRIGATÓRIOS:");
+  L.push("- Hero: CTA principal + formulário de lead capture + chamada impactante");
+  L.push("- Sobre: História da empresa + diferenciais + valores");
+  L.push("- Serviços/Produtos: Grid responsivo com detalhes + CTAs");
+  L.push("- Depoimentos: " + (plan === "vip" || plan === "dev" ? "Dinâmicos via GAS com fallback estático" : "Estáticos placeholder"));
+  L.push("- Contato: Formulário + mapa + informações + horários");
+  L.push("- WhatsApp Button: " + (plan === "vip" || plan === "dev" ? "Integrado com Business API e mensagens automáticas" : "Link direto simples"));
+  L.push("- Footer: Links úteis, redes sociais, informações legais, créditos");
+
+  /* — SEO e Performance por Plano */
+  if (plan === "vip" || plan === "dev") {
+    L.push("SEO AVANÇADO (VIP/DEV):");
+    L.push("- Implementar React Helmet para meta tags dinâmicas");
+    L.push("- Sitemap.xml automático baseado nas seções");
+    L.push("- Robots.txt otimizado para indexação");
+    L.push("- Schema.org LocalBusiness com dados do GAS");
+    L.push("- Open Graph + Twitter Cards com imagens otimizadas");
+    L.push("- Structured data para produtos/serviços");
+    L.push("- Meta tags de localização para SEO local");
+  } else {
+    L.push("SEO BÁSICO (ESSENCIAL):");
+    L.push("- Meta tags estáticas básicas (title, description, viewport)");
+    L.push("- Open Graph simples com dados fixos do briefing");
+    L.push("- Structured data básico apenas");
+  }
+
+  /* — Funcionalidades Avançadas por Plano */
+  if (plan === "vip" || plan === "dev") {
+    L.push("FUNCIONALIDADES AVANÇADAS:");
+    L.push("- Sistema de notificações real-time para novos leads");
+    L.push("- Integração com Google Analytics 4 e Facebook Pixel");
+    L.push("- Chat widget com respostas automáticas inteligentes");
+    L.push("- Sistema de agendamento integrado (se aplicável ao negócio)");
+    L.push("- Otimização automática de imagens (lazy loading + WebP)");
+    L.push("- PWA básico (manifest + service worker)");
+    L.push("- Modo escuro/claro automático baseado em preferência");
   }
 
   /* — Render por IDs, nunca por nomes fixos */
+  L.push("ARQUITETURA DE RENDERIZAÇÃO:");
   L.push("Na Home (`src/pages/Index.tsx`), carregue `defs` de `src/elevea.sections.json` e os valores via `loadSettings()`.");
   L.push("Para cada `sec` em `defs`, renderize a seção por ID; use valores `settings.sections.data[sec.id]` se existirem, senão placeholders do briefing.");
+  L.push("Implementar loading states elegantes para carregamento assíncrono de dados do GAS.");
+  L.push("Sistema de fallback robusto para quando o GAS estiver indisponível.");
+
+  /* — Integração com GAS Existente */
+  L.push("INTEGRAÇÃO GOOGLE APPS SCRIPT:");
+  L.push("- Função createLead_: Captura de leads com validação (EXISTENTE)");
+  L.push("- Função get_settings: Carregamento de configurações do site (EXISTENTE)");
+  L.push("- Função sections_upsert_defs: Sincronização de definições de seções (EXISTENTE)");
+  L.push("- Função get_seo_analysis: Análise SEO automática (NOVA)");
+  L.push("- Função update_site_content: Atualização de conteúdo via dashboard (NOVA)");
+  L.push("- Error handling robusto para indisponibilidade do GAS");
+  L.push("- Fallbacks locais para desenvolvimento offline");
+  L.push("- Sistema de retry automático para falhas de rede");
+
+  /* — Performance e UX */
+  L.push("PERFORMANCE E UX:");
+  L.push("- Lazy loading de imagens com placeholders elegantes");
+  L.push("- Componentes React otimizados (memo quando necessário)");
+  L.push("- Tailwind purged para bundle mínimo");
+  L.push("- Netlify optimizations (headers, redirects, edge functions)");
+  L.push("- Core Web Vitals otimizados (LCP < 2.5s, FID < 100ms, CLS < 0.1)");
+  L.push("- Loading skeletons para melhor percepção de performance");
+  L.push("- Animações suaves com Framer Motion (opcional)");
+  L.push("- Responsive design mobile-first");
+
+  /* — Segurança e Monitoramento */
+  L.push("SEGURANÇA E MONITORAMENTO:");
+  L.push("- Validação de inputs no frontend e backend");
+  L.push("- Sanitização de dados antes do envio ao GAS");
+  L.push("- Rate limiting básico para formulários");
+  L.push("- Logs de erro estruturados para debugging");
+  L.push("- Monitoramento de uptime do GAS");
 
   return L.join("\\n");
 }
@@ -2448,11 +2758,11 @@ function handleGeneratePrompt_(site) {
   // 3) gerar o prompt e salvar de volta
   var prompt = buildLovablePrompt_(found);
 
-  // 3a) atualiza/insere em "settings" a coluna lovable_prompt
+  // 3a) atualiza/insere em "settings" a coluna lovable_prompt + novas colunas para IA
   var sh = ss.getSheetByName("settings");
   if (!sh) {
     sh = ss.insertSheet("settings");
-    sh.appendRow(["timestamp","siteSlug","email","whatsapp","empresa","endereco","historia","produtos","fundacao","palette_id","palette_name","colors_json","template_id","template_name","logo_url","fotos_urls_json","drive_folder_url","plano","lovable_prompt"]);
+    sh.appendRow(["timestamp","siteSlug","email","whatsapp","empresa","endereco","historia","produtos","fundacao","palette_id","palette_name","colors_json","template_id","template_name","logo_url","fotos_urls_json","drive_folder_url","plano","lovable_prompt","last_updated_ai","seo_analysis","lead_score","whatsapp_active","auto_seo_enabled","chatbot_enabled"]);
   }
   var last = sh.getLastRow();
   var hdr  = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
@@ -2469,6 +2779,16 @@ function handleGeneratePrompt_(site) {
     hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
     iPrompt = hdr.indexOf("lovable_prompt");
   }
+  
+  // Adicionar colunas para novas funcionalidades se não existirem
+  var newColumns = ["last_updated_ai","seo_analysis","lead_score","whatsapp_active","auto_seo_enabled","chatbot_enabled"];
+  for (var nc = 0; nc < newColumns.length; nc++) {
+    if (hdr.indexOf(newColumns[nc]) === -1) {
+      sh.getRange(1, sh.getLastColumn()+1).setValue(newColumns[nc]);
+      hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+    }
+  }
+  
   var rowToWrite = rowFound;
   if (!rowFound) {
     sh.insertRowsAfter(last || 1, 1);
@@ -2479,6 +2799,10 @@ function handleGeneratePrompt_(site) {
   sh.getRange(rowToWrite, 1).setValue(new Date()); // timestamp na 1ª coluna
   // grava prompt
   sh.getRange(rowToWrite, iPrompt+1).setValue(prompt);
+  
+  // Atualiza timestamp da última modificação IA
+  var iLastAI = hdr.indexOf("last_updated_ai");
+  if (iLastAI !== -1) sh.getRange(rowToWrite, iLastAI+1).setValue(new Date());
 
   return jsonOut_({ ok:true, siteSlug: site, lovable_prompt: prompt });
 }
@@ -3129,52 +3453,34 @@ function dashUrl_() {
   return props.getProperty('DASH_URL') || 'https://eleveaagencia.netlify.app/dashboard';
 }
 
-function sendWelcomeEmailWithPassword_(toEmail, site, tempPassword, dashUrl) {
-  if (!toEmail) return;
-  var subj = "[Elevea] Acesso ao seu painel";
-  var body =
-    "<p>Olá!</p>" +
-    "<p>Seu painel do site <b>"+(site||'(sem slug)')+"</b> está pronto.</p>" +
-    "<p><b>Endereço do painel:</b> <a href=\""+dashUrl+"\">"+dashUrl+"</a></p>" +
-    "<p><b>Login:</b> "+toEmail+"<br>" +
-    "<b>Senha provisória:</b> "+tempPassword+"</p>" +
-    "<p>Recomendamos alterar a senha no primeiro acesso.</p>";
-  MailApp.sendEmail({ to: toEmail, subject: subj, htmlBody: body, cc: teamEmail_() });
-}
+function passwordResetRequest_(ss, data) {
+  try {
+    var email = String(data.email || '').trim().toLowerCase();
+    if (!email) return jsonOut_({ ok:false, error:'missing_email' });
 
-function sendWelcomeEmailWithReset_(toEmail, site, dashUrl, token) {
-  if (!toEmail) return;
-  var resetLink = dashUrl.replace(/\/+$/,"") + "/reset?email="+encodeURIComponent(toEmail)+"&token="+encodeURIComponent(token||'');
-  var subj = "[Elevea] Acesso ao seu painel";
-  var body =
-    "<p>Olá!</p>" +
-    "<p>Seu painel do site <b>"+(site||'(sem slug)')+"</b> está pronto.</p>" +
-    "<p><b>Endereço do painel:</b> <a href=\""+dashUrl+"\">"+dashUrl+"</a></p>" +
-    "<p>Para definir sua senha, clique: <a href=\""+resetLink+"\">Criar/Redefinir senha</a>.</p>";
-  MailApp.sendEmail({ to: toEmail, subject: subj, htmlBody: body, cc: teamEmail_() });
-}
+    var sh = ensureUsuariosSheet_(ss);
+    ensureResetColumns_(sh);
+    var map = headerIndexMap_(sh);
+    var rowIdx = findUserRowByEmail_(sh, email);
+    if (rowIdx === -1) return jsonOut_({ ok:true, message:'reset_email_sent' }); // não vaza existência
 
-function sendBillingEmailWarn_(toEmail, siteSlug, nextDate, daysOverdue) {
-  if (!toEmail) return;
-  var subj = "[Elevea] Renovação pendente do seu site";
-  var body =
-    "<p>Olá!</p>" +
-    "<p>Detectamos que a renovação da sua assinatura do site <b>"+(siteSlug||"(sem slug)")+"</b> está pendente.</p>" +
-    "<p>Data prevista: <b>"+(nextDate ? Utilities.formatDate(nextDate, Session.getScriptTimeZone(), "dd/MM/yyyy") : "(não definida)")+"</b>.</p>" +
-    "<p>Você tem uma margem de <b>"+GRACE_DAYS+" dias</b>. Após isso, a assinatura é cancelada automaticamente.</p>" +
-    "<p>Se precisar de ajuda, responda este e-mail.</p>";
-  MailApp.sendEmail({ to: toEmail, cc: teamEmail_(), subject: subj, htmlBody: body });
-}
+    var token   = Utilities.getUuid();
+    var expires = new Date(Date.now() + 24*60*60*1000).toISOString(); // 24h
+    var row     = rowIdx + 2;
 
-function sendBillingEmailCancelled_(toEmail, siteSlug, nextDate, daysOverdue) {
-  if (!toEmail) return;
-  var subj = "[Elevea] Assinatura cancelada por falta de renovação";
-  var body =
-    "<p>Olá!</p>" +
-    "<p>Sua assinatura do site <b>"+(siteSlug||"(sem slug)")+"</b> foi <b>cancelada</b> por não constarmos o pagamento após a margem de "+GRACE_DAYS+" dias.</p>" +
-    "<p>Data prevista da renovação: <b>"+(nextDate ? Utilities.formatDate(nextDate, Session.getScriptTimeZone(), "dd/MM/yyyy") : "(não definida)")+"</b>.</p>" +
-    "<p>Podemos reativar rapidamente assim que regularizar. Fale conosco respondendo este e-mail.</p>";
-  MailApp.sendEmail({ to: toEmail, cc: teamEmail_(), subject: subj, htmlBody: body });
+    sh.getRange(row, map.reset_token + 1).setValue(token);
+    sh.getRange(row, map.reset_expires + 1).setValue(expires);
+
+    // NÃO envia e-mail aqui (Netlify faz isso):
+    // if (SEND_RESET_EMAIL_FROM_GAS) { ... }
+
+    var link = dashUrl_().replace(/\/+$/,'') + '/reset?email=' +
+               encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
+
+    return jsonOut_({ ok:true, message:'reset_email_sent', token: token, link: link });
+  } catch (e) {
+    return jsonOut_({ ok:false, error:String(e) });
+  }
 }
 
 /** ============================= FUNÇÕES DE FEEDBACKS ============================= */
@@ -3291,7 +3597,7 @@ function listFeedbacksPublic_(site, page, pageSize) {
     if (last < 2) return { ok:true, page:1, pageSize:pageSize, total:0, items:[] };
 
     var vals = sh.getRange(2,1,last-1,9).getValues().filter(function(r){
-      return String(r[2]||"").trim().toUpperCase() === site && String(r[8]||"").toUpperCase() === "TRUE";
+    return String(r[2]||"").trim().toUpperCase() === site;
     });
 
     var total = vals.length;
@@ -3299,10 +3605,12 @@ function listFeedbacksPublic_(site, page, pageSize) {
     var slice = vals.slice(start, start + pageSize).map(function(r){
       return {
         id: String(r[0]||""),
-        ts: r[1] ? new Date(r[1]).toISOString() : "",
+        timestamp: r[1] ? new Date(r[1]).toISOString() : "",
         name: String(r[3]||""),
+        email: String(r[6]||""),
+        phone: String(r[7]||""),
+        message: String(r[5]||""),
         rating: Number(r[4]||0) || 0,
-        comment: String(r[5]||""),
         approved: true
       };
     });
@@ -3331,13 +3639,39 @@ function listFeedbacksSecure_(ss, data) {
       if (saved && pin && pin === saved) pinOk = true;
     }
 
+    var sh = ensureFeedbacksSheet_();
+    var last = sh.getLastRow(); 
+    if (last < 2) return jsonOut_({ ok:true, page:1, pageSize:pageSize, total:0, items:[] });
+
+    var vals;
     if (pinOk) {
-      var all = listFeedbacks_(site, page, pageSize);
-      return jsonOut_(all);
+      // Com PIN válido: mostra todos os feedbacks (aprovados e não aprovados)
+      vals = sh.getRange(2,1,last-1,9).getValues().filter(function(r){
+        return String(r[2]||"").trim().toUpperCase() === site;
+      });
     } else {
-      var pub = listFeedbacksPublic_(site, page, pageSize);
-      return jsonOut_(pub);
+      // Sem PIN válido: apenas feedbacks aprovados
+      vals = sh.getRange(2,1,last-1,9).getValues().filter(function(r){
+        return String(r[2]||"").trim().toUpperCase() === site && String(r[8]||"").toUpperCase() === "TRUE";
+      });
     }
+
+    var total = vals.length;
+    var start = Math.min((page-1) * pageSize, Math.max(0, total - 1));
+    var slice = vals.slice(start, start + pageSize).map(function(r){
+      return {
+        id: String(r[0]||""),
+        timestamp: r[1] ? new Date(r[1]).toISOString() : "",
+        name: String(r[3]||""),
+        email: String(r[6]||""),
+        phone: String(r[7]||""),
+        message: String(r[5]||""),
+        rating: Number(r[4]||0) || 0,
+        approved: String(r[8]||"").toUpperCase() === "TRUE"
+      };
+    });
+
+    return jsonOut_({ ok:true, page:page, pageSize:pageSize, total: total, items: slice });
   } catch (e) {
     return jsonOut_({ ok:false, error:String(e) });
   }
@@ -5441,6 +5775,283 @@ function audit_resolve_alert(e, data) {
 }
 function audit_get_statistics(e, data) { 
   return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Função não implementada' })).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Abre a planilha indicada na Script Property SPREADSHEET_ID */
+function ensureSpreadsheet_() {
+  const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  if (!id) throw new Error('Script Property SPREADSHEET_ID ausente.');
+  try {
+    return SpreadsheetApp.openById(id);
+  } catch (e) {
+    throw new Error('Falha ao abrir SPREADSHEET_ID: ' + e.message);
+  }
+}
+
+/** Retorna a aba "usuarios" e um mapa dos índices das colunas principais */
+function getUsersSheetAndIndexes_() {
+  const ss = ensureSpreadsheet_();
+  const sh = ss.getSheetByName('usuarios');
+  if (!sh) throw new Error('Aba "usuarios" não encontrada.');
+  const values = sh.getDataRange().getValues();
+  const head = values.shift();
+  const idx = {
+    email: head.indexOf('email'),
+    reset_token: head.indexOf('reset_token')
+  };
+  if (idx.email < 0 || idx.reset_token < 0) {
+    throw new Error('Colunas "email" e/ou "reset_token" não encontradas na aba "usuarios".');
+  }
+  return { ss, sh, head, data: values, idx };
+}
+
+/** TESTE: simula a chamada m=password_reset_request no seu doPost */
+function TEST_password_reset_request() {
+  const email = 'mathmartins@gmail.COM'; // <-- AJUSTE AQUI
+
+  // Monta o mesmo envelope que o Apps Script recebe em produção
+  const e = {
+    parameter: {},
+    postData: {
+      type: 'application/json',
+      contents: JSON.stringify({ m: 'password_reset_request', email })
+    }
+  };
+
+  const out = doPost(e); // usa sua própria entrypoint
+  const txt = out && out.getContent ? out.getContent() : String(out);
+  Logger.log('Resposta do doPost(password_reset_request): ' + txt);
+
+  // Confere rapidamente se o token foi gravado
+  try {
+    const { data, idx } = getUsersSheetAndIndexes_();
+    const row = data.find(r => (r[idx.email] + '').trim().toLowerCase() === email.toLowerCase());
+    Logger.log('Token gravado para ' + email + ': ' + (row ? row[idx.reset_token] : 'NÃO ENCONTRADO'));
+  } catch (err) {
+    Logger.log('Aviso ao conferir token: ' + err.message);
+  }
+}
+
+/** TESTE: lê o token na aba "usuarios" e simula m=password_reset_confirm */
+function TEST_password_reset_confirm() {
+  const NOVA_SENHA = 'NovaSenha123!';          // <-- AJUSTE
+  const EMAIL_ALVO = 'SEU_EMAIL@EXEMPLO.COM';  // <-- opcional p/ filtrar
+
+  // Lê último token existente (ou o do e-mail alvo)
+  const { data, idx } = getUsersSheetAndIndexes_();
+  let token = null;
+  if (EMAIL_ALVO) {
+    const row = data.find(r => (r[idx.email] + '').trim().toLowerCase() === EMAIL_ALVO.toLowerCase());
+    if (row) token = row[idx.reset_token];
+  }
+  if (!token) {
+    // fallback: pega o último token não vazio
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (data[i][idx.reset_token]) { token = data[i][idx.reset_token]; break; }
+    }
+  }
+  if (!token) throw new Error('Nenhum reset_token encontrado na aba "usuarios". Rode o TEST_password_reset_request antes.');
+
+  const e = {
+    parameter: {},
+    postData: {
+      type: 'application/json',
+      contents: JSON.stringify({ m: 'password_reset_confirm', token, password: NOVA_SENHA })
+    }
+  };
+
+  const out = doPost(e);
+  const txt = out && out.getContent ? out.getContent() : String(out);
+  Logger.log('Resposta do doPost(password_reset_confirm): ' + txt);
+}
+
+/**
+ * Envia e-mail SEMPRE pelo remetente institucional, com fallback.
+ * Ordem: (1) Netlify mailer-dispatch  → (2) Resend direto
+ *
+ * Requisitos:
+ *  - Script Properties:
+ *      DASH_URL              (ex: https://eleveaagencia.netlify.app)
+ *      RESEND_API_KEY        (chave da Resend)
+ *      RESEND_FROM           (ex: no-reply@eleveaagencia.com.br)
+ *      // opcional: TEAM_EMAIL (usado se RESEND_FROM não existir)
+ */
+function sendEmailUnified_(to, subject, html, opts) {
+  opts = opts || {};
+  var props = PropertiesService.getScriptProperties();
+
+  // --- Config base
+  var DASH = String(props.getProperty('DASH_URL') || '').replace(/\/$/, '');
+  var MAILER = DASH ? (DASH + '/.netlify/functions/mailer-dispatch') : '';
+  var RESEND_KEY = props.getProperty('RESEND_API_KEY') || '';
+  var FROM = props.getProperty('RESEND_FROM') || props.getProperty('TEAM_EMAIL') || 'no-reply@eleveaagencia.com.br';
+
+  if (!FROM) throw new Error('missing_from_address');
+
+  // --- 1) Tenta enviar pela central (Netlify)
+  if (MAILER) {
+    try {
+      var payload1 = {
+        template: opts.template || 'raw',
+        to: to,
+        subject: subject,
+        html: html
+      };
+      if (opts.template === 'reset') {
+        // quando usar template pronto de reset
+        if (!opts.link) throw new Error('missing_link_for_reset_template');
+        payload1.link = String(opts.link);
+      }
+      if (opts.template === 'welcome') {
+        payload1.name = String(opts.name || '');
+        payload1.dashboardUrl = String(opts.dashboardUrl || (DASH + '/client/dashboard'));
+      }
+
+      var r1 = UrlFetchApp.fetch(MAILER, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify(payload1),
+        muteHttpExceptions: true
+      });
+      var code1 = r1.getResponseCode();
+      if (code1 >= 200 && code1 < 300) return { ok: true, path: 'netlify' };
+
+      // Se falhar, cai para Resend
+      Logger.log('mailer-dispatch fail ' + code1 + ': ' + r1.getContentText());
+    } catch (err1) {
+      Logger.log('mailer-dispatch error: ' + err1);
+      // continua no fallback
+    }
+  }
+
+  // --- 2) Fallback: enviar direto via Resend
+  if (!RESEND_KEY) throw new Error('missing_resend_api_key');
+
+  var body2 = {
+    from: FROM,
+    to: Array.isArray(to) ? to : [to],
+    subject: subject,
+    html: html
+  };
+  if (opts.replyTo) body2.reply_to = String(opts.replyTo);
+
+  var r2 = UrlFetchApp.fetch('https://api.resend.com/emails', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + RESEND_KEY },
+    payload: JSON.stringify(body2),
+    muteHttpExceptions: true
+  });
+  var code2 = r2.getResponseCode();
+  var txt2 = r2.getContentText();
+  if (code2 >= 200 && code2 < 300) return { ok: true, path: 'resend' };
+  throw new Error('resend_error_' + code2 + ': ' + txt2);
+}
+
+/* ===== Exemplos de uso ===== */
+
+// 1) Reset de senha (usando template pronto da central; cai no fallback automático se preciso)
+function EMAIL_reset_link_(email, resetLink) {
+  var subject = 'Elevea • Redefinição de senha';
+  // o HTML é ignorado quando template='reset' (a central monta), mas mantemos para o fallback.
+  var html = '<p>Para redefinir sua senha, clique: <a href="'+resetLink+'">Redefinir senha</a></p>';
+  return sendEmailUnified_(email, subject, html, { template: 'reset', link: resetLink });
+}
+
+// 2) Boas-vindas
+function EMAIL_boas_vindas_(email, nome, dashUrl) {
+  var subject = 'Bem-vindo(a) à Elevea';
+  var html = '<p>Seu painel está pronto: <a href="'+dashUrl+'">Abrir painel</a></p>';
+  return sendEmailUnified_(email, subject, html, { template: 'welcome', name: nome || '', dashboardUrl: dashUrl });
+}
+
+// 3) Qualquer e-mail “livre”
+function EMAIL_livre_(to, subject, html) {
+  return sendEmailUnified_(to, subject, html, { template: 'raw' });
+}
+
+function testFeedbacksFunction() {
+  Logger.log("=== TESTE FUNÇÕES DE FEEDBACK ===");
+  
+  // Testa se a função existe
+  try {
+    var result = listFeedbacksPublic_("LOUNGERIEAMAPAGARDEN", 1, 20);
+    Logger.log("listFeedbacksPublic_ existe: " + JSON.stringify(result));
+  } catch (e) {
+    Logger.log("listFeedbacksPublic_ NÃO existe: " + e);
+  }
+  
+  // Testa se a função com nome diferente existe
+  try {
+    var result2 = listFeedbacks_("LOUNGERIEAMAPAGARDEN", 1, 20);
+    Logger.log("listFeedbacks_ existe: " + JSON.stringify(result2));
+  } catch (e) {
+    Logger.log("listFeedbacks_ NÃO existe: " + e);
+  }
+}
+
+function debugNormalizeSlug() {
+  var original = "LOUNGERIEAMAPAGARDEN";
+  var normalizado = normalizeSlug_(original);
+  
+  Logger.log("Original: '" + original + "'");
+  Logger.log("Normalizado: '" + normalizado + "'");
+  Logger.log("São iguais: " + (original === normalizado));
+  
+  // Teste a função completa
+  var resultado = listFeedbacksPublic_(normalizado, 1, 20);
+  Logger.log("Resultado com normalizado: " + JSON.stringify(resultado));
+}
+
+function debugDoGet() {
+  Logger.log("=== TESTE MANUAL doGet ===");
+  
+  // Simular parâmetros como vem da web app
+  var mockEvent = {
+    parameter: {
+      type: "list_feedbacks_public",
+      site: "LOUNGERIEAMAPAGARDEN", 
+      page: "1",
+      pageSize: "20"
+    }
+  };
+  
+  Logger.log("Parâmetros simulados: " + JSON.stringify(mockEvent.parameter));
+  
+  // Chamar doGet com os parâmetros
+  var resultado = doGet(mockEvent);
+  Logger.log("Resultado doGet: " + resultado.body);
+  
+  // Verificar se o type está sendo reconhecido
+  var type = String(mockEvent.parameter.type || "").toLowerCase();
+  Logger.log("Type processado: '" + type + "'");
+  Logger.log("Comparação: " + (type === "list_feedbacks_public"));
+}
+
+/** ===== JSON helpers ===== */
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** ====== Testes rápidos dentro do editor do GAS (Executar) ====== */
+function TEST_ping() {
+  Logger.log(JSON.stringify({ ok:true, layer:"GAS TEST", ts: new Date().toISOString() }));
+}
+
+function TEST_listPublic() {
+  const r = listFeedbacksPublic_('SEU_SITE_SLUG', 1, 5);
+  Logger.log(JSON.stringify(r));
+}
+
+function TEST_listSecure() {
+  const r = listFeedbacksSecure_(null, { site:'SEU_SITE_SLUG', pin:'SEU_PIN_VIP', page:1, pageSize:5 });
+  Logger.log(JSON.stringify(r));
+}
+
+function TEST_setApproval() {
+  const r = feedbackSetApproval_(null, { site:'SEU_SITE_SLUG', id:'ID_DO_FEEDBACK', approved:true, pin:'SEU_PIN_VIP' });
+  Logger.log(JSON.stringify(r));
 }
 
 /**
