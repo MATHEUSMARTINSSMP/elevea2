@@ -20,6 +20,10 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Netlify Functions"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -31,6 +35,18 @@ outputType = "webview"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Netlify Functions"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "netlify functions:serve --port=8888"
+waitForPort = 8888
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[ports]]
 localPort = 5000
@@ -49,8 +65,8 @@ localPort = 33473
 externalPort = 3003
 
 [[ports]]
-localPort = 37775
-externalPort = 4200
+localPort = 39967
+externalPort = 3002
 
 [[ports]]
 localPort = 41131
