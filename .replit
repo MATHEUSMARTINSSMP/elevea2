@@ -37,6 +37,10 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
+localPort = 8000
+externalPort = 8000
+
+[[ports]]
 localPort = 8888
 externalPort = 5000
 
@@ -49,12 +53,12 @@ localPort = 33473
 externalPort = 3003
 
 [[ports]]
-localPort = 39967
-externalPort = 3002
-
-[[ports]]
 localPort = 41131
 externalPort = 3000
+
+[[ports]]
+localPort = 42053
+externalPort = 3002
 
 [agent]
 integrations = ["javascript_openai:1.0.0"]
