@@ -132,6 +132,38 @@ export function mockClientFeedbacks(site: string) {
 }
 
 /**
+ * Mock para /auth-session - simula sessão do usuário de desenvolvimento
+ */
+export function mockAuthSession(action: string) {
+  console.log('[DEV MOCK] auth-session called for action:', action);
+  
+  if (action === 'me') {
+    return {
+      ok: true,
+      authenticated: true,
+      user: {
+        login: 'dev',
+        siteSlug: 'LOUNGERIEAMAPAGARDEN', 
+        plan: 'dev',
+        email: 'dev@elevea.com'
+      }
+    };
+  }
+  
+  if (action === 'logout') {
+    return {
+      ok: true,
+      message: 'Logout successful'
+    };
+  }
+  
+  return {
+    ok: false,
+    error: 'Unknown action'
+  };
+}
+
+/**
  * Intercepta chamadas para funções Netlify em desenvolvimento
  */
 export function interceptNetlifyFunctions(url: string, originalFetch: typeof fetch): Promise<Response> {
@@ -177,6 +209,12 @@ export function interceptNetlifyFunctions(url: string, originalFetch: typeof fet
     } else {
       mockData = { ok: true, message: 'Development mock - action not implemented' };
     }
+  }
+  
+  // auth-session
+  else if (path === '/.netlify/functions/auth-session') {
+    const action = params.get('action') || 'me';
+    mockData = mockAuthSession(action);
   }
 
   // Se tem mock, retorna

@@ -1571,5 +1571,3 @@ function VipGate({
     </div>
   );
 }
-
-      {/* Botão flutuante do Chat AI - apenas para VIP */}
