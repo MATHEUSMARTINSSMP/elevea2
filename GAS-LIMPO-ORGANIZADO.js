@@ -54,7 +54,7 @@ const NEW_SHEET_HEADERS = {
 function getOrCreateSheet_(sheetName) {
   const ss = openSS_();
   let sheet = ss.getSheetByName(sheetName);
-  
+
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
     const headers = NEW_SHEET_HEADERS[sheetName];
@@ -63,7 +63,7 @@ function getOrCreateSheet_(sheetName) {
       log_(ss, "sheet_created", { sheetName: sheetName, headers: headers.join(', ') });
     }
   }
-  
+
   return sheet;
 }
 
@@ -72,12 +72,12 @@ function findSheetData_(sheetName, filters = {}) {
   try {
     const sheet = getOrCreateSheet_(sheetName);
     const data = sheet.getDataRange().getValues();
-    
+
     if (data.length <= 1) return [];
-    
+
     const headers = data[0];
     const rows = data.slice(1);
-    
+
     let results = rows.map(row => {
       const obj = {};
       headers.forEach((header, index) => {
@@ -87,13 +87,13 @@ function findSheetData_(sheetName, filters = {}) {
     }).filter(obj => {
       return Object.values(obj).some(val => val !== '');
     });
-    
+
     Object.keys(filters).forEach(key => {
       if (filters[key] !== undefined && filters[key] !== '') {
         results = results.filter(item => {
           const itemValue = item[key];
           const filterValue = filters[key];
-          
+
           if (typeof filterValue === 'string') {
             return itemValue && itemValue.toString().toLowerCase().includes(filterValue.toLowerCase());
           }
@@ -101,9 +101,9 @@ function findSheetData_(sheetName, filters = {}) {
         });
       }
     });
-    
+
     return results;
-    
+
   } catch (error) {
     log_(openSS_(), "findSheetData_error", { sheetName: sheetName, error: String(error) });
     return [];
@@ -115,7 +115,7 @@ function addSheetRow_(sheetName, rowData) {
   try {
     const sheet = getOrCreateSheet_(sheetName);
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    
+
     const row = headers.map(header => {
       if (header === 'createdAt' && !rowData[header]) {
         return new Date().toISOString();
@@ -128,10 +128,10 @@ function addSheetRow_(sheetName, rowData) {
       }
       return rowData[header] || '';
     });
-    
+
     sheet.appendRow(row);
     log_(openSS_(), "sheet_row_added", { sheetName: sheetName, data: JSON.stringify(rowData) });
-    
+
     return true;
   } catch (error) {
     log_(openSS_(), "addSheetRow_error", { sheetName: sheetName, error: String(error) });
@@ -145,25 +145,25 @@ function updateSheetRow_(sheetName, filters, updates) {
     const sheet = getOrCreateSheet_(sheetName);
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
-    
+
     let rowIndex = -1;
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       let matches = true;
-      
+
       Object.keys(filters).forEach(filterKey => {
         const colIndex = headers.indexOf(filterKey);
         if (colIndex >= 0 && row[colIndex] !== filters[filterKey]) {
           matches = false;
         }
       });
-      
+
       if (matches) {
         rowIndex = i + 1;
         break;
       }
     }
-    
+
     if (rowIndex > 0) {
       Object.keys(updates).forEach(updateKey => {
         const colIndex = headers.indexOf(updateKey);
@@ -171,7 +171,7 @@ function updateSheetRow_(sheetName, filters, updates) {
           sheet.getRange(rowIndex, colIndex + 1).setValue(updates[updateKey]);
         }
       });
-      
+
       const timestampFields = ['lastUpdated', 'updatedAt'];
       timestampFields.forEach(field => {
         const colIndex = headers.indexOf(field);
@@ -179,7 +179,7 @@ function updateSheetRow_(sheetName, filters, updates) {
           sheet.getRange(rowIndex, colIndex + 1).setValue(new Date().toISOString());
         }
       });
-      
+
       log_(openSS_(), "sheet_row_updated", { 
         sheetName: sheetName, 
         filters: JSON.stringify(filters), 
@@ -189,7 +189,7 @@ function updateSheetRow_(sheetName, filters, updates) {
     } else {
       return addSheetRow_(sheetName, { ...filters, ...updates });
     }
-    
+
   } catch (error) {
     log_(openSS_(), "updateSheetRow_error", { sheetName: sheetName, error: String(error) });
     return false;
@@ -225,18 +225,18 @@ function checkAppointmentAvailability_(site, datetime, duration) {
     const appointments = findSheetData_('appointments', { site: site });
     const requestedStart = new Date(datetime);
     const requestedEnd = new Date(requestedStart.getTime() + (duration * 60000));
-    
+
     for (let appointment of appointments) {
       if (appointment.status === 'cancelled') continue;
-      
+
       const existingStart = new Date(appointment.datetime);
       const existingEnd = new Date(existingStart.getTime() + ((appointment.duration || 60) * 60000));
-      
+
       if (requestedStart < existingEnd && requestedEnd > existingStart) {
         return false;
       }
     }
-    
+
     return true;
   } catch (error) {
     log_(openSS_(), "checkAppointmentAvailability_error", { error: String(error) });
@@ -254,7 +254,7 @@ function checkSecurityAlerts_(auditLog) {
       { pattern: /unauthorized.*access/i, severity: 'high', type: 'unauthorized_access' },
       { pattern: /multiple.*failed.*attempts/i, severity: 'high', type: 'multiple_failures' }
     ];
-    
+
     for (let pattern of suspiciousPatterns) {
       if (pattern.pattern.test(auditLog.details || auditLog.action)) {
         const alert = {
@@ -266,7 +266,7 @@ function checkSecurityAlerts_(auditLog) {
           resolved: false,
           createdAt: new Date().toISOString()
         };
-        
+
         addSheetRow_('security_alerts', alert);
         log_(openSS_(), "security_alert_created", { 
           type: pattern.type, 
@@ -431,7 +431,7 @@ function doGet(e) {
       // 🎯 CORREÇÃO: Buscar dados de pagamento do MercadoPago ou planilha de pagamentos
       var lastPayment = null;
       var nextCharge = null;
-      
+
       // Tentar buscar último pagamento na planilha de pagamentos (se existir)
       try {
         var shPagamentos = ss.getSheetByName("pagamentos");
@@ -441,25 +441,25 @@ function doGet(e) {
           var idxSitePag = pagHeaders.indexOf("siteSlug");
           var idxDate = pagHeaders.indexOf("date") !== -1 ? pagHeaders.indexOf("date") : pagHeaders.indexOf("payment_date");
           var idxAmount = pagHeaders.indexOf("amount") !== -1 ? pagHeaders.indexOf("amount") : pagHeaders.indexOf("valor");
-          
+
           if (idxSitePag !== -1 && idxDate !== -1) {
             // Buscar último pagamento para este site
             var pagamentos = pagData.slice(1).filter(function(r) {
               return String(r[idxSitePag] || "").trim() === siteSlug;
             });
-            
+
             if (pagamentos.length > 0) {
               // Pegar o mais recente
               var ultimoPag = pagamentos[pagamentos.length - 1];
               var payDate = ultimoPag[idxDate];
               var payAmount = idxAmount !== -1 ? ultimoPag[idxAmount] : 97.0;
-              
+
               if (payDate) {
                 lastPayment = {
                   date: new Date(payDate).toISOString(),
                   amount: parseFloat(payAmount) || 97.0
                 };
-                
+
                 // Calcular próxima cobrança (último pagamento + 1 mês)
                 try {
                   var nextDate = new Date(payDate);
@@ -599,35 +599,30 @@ function doPost(e) {
     data = {};
   }
 
-  // ✅ COMPATIBILIDADE: Normalizar tipo a partir de várias chaves e também da querystring
-// - aceita 'type', 'action' ou 'm' no body JSON
-// - se vier via querystring (?type=... ou ?m=...), também promove para o body
-(function normalizeTypeAndPromoteFromQuery() {
-  const qp = (e && e.parameter) ? e.parameter : {};
-
-  // Promove campos importantes da query para o body, se estiverem faltando
-  const promoteKeys = ['type','action','m','email','token','password','site','siteSlug'];
-  for (const k of promoteKeys) {
-    if (qp[k] != null && (data[k] == null || data[k] === '')) {
-      data[k] = qp[k];
+  // ✅ COMPAT: normaliza type/action/m e promove query → body
+  (function normalizeTypeAndPromoteFromQuery() {
+    const qp = (e && e.parameter) ? e.parameter : {};
+    const promoteKeys = [
+      'type','action','m','email','token','password','site','siteSlug',
+      'pin','vipPin','adminToken','page','pageSize','id','approved'
+    ];
+    for (const k of promoteKeys) {
+      if (qp[k] != null && (data[k] == null || data[k] === '')) data[k] = qp[k];
     }
-  }
+    data.type = data.type || data.action || data.m || '';
+  })();
 
-  // Decide o "tipo" aceitando 'type', 'action' ou 'm'
-  data.type = data.type || data.action || data.m || '';
-})();
+  const type = String(data.type || '');
+  const normalizedData = { ...data, type };
 
-const type = String(data.type || '');
-const normalizedData = { ...data, type };
-
-log_(ss, "normalized", {
-  originalType: String(data.type || ""),
-  originalAction: String(data.action || ""),
-  originalM: String(data.m || ""),
-  fromQueryType: String(e && e.parameter && e.parameter.type || ""),
-  fromQueryM: String(e && e.parameter && e.parameter.m || ""),
-  normalizedType: type
-});
+  log_(ss, "normalized", {
+    originalType: String(data.type || ""),
+    originalAction: String(data.action || ""),
+    originalM: String(data.m || ""),
+    fromQueryType: String(e && e.parameter && e.parameter.type || ""),
+    fromQueryM: String(e && e.parameter && e.parameter.m || ""),
+    normalizedType: type
+  });
 
   // Ping rápido
   if (type === "ping") {
@@ -648,7 +643,7 @@ log_(ss, "normalized", {
       return handleSaveOnboarding_(ss, data);
     }
 
-    // ===== Gerar/atualizar apenas o prompt do Lovable (a partir do que já está em settings) =====
+    // ===== Gerar/atualizar apenas o prompt do Lovable =====
     if (type === "generate_prompt" || String(e.parameter && e.parameter.type || "") === "generate_prompt") {
       var siteGen = normalizeSlug_(String((data.siteSlug || (e.parameter && e.parameter.siteSlug) || (e.parameter && e.parameter.site) || "")));
       return handleGeneratePrompt_(siteGen);
@@ -689,13 +684,10 @@ log_(ss, "normalized", {
       return handleUploadBase64_(ss, data);
     }
 
-    // ===== SESSIONS: receber defs do Lovable (Netlify onSuccess) =====
+    // ===== SESSIONS/Lovable =====
     if (type === "sections_upsert_defs") {
-      // delega auth e persistência para a própria função (único ponto — removido duplicado)
       return sectionsUpsertDefs_(ss, data);
     }
-
-    // ===== SESSIONS: inicializar conteúdo (data) a partir do onboarding =====
     if (type === "sections_bootstrap_from_onboarding") {
       var siteB = normalizeSlug_(String(data.site || data.siteSlug || ''));
       if (!siteB) return jsonOut_({ ok:false, error:'missing_site' });
@@ -703,7 +695,7 @@ log_(ss, "normalized", {
       return jsonOut_(Object.assign({ ok:true, siteSlug: siteB }, r2));
     }
 
-    // ---- Admin: setar/atualizar o hook de um site (opcional) ----
+    // ---- Admin: setar/atualizar hook de site ----
     if (data.type === 'admin_set_hook') {
       var props = PropertiesService.getScriptProperties();
       var ADMIN = props.getProperty('ADMIN_DASH_TOKEN') || props.getProperty('ADMIN_TOKEN') || '';
@@ -717,70 +709,6 @@ log_(ss, "normalized", {
       return jsonOut_(Object.assign({ ok:true, siteSlug:s }, r));
     }
 
-    // === Admin: setar manual_block via POST (JSON), com token ===
-    if (type === "admin_set") {
-      var props = PropertiesService.getScriptProperties();
-      var ADMIN = props.getProperty('ADMIN_DASH_TOKEN') || props.getProperty('ADMIN_TOKEN') || '';
-      var token = String(data.token || '');
-      if (!ADMIN || token !== ADMIN) {
-        log_(ss,"post_admin_set_fail",{ error:"unauthorized" });
-        return jsonOut_({ ok:false, error:"unauthorized" });
-      }
-
-      var site   = normalizeSlug_(String(data.site || data.siteSlug || ''));
-      var manual = String(data.manualBlock || data.block || '').toLowerCase();
-      var manualBlock = (manual === '1' || manual === 'true' || manual === 'yes' || manual === 'on');
-
-      if (!site) return jsonOut_({ ok:false, error:"missing_site" });
-
-      // ⚠️ NÃO redeclare shCad aqui — já existe acima em doPost
-      if (!shCad) return jsonOut_({ ok:false, error:"missing_sheet_cadastros" });
-
-      var headers = shCad.getRange(1,1,1, shCad.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
-      var idxSite   = headers.indexOf('siteSlug');
-      if (idxSite === -1) return jsonOut_({ ok:false, error:'missing_siteSlug_header' });
-      var idxManual = headers.indexOf('manual_block');
-      var idxUpd    = headers.indexOf('updated_at');
-
-      // cria manual_block, se faltar
-      if (idxManual === -1) {
-        var lastCol = shCad.getLastColumn();
-        shCad.insertColumnAfter(lastCol);
-        shCad.getRange(1, lastCol + 1).setValue('manual_block');
-        headers   = shCad.getRange(1,1,1, shCad.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
-        idxManual = headers.indexOf('manual_block');
-      }
-      // cria updated_at, se faltar (carimbo útil)
-      if (idxUpd === -1) {
-        var lastCol2 = shCad.getLastColumn();
-        shCad.insertColumnAfter(lastCol2);
-        shCad.getRange(1, lastCol2 + 1).setValue('updated_at');
-        headers = shCad.getRange(1,1,1, shCad.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
-        idxUpd  = headers.indexOf('updated_at');
-      }
-
-      var last = shCad.getLastRow();
-      if (last < 2) return jsonOut_({ ok:false, error:'no_rows' });
-
-      var rng  = shCad.getRange(2,1, last-1, shCad.getLastColumn());
-      var rows = rng.getValues();
-
-      var updated = false;
-      for (var i = 0; i < rows.length; i++) {
-        var slugRow = normalizeSlug_(String(rows[i][idxSite] || ''));
-        if (slugRow === site) {
-          rows[i][idxManual] = manualBlock ? 'TRUE' : '';                   // padrão Sheets
-          if (idxUpd !== -1) rows[i][idxUpd] = new Date().toISOString();    // carimbo
-          updated = true;
-          break;
-        }
-      }
-      if (!updated) return jsonOut_({ ok:false, error:'site_not_found' });
-
-      rng.setValues(rows);
-      return jsonOut_({ ok:true, siteSlug: site, manual_block: manualBlock });
-    }
-
     /* ===================== AUTH ===================== */
     if (data.type === 'user_set_password')      { log_(ss,"route_user_set_password",{}); return userSetPassword_(ss, data); }
     if (data.type === 'user_login')             { log_(ss,"route_user_login",{});        return userLogin_(ss, data); }
@@ -791,13 +719,12 @@ log_(ss, "normalized", {
     // **NOVO**: Billing do cliente
     if (data.type === 'client_billing')         { log_(ss,"route_client_billing",{});    return clientBilling_(ss, data); }
 
-    // **NOVO**: Estrutura personalizada de sites
+    // **NOVO**: Estrutura personalizada de sites (aliases via action)
     if (data.action === 'get_site_structure')   { log_(ss,"route_get_site_structure",{}); return jsonOut_(get_site_structure(data.site)); }
     if (data.action === 'save_site_structure')  { log_(ss,"route_save_site_structure",{}); return jsonOut_(save_site_structure(data.site, data.structure)); }
     if (data.action === 'validate_vip_pin')     { log_(ss,"route_validate_vip_pin",{});   return jsonOut_(validate_vip_pin(data.site, data.pin)); }
 
     /* ===================== OVERRIDE (admin) ===================== */
-    // aceita também "manual_block" ou "admin_toggle" como aliases de override
     if (data.type === 'override' || data.type === 'manual_block' || data.type === 'admin_toggle') {
       log_(ss,"route_override",{});
       return handleOverride_(data, shCad);
@@ -817,22 +744,18 @@ log_(ss, "normalized", {
         data.amount||'',
         safeJson_(data)
       ]);
-
-      // 🔄 Recalcular faturamento após salvar o evento
       try {
         var pre = data.preapproval_id || data.mp_preapproval_id || '';
-        recomputeBillingOne_(pre); // por enquanto recalcula tudo
+        recomputeBillingOne_(pre);
       } catch (err) {
         log_(ss, "billing_recompute_fail", { error: String(err) });
       }
-
       return jsonOut_({ ok:true, wrote:'dados' });
     }
 
     /* ===================== Cadastro ===================== */
     if (data.type === 'cadastro') {
       log_(ss,"route_cadastro_start", { email: data.email || "", slug: data.siteSlug || "" });
-
       const slug = normalizeSlug_(data.siteSlug || '');
       const cpf  = onlyDigits_(data.document || '');
 
@@ -840,7 +763,7 @@ log_(ss, "normalized", {
       if (!slug) errors.push('siteSlug_obrigatorio');
       if (slug && (slug.length < 3 || slug.length > 30)) errors.push('siteSlug_tamanho_invalido');
       if (slug && !/^[A-Z0-9-]+$/.test(slug)) errors.push('siteSlug_caracteres_invalidos');
-      if (slugExiste_(slug)) errors.push('siteSlug_ja_usado');
+      if (slug && slugExiste_(slug)) errors.push('siteSlug_ja_usado');
       if (cpf && !isValidCPF_(cpf)) errors.push('cpf_invalido');
 
       if (errors.length) {
@@ -874,10 +797,7 @@ log_(ss, "normalized", {
     if (data.type === 'onboarding') {
       log_(ss,"route_onboarding_start", { email: data.email||"", slug: data.siteSlug||"", plan: data.plan||"" });
       const r = handleOnboarding_(ss, data);
-      try {
-        const out = JSON.parse(r.getContent() || "{}");
-        log_(ss,"route_onboarding_done", { ok: String(out.ok), error: String(out.error||"") });
-      } catch (_) {}
+      try { const out = JSON.parse(r.getContent() || "{}"); log_(ss,"route_onboarding_done", { ok: String(out.ok), error: String(out.error||"") }); } catch (_) {}
       return r;
     }
 
@@ -885,226 +805,492 @@ log_(ss, "normalized", {
     if (type === "save_settings") {
       return saveClientSettings_(ss, data);
     }
-    // (único ponto de sections_upsert_defs já está acima)
     if (type === "record_hit") {
       return recordHit_(ss, data);
     }
 
-    // CRIAR LEAD (POST)
+        /* ===================== WHATSAPP (Cloud API) ===================== */
+
+// GET de verificação do Webhook (Meta chama com hub.*) — use doGet, mas aceitamos aqui via POST com query tb
+if (type === 'wa_webhook_verify') {
+  const qp = (e && e.parameter) ? e.parameter : {};
+  const mode = String(qp['hub.mode'] || qp.mode || '');
+  const token = String(qp['hub.verify_token'] || qp.verify_token || '');
+  const challenge = String(qp['hub.challenge'] || qp.challenge || '');
+
+  // buscamos o verifyToken salvo no settings_kv (linha com siteSlug='CLIENT')
+  const wanted = getKV_(ss, 'CLIENT');
+  const settings = safeParseJson_(wanted.settings_json || '{}');
+  const expected = String(((settings.whatsapp || {}).verifyToken) || '');
+
+  if (mode === 'subscribe' && token && expected && token === expected) {
+    return ContentService.createTextOutput(challenge).setMimeType(ContentService.MimeType.TEXT);
+  }
+  return jsonOut_({ ok: false, error: 'bad_verify_token' });
+}
+
+// Webhook de eventos do WhatsApp (POST do Meta)
+if (type === 'wa_webhook') {
+  try {
+    const body = safeParseJson_(String((e.postData && e.postData.contents) || '{}'));
+
+    // 1) Descobrir o site a partir do phone_id que veio no payload
+    const phoneId = String(
+      (((body.entry || [])[0] || {}).changes || [])[0]?.value?.metadata?.phone_number_id || ''
+    );
+    const siteSlug = resolveSiteFromPhoneId_(ss, phoneId);
+
+    // 2) Persistir as mensagens recebidas (planilha "whatsapp_messages")
+    if (siteSlug) {
+      const sh = ensureSheet_(ss, 'whatsapp_messages',
+        ['timestamp', 'siteSlug', 'phone_id', 'from', 'to', 'type', 'text', 'raw_json']);
+      const messages = ((((body.entry || [])[0] || {}).changes || [])[0]?.value?.messages) || [];
+      messages.forEach(m => {
+        const t = String(m.type || '');
+        const txt = t === 'text' ? String(m.text?.body || '') : '';
+        sh.appendRow([
+          new Date(),
+          siteSlug,
+          phoneId,
+          String(m.from || ''),
+          String(((((body.entry || [])[0] || {}).changes || [])[0]?.value?.metadata?.display_phone_number) || ''),
+          t,
+          txt,
+          safeJson_(m)
+        ]);
+      });
+    }
+
+    return jsonOut_({ ok: true });
+  } catch (err) {
+    log_(ss, 'wa_webhook_fail', { error: String(err) });
+    return jsonOut_({ ok: false, error: String(err) });
+  }
+}
+
+// Função util: normaliza número em E.164 (sem símbolos)
+function normE164_(v) {
+  v = String(v || '').trim();
+  v = v.replace(/[^\d]/g, '');      // só dígitos
+  if (v.startsWith('00')) v = v.slice(2);
+  return v;                         // ex.: 5596981032928
+}
+
+// Enviar mensagem de texto (aceita aliases "wa_send" e "wa_send_text")
+if (type === 'wa_send' || type === 'wa_send_text') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    const to   = normE164_(data.to || '');
+    const text = String(data.text || '');
+
+    if (!site || !to || !text) return jsonOut_({ ok: false, error: 'missing_params' });
+
+    // pega config do settings_kv para este site
+    const kv = getKV_(ss, site);
+    const st = safeParseJson_(kv.settings_json || '{}');
+    const WAPP = st.whatsapp || {};
+    const phoneId  = String(WAPP.phoneId || '');
+    const appToken = String(WAPP.appToken || PropertiesService.getScriptProperties().getProperty('WHATSAPP_APP_TOKEN') || '');
+
+    if (!phoneId || !appToken) return jsonOut_({ ok: false, error: 'missing_phone_or_token' });
+
+    const url = 'https://graph.facebook.com/v20.0/' + encodeURIComponent(phoneId) + '/messages';
+    const payload = {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'text',
+      text: { body: text }
+    };
+
+    const resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + appToken },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    const code = resp.getResponseCode();
+    const body = resp.getContentText() || '';
+    const json = safeParseJson_(body);
+
+    log_(ss, 'wa_send_text', { site, to, code, raw: body.slice(0, 4000) });
+
+    if (code >= 200 && code < 300) return jsonOut_({ ok: true, result: json });
+    return jsonOut_({ ok: false, error: 'wa_send_fail', code, result: json });
+  } catch (err) {
+    return jsonOut_({ ok: false, error: String(err) });
+  }
+}
+
+// Enviar mensagem usando TEMPLATE (primeiro contato / fora da janela 24h)
+if (type === 'wa_send_template') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    const to   = normE164_(data.to || '');
+    const tpl  = String(data.template || 'hello_world'); // nome exato do modelo
+    const lang = String(data.lang || 'en_US');           // idioma do modelo
+
+    if (!site || !to || !tpl) return jsonOut_({ ok: false, error: 'missing_params' });
+
+    // pega config do settings_kv para este site
+    const kv = getKV_(ss, site);
+    const st = safeParseJson_(kv.settings_json || '{}');
+    const WAPP = st.whatsapp || {};
+    const phoneId  = String(WAPP.phoneId || '');
+    const appToken = String(WAPP.appToken || PropertiesService.getScriptProperties().getProperty('WHATSAPP_APP_TOKEN') || '');
+
+    if (!phoneId || !appToken) return jsonOut_({ ok: false, error: 'missing_phone_or_token' });
+
+    const url = 'https://graph.facebook.com/v20.0/' + encodeURIComponent(phoneId) + '/messages';
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name: tpl,
+        language: { code: lang }
+        // components: [{ type: 'body', parameters: [{ type: 'text', text: 'valor 1' }] }]
+      }
+    };
+
+    const resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + appToken },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    const code = resp.getResponseCode();
+    const body = resp.getContentText() || '';
+    const json = safeParseJson_(body);
+
+    log_(ss, 'wa_send_template', { site, to, tpl, lang, code, raw: body.slice(0, 4000) });
+
+    if (code >= 200 && code < 300) return jsonOut_({ ok: true, result: json });
+    return jsonOut_({ ok: false, error: 'wa_send_fail', code, result: json });
+  } catch (err) {
+    return jsonOut_({ ok: false, error: String(err) });
+  }
+}
+
+// Listar mensagens salvas (para o dashboard)
+if (type === 'wa_list_messages') {
+  const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+  const page = Math.max(1, parseInt(String(data.page || '1'), 10));
+  const pageSize = Math.min(100, Math.max(1, parseInt(String(data.pageSize || '20'), 10)));
+
+  const r = listWhatsAppMessages_(ss, site, page, pageSize);
+  return jsonOut_(Object.assign({ ok: true, site }, r));
+}
+
+    // ===== LEADS =====
     if (type === "lead_new") {
       return createLead_(ss, data);
     }
 
-    // CRIAR FEEDBACK (POST)
-    if (type === "feedback_new") {
+    // ===== FEEDBACKS =====
+    if (type === "feedback_new" || type === "submit_feedback") {
       return createFeedback_(ss, data);
     }
-    // Receber feedback público (site) — com email/phone opcionais
-    if (type === "submit_feedback") {
-      return createFeedback_(ss, data);
-    }
-
-    // Moderação: aprovar/ocultar (requer PIN salvo em settings_kv.security.vip_pin)
     if (type === "feedback_set_approval") {
       return feedbackSetApproval_(ss, data);
     }
+    // LISTAGEM PRIVADA (PIN/ADMIN)
+    if (type === "list_feedbacks_secure") {
+      return listFeedbacksSecure_(ss, data);
+    }
+
+    /* ===================== WHATSAPP (Multi-tenant) ===================== */
+
+    // 1) Webhook encaminhado pelo Netlify (NÃO confia em site do body)
+    if (type === "whatsapp_webhook" || type === "wa_incoming") {
+      try {
+        var body = hasPD ? JSON.parse(e.postData.contents || "{}") : {};
+      } catch (_err) { body = {}; }
+
+      var entry = body && body.entry && body.entry[0];
+      var change = entry && entry.changes && entry.changes[0] && entry.changes[0].value;
+      var phoneId = change && change.metadata && change.metadata.phone_number_id;
+      var siteSlug = resolveSiteFromPhoneId_(ss, phoneId);
+
+      if (!siteSlug) {
+        log_(ss, "wa_unknown_tenant", { phoneId: String(phoneId||'') });
+        return jsonOut_({ ok:false, error:'unknown_tenant' });
+      }
+
+      var shWA = ensureWhatsAppSheet_(ss);
+      var msgs = (change && change.messages) || [];
+      if (msgs.length === 0) {
+        // também registra statuses (delivered/read) se vierem
+        var statuses = (change && change.statuses) || [];
+        statuses.forEach(function(st){
+          shWA.appendRow([
+            new Date(),
+            siteSlug,
+            '', // from
+            (change.metadata && change.metadata.display_phone_number)||'',
+            phoneId||'',
+            st.id||'',
+            'status',
+            (st.status||''),
+            JSON.stringify(st),
+            st.status||''
+          ]);
+        });
+        return jsonOut_({ ok:true, stored: statuses.length, kind:'status' });
+      }
+
+      msgs.forEach(function(m){
+        shWA.appendRow([
+          new Date(),
+          siteSlug,
+          (m.from||''),
+          (change.metadata && change.metadata.display_phone_number)||'',
+          phoneId||'',
+          m.id||'',
+          m.type||'text',
+          (m.text && m.text.body) ? m.text.body : (m.button && m.button.text) ? m.button.text : '',
+          JSON.stringify(m),
+          (m.status||'')
+        ]);
+      });
+
+      return jsonOut_({ ok:true, stored: msgs.length, siteSlug: siteSlug });
+    }
+
+    // 2) Listagem paginada por site (para o dashboard do cliente)
+    if (type === "wa_list_messages") {
+      var siteList = normalizeSlug_(String(data.site || data.siteSlug || ''));
+      var page = parseInt(data.page || '1', 10) || 1;
+      var pageSize = parseInt(data.pageSize || '20', 10) || 20;
+      var out = waListMessages_(ss, siteList, page, pageSize);
+      return jsonOut_(out);
+    }
 
     // ============================= NOVAS FUNCIONALIDADES VIP =============================
-    
-    // === CONTROLE ADMIN DE FUNCIONALIDADES ===
-    if (type === 'admin_get_client_features') {
-      log_(ss, "route_admin_get_client_features", {});
-      return admin_get_client_features(e, normalizedData);
-    }
-    if (type === 'admin_update_client_features') {
-      log_(ss, "route_admin_update_client_features", {});
-      return admin_update_client_features(e, normalizedData);
-    }
-    if (type === 'admin_toggle_client_feature') {
-      log_(ss, "route_admin_toggle_client_feature", {});
-      return admin_toggle_client_feature(e, normalizedData);
-    }
-    if (type === 'admin_update_client_plan') {
-      log_(ss, "route_admin_update_client_plan", {});
-      return admin_update_client_plan(e, normalizedData);
-    }
+    if (type === 'admin_get_client_features')      { log_(ss, "route_admin_get_client_features", {});      return admin_get_client_features(e, normalizedData); }
+    if (type === 'admin_update_client_features')   { log_(ss, "route_admin_update_client_features", {});   return admin_update_client_features(e, normalizedData); }
+    if (type === 'admin_toggle_client_feature')    { log_(ss, "route_admin_toggle_client_feature", {});    return admin_toggle_client_feature(e, normalizedData); }
+    if (type === 'admin_update_client_plan')       { log_(ss, "route_admin_update_client_plan", {});       return admin_update_client_plan(e, normalizedData); }
 
-    // === SISTEMA MULTI-IDIOMA ===
-    if (type === 'multi_language_get_settings') {
-      log_(ss, "route_multi_language_get_settings", {});
-      return multi_language_get_settings(e, normalizedData);
-    }
-    if (type === 'multi_language_update_settings') {
-      log_(ss, "route_multi_language_update_settings", {});
-      return multi_language_update_settings(e, normalizedData);
-    }
-    if (type === 'multi_language_translate_content') {
-      log_(ss, "route_multi_language_translate_content", {});
-      return multi_language_translate_content(e, normalizedData);
-    }
+    if (type === 'multi_language_get_settings')    { log_(ss, "route_multi_language_get_settings", {});    return multi_language_get_settings(e, normalizedData); }
+    if (type === 'multi_language_update_settings') { log_(ss, "route_multi_language_update_settings", {}); return multi_language_update_settings(e, normalizedData); }
+    if (type === 'multi_language_translate_content'){log_(ss, "route_multi_language_translate_content", {});return multi_language_translate_content(e, normalizedData); }
 
-    // === SISTEMA DE AGENDAMENTO ===
-    if (type === 'appointment_get_settings') {
-      log_(ss, "route_appointment_get_settings", {});
-      return appointment_get_settings(e, normalizedData);
-    }
-    if (type === 'appointment_create') {
-      log_(ss, "route_appointment_create", {});
-      return appointment_create(e, normalizedData);
-    }
-    if (type === 'appointment_get_availability') {
-      log_(ss, "route_appointment_get_availability", {});
-      return appointment_get_availability(e, normalizedData);
-    }
+    if (type === 'appointment_get_settings')       { log_(ss, "route_appointment_get_settings", {});       return appointment_get_settings(e, normalizedData); }
+    if (type === 'appointment_create')             { log_(ss, "route_appointment_create", {});             return appointment_create(e, normalizedData); }
+    if (type === 'appointment_get_availability')   { log_(ss, "route_appointment_get_availability", {});   return appointment_get_availability(e, normalizedData); }
 
-    // === E-COMMERCE ===
-    if (type === 'ecommerce_get_products') {
-      log_(ss, "route_ecommerce_get_products", {});
-      return ecommerce_get_products(e, normalizedData);
-    }
-    if (type === 'ecommerce_create_product') {
-      log_(ss, "route_ecommerce_create_product", {});
-      return ecommerce_create_product(e, normalizedData);
-    }
-    if (type === 'ecommerce_update_product') {
-      log_(ss, "route_ecommerce_update_product", {});
-      return ecommerce_update_product(e, normalizedData);
-    }
-    if (type === 'ecommerce_delete_product') {
-      log_(ss, "route_ecommerce_delete_product", {});
-      return ecommerce_delete_product(e, normalizedData);
-    }
-    if (type === 'ecommerce_get_orders') {
-      log_(ss, "route_ecommerce_get_orders", {});
-      return ecommerce_get_orders(e, normalizedData);
-    }
-    if (type === 'ecommerce_create_order') {
-      log_(ss, "route_ecommerce_create_order", {});
-      return ecommerce_create_order(e, normalizedData);
-    }
-    if (type === 'ecommerce_update_order_status') {
-      log_(ss, "route_ecommerce_update_order_status", {});
-      return ecommerce_update_order_status(e, normalizedData);
-    }
-    if (type === 'ecommerce_get_store_settings') {
-      log_(ss, "route_ecommerce_get_store_settings", {});
-      return ecommerce_get_store_settings(e, normalizedData);
-    }
-    if (type === 'ecommerce_update_store_settings') {
-      log_(ss, "route_ecommerce_update_store_settings", {});
-      return ecommerce_update_store_settings(e, normalizedData);
-    }
-    if (type === 'ecommerce_get_analytics') {
-      log_(ss, "route_ecommerce_get_analytics", {});
-      return ecommerce_get_analytics(e, normalizedData);
-    }
+    if (type === 'ecommerce_get_products')         { log_(ss, "route_ecommerce_get_products", {});         return ecommerce_get_products(e, normalizedData); }
+    if (type === 'ecommerce_create_product')       { log_(ss, "route_ecommerce_create_product", {});       return ecommerce_create_product(e, normalizedData); }
+    if (type === 'ecommerce_update_product')       { log_(ss, "route_ecommerce_update_product", {});       return ecommerce_update_product(e, normalizedData); }
+    if (type === 'ecommerce_delete_product')       { log_(ss, "route_ecommerce_delete_product", {});       return ecommerce_delete_product(e, normalizedData); }
+    if (type === 'ecommerce_get_orders')           { log_(ss, "route_ecommerce_get_orders", {});           return ecommerce_get_orders(e, normalizedData); }
+    if (type === 'ecommerce_create_order')         { log_(ss, "route_ecommerce_create_order", {});         return ecommerce_create_order(e, normalizedData); }
+    if (type === 'ecommerce_update_order_status')  { log_(ss, "route_ecommerce_update_order_status", {});  return ecommerce_update_order_status(e, normalizedData); }
+    if (type === 'ecommerce_get_store_settings')   { log_(ss, "route_ecommerce_get_store_settings", {});   return ecommerce_get_store_settings(e, normalizedData); }
+    if (type === 'ecommerce_update_store_settings'){ log_(ss, "route_ecommerce_update_store_settings", {});return ecommerce_update_store_settings(e, normalizedData); }
+    if (type === 'ecommerce_get_analytics')        { log_(ss, "route_ecommerce_get_analytics", {});        return ecommerce_get_analytics(e, normalizedData); }
 
-    // === WHITE-LABEL ===
-    if (type === 'white_label_create_reseller') {
-      log_(ss, "route_white_label_create_reseller", {});
-      return white_label_create_reseller(e, normalizedData);
-    }
-    if (type === 'white_label_get_reseller') {
-      log_(ss, "route_white_label_get_reseller", {});
-      return white_label_get_reseller(e, normalizedData);
-    }
-    if (type === 'white_label_update_reseller') {
-      log_(ss, "route_white_label_update_reseller", {});
-      return white_label_update_reseller(e, normalizedData);
-    }
-    if (type === 'white_label_get_branding') {
-      log_(ss, "route_white_label_get_branding", {});
-      return white_label_get_branding(e, normalizedData);
-    }
-    if (type === 'white_label_update_branding') {
-      log_(ss, "route_white_label_update_branding", {});
-      return white_label_update_branding(e, normalizedData);
-    }
-    if (type === 'white_label_get_clients') {
-      log_(ss, "route_white_label_get_clients", {});
-      return white_label_get_clients(e, normalizedData);
-    }
-    if (type === 'white_label_add_client') {
-      log_(ss, "route_white_label_add_client", {});
-      return white_label_add_client(e, normalizedData);
-    }
-    if (type === 'white_label_generate_site') {
-      log_(ss, "route_white_label_generate_site", {});
-      return white_label_generate_site(e, normalizedData);
-    }
-    if (type === 'white_label_get_analytics') {
-      log_(ss, "route_white_label_get_analytics", {});
-      return white_label_get_analytics(e, normalizedData);
-    }
-    if (type === 'white_label_check_slug') {
-      log_(ss, "route_white_label_check_slug", {});
-      return white_label_check_slug(e, normalizedData);
-    }
-    if (type === 'white_label_update_domain') {
-      log_(ss, "route_white_label_update_domain", {});
-      return white_label_update_domain(e, normalizedData);
-    }
-    if (type === 'white_label_get_commission_report') {
-      log_(ss, "route_white_label_get_commission_report", {});
-      return white_label_get_commission_report(e, normalizedData);
-    }
+    if (type === 'white_label_create_reseller')    { log_(ss, "route_white_label_create_reseller", {});    return white_label_create_reseller(e, normalizedData); }
+    if (type === 'white_label_get_reseller')       { log_(ss, "route_white_label_get_reseller", {});       return white_label_get_reseller(e, normalizedData); }
+    if (type === 'white_label_update_reseller')    { log_(ss, "route_white_label_update_reseller", {});    return white_label_update_reseller(e, normalizedData); }
+    if (type === 'white_label_get_branding')       { log_(ss, "route_white_label_get_branding", {});       return white_label_get_branding(e, normalizedData); }
+    if (type === 'white_label_update_branding')    { log_(ss, "route_white_label_update_branding", {});    return white_label_update_branding(e, normalizedData); }
+    if (type === 'white_label_get_clients')        { log_(ss, "route_white_label_get_clients", {});        return white_label_get_clients(e, normalizedData); }
+    if (type === 'white_label_add_client')         { log_(ss, "route_white_label_add_client", {});         return white_label_add_client(e, normalizedData); }
+    if (type === 'white_label_generate_site')      { log_(ss, "route_white_label_generate_site", {});      return white_label_generate_site(e, normalizedData); }
+    if (type === 'white_label_get_analytics')      { log_(ss, "route_white_label_get_analytics", {});      return white_label_get_analytics(e, normalizedData); }
+    if (type === 'white_label_check_slug')         { log_(ss, "route_white_label_check_slug", {});         return white_label_check_slug(e, normalizedData); }
+    if (type === 'white_label_update_domain')      { log_(ss, "route_white_label_update_domain", {});      return white_label_update_domain(e, normalizedData); }
+    if (type === 'white_label_get_commission_report'){log_(ss,"route_white_label_get_commission_report",{});return white_label_get_commission_report(e, normalizedData); }
 
-    // === TEMPLATE MARKETPLACE ===
-    if (type === 'marketplace_get_templates') {
-      log_(ss, "route_marketplace_get_templates", {});
-      return marketplace_get_templates(e, normalizedData);
-    }
-    if (type === 'marketplace_get_template') {
-      log_(ss, "route_marketplace_get_template", {});
-      return marketplace_get_template(e, normalizedData);
-    }
-    if (type === 'marketplace_purchase_template') {
-      log_(ss, "route_marketplace_purchase_template", {});
-      return marketplace_purchase_template(e, normalizedData);
-    }
-    if (type === 'marketplace_apply_template') {
-      log_(ss, "route_marketplace_apply_template", {});
-      return marketplace_apply_template(e, normalizedData);
-    }
-    if (type === 'marketplace_rate_template') {
-      log_(ss, "route_marketplace_rate_template", {});
-      return marketplace_rate_template(e, normalizedData);
-    }
-    if (type === 'marketplace_get_categories') {
-      log_(ss, "route_marketplace_get_categories", {});
-      return marketplace_get_categories(e, normalizedData);
-    }
-    if (type === 'marketplace_get_purchases') {
-      log_(ss, "route_marketplace_get_purchases", {});
-      return marketplace_get_purchases(e, normalizedData);
-    }
+    if (type === 'marketplace_get_templates')      { log_(ss, "route_marketplace_get_templates", {});      return marketplace_get_templates(e, normalizedData); }
+    if (type === 'marketplace_get_template')       { log_(ss, "route_marketplace_get_template", {});       return marketplace_get_template(e, normalizedData); }
+    if (type === 'marketplace_purchase_template')  { log_(ss, "route_marketplace_purchase_template", {});  return marketplace_purchase_template(e, normalizedData); }
+    if (type === 'marketplace_apply_template')     { log_(ss, "route_marketplace_apply_template", {});     return marketplace_apply_template(e, normalizedData); }
+    if (type === 'marketplace_rate_template')      { log_(ss, "route_marketplace_rate_template", {});      return marketplace_rate_template(e, normalizedData); }
+    if (type === 'marketplace_get_categories')     { log_(ss, "route_marketplace_get_categories", {});     return marketplace_get_categories(e, normalizedData); }
+    if (type === 'marketplace_get_purchases')      { log_(ss, "route_marketplace_get_purchases", {});      return marketplace_get_purchases(e, normalizedData); }
 
-    // === AUDIT LOGS ===
-    if (type === 'audit_log_event') {
-      log_(ss, "route_audit_log_event", {});
-      return audit_log_event(e, normalizedData);
-    }
-    if (type === 'audit_get_logs') {
-      log_(ss, "route_audit_get_logs", {});
-      return audit_get_logs(e, normalizedData);
-    }
-    if (type === 'audit_get_security_alerts') {
-      log_(ss, "route_audit_get_security_alerts", {});
-      return audit_get_security_alerts(e, normalizedData);
-    }
-    if (type === 'audit_generate_report') {
-      log_(ss, "route_audit_generate_report", {});
-      return audit_generate_report(e, normalizedData);
-    }
-    if (type === 'audit_resolve_alert') {
-      log_(ss, "route_audit_resolve_alert", {});
-      return audit_resolve_alert(e, normalizedData);
-    }
-    if (type === 'audit_get_statistics') {
-      log_(ss, "route_audit_get_statistics", {});
-      return audit_get_statistics(e, normalizedData);
-    }
+    if (type === 'audit_log_event')                { log_(ss, "route_audit_log_event", {});                return audit_log_event(e, normalizedData); }
+    if (type === 'audit_get_logs')                 { log_(ss, "route_audit_get_logs", {});                 return audit_get_logs(e, normalizedData); }
+    if (type === 'audit_get_security_alerts')      { log_(ss, "route_audit_get_security_alerts", {});      return audit_get_security_alerts(e, normalizedData); }
+    if (type === 'audit_generate_report')          { log_(ss, "route_audit_generate_report", {});          return audit_generate_report(e, normalizedData); }
+    if (type === 'audit_resolve_alert')            { log_(ss, "route_audit_resolve_alert", {});            return audit_resolve_alert(e, normalizedData); }
+    if (type === 'audit_get_statistics')           { log_(ss, "route_audit_get_statistics", {});           return audit_get_statistics(e, normalizedData); }
 
+
+/* ========================= WHATSAPP (Cloud API) ========================= */
+
+/** 0) Verificação de webhook (GET/POST com query hub.*) */
+if (type === 'wa_webhook_verify') {
+  const qp = (e && e.parameter) ? e.parameter : {};
+  const mode = String(qp['hub.mode'] || qp.mode || '');
+  const token = String(qp['hub.verify_token'] || qp.verify_token || '');
+  const challenge = String(qp['hub.challenge'] || qp.challenge || '');
+
+  // 1º tenta no settings_kv do CLIENT; 2º usa ScriptProperty WHATSAPP_VERIFY_TOKEN (fallback)
+  const wanted = getKV_(ss, 'CLIENT') || {};
+  const settings = safeParseJson_(wanted.settings_json || '{}');
+  const expected = String(((settings.whatsapp || {}).verifyToken) ||
+                          (PropertiesService.getScriptProperties().getProperty('WHATSAPP_VERIFY_TOKEN') || '') );
+
+  if (mode === 'subscribe' && token && expected && token === expected) {
+    return ContentService.createTextOutput(challenge)
+      .setMimeType(ContentService.MimeType.TEXT);
+  }
+  return jsonOut_({ ok:false, error:'bad_verify_token' });
+}
+
+/** 1) Webhook principal (POST da Meta) – mensagens + templates + eventos de conta */
+if (type === 'wa_webhook' || (data && data.object === 'whatsapp_business_account')) {
+  try {
+    const body = (hasPD && e.postData && typeof e.postData.contents === 'string')
+      ? safeParseJson_(e.postData.contents || '{}')
+      : (data && data.object === 'whatsapp_business_account' ? data : {});
+
+    const entries = Array.isArray(body.entry) ? body.entry : [];
+    if (entries.length === 0) return jsonOut_({ ok:true, note:'no_entries' });
+
+    // sheets
+    const shMsg   = ensureSheet_(ss, 'whatsapp_messages',
+      ['timestamp','siteSlug','phone_id','from','to_display','msg_id','type','text','raw_json']);
+    const shStat  = ensureSheet_(ss, 'whatsapp_statuses',
+      ['timestamp','siteSlug','phone_id','msg_id','status','conversation','pricing','errors','raw_json']);
+    const shTpl   = ensureSheet_(ss, 'whatsapp_templates',
+      ['timestamp','siteSlug','phone_id','template_name','event','language','reason','raw_json']);
+    const shAcct  = ensureSheet_(ss, 'whatsapp_account_events',
+      ['timestamp','siteSlug','phone_id','field','quality','disabled','event','raw_json']);
+
+    let storedMsgs = 0, storedStatuses = 0, storedTpl = 0, storedAcct = 0;
+
+    entries.forEach(en => {
+      (en.changes || []).forEach(ch => {
+        const field = String(ch.field || 'messages');
+        const v = ch.value || {};
+        const phoneId = String((v.metadata && v.metadata.phone_number_id) || '');
+        const siteSlug = resolveSiteFromPhoneId_(ss, phoneId) || 'CLIENT';
+
+        // 1. mensagens + statuses
+        if (field === 'messages') {
+          const toDisplay = String((v.metadata && v.metadata.display_phone_number) || '');
+          (v.messages || []).forEach(m => {
+            const text = (m.type === 'text') ? String(m.text?.body || '') :
+                         (m.button && m.button.text) ? String(m.button.text) : '';
+            shMsg.appendRow([
+              new Date(), siteSlug, phoneId,
+              String(m.from || ''), toDisplay,
+              String(m.id || ''), String(m.type || ''), text,
+              JSON.stringify(m)
+            ]);
+            storedMsgs++;
+          });
+
+          (v.statuses || []).forEach(st => {
+            shStat.appendRow([
+              new Date(), siteSlug, phoneId,
+              String(st.id || ''), String(st.status || ''),
+              JSON.stringify(st.conversation || null),
+              JSON.stringify(st.pricing || null),
+              JSON.stringify(st.errors || null),
+              JSON.stringify(st)
+            ]);
+            storedStatuses++;
+          });
+        }
+
+        // 2. atualização de template
+        if (field === 'message_template_status_update') {
+          const ev = v.event || v.message_template_id || '';
+          const name = (v.message_template_name || v.name || '');
+          const lang = (v.language || '');
+          const reason = (v.reason || '');
+          shTpl.appendRow([
+            new Date(), siteSlug, phoneId,
+            String(name || ''), String(ev || ''), String(lang || ''), String(reason || ''),
+            JSON.stringify(v)
+          ]);
+          storedTpl++;
+        }
+
+        // 3. eventos de conta / qualidade / capabilities / phone name etc.
+        if (field !== 'messages' && field !== 'message_template_status_update') {
+          const quality = (v.quality_rating || v.current_limit || '');
+          const disabled = (v.disabled || v.disabled_reason || '');
+          shAcct.appendRow([
+            new Date(), siteSlug, phoneId,
+            field, String(quality || ''), String(disabled || ''), String(v.event || ''),
+            JSON.stringify(v)
+          ]);
+          storedAcct++;
+        }
+      });
+    });
+
+    log_(ss,'wa_webhook_ok', {
+      msgs: String(storedMsgs),
+      statuses: String(storedStatuses),
+      templates: String(storedTpl),
+      account: String(storedAcct)
+    });
+    return jsonOut_({ ok:true, stored:{ messages:storedMsgs, statuses:storedStatuses, templates:storedTpl, account:storedAcct } });
+  } catch (err) {
+    log_(ss,'wa_webhook_err',{ error:String(err) });
+    return jsonOut_({ ok:false, error:String(err) });
+  }
+}
+
+/** 2) Enviar texto simples */
+if (type === 'wa_send' || type === 'wa_send_text') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    const to   = String(data.to || '');
+    const text = String(data.text || data.body || '');
+    if (!site || !to || !text) return jsonOut_({ ok:false, error:'missing_params' });
+
+    const kv = getKV_(ss, site) || {};
+    const st = safeParseJson_(kv.settings_json || '{}');
+    const W  = st.whatsapp || {};
+    const phoneId = String(W.phoneId || '');
+    const appToken = String(W.appToken ||
+      PropertiesService.getScriptProperties().getProperty('WHATSAPP_APP_TOKEN') || '');
+
+    if (!phoneId || !appToken) return jsonOut_({ ok:false, error:'missing_phone_or_token' });
+
+    const url = 'https://graph.facebook.com/v20.0/' + encodeURIComponent(phoneId) + '/messages';
+    const resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + appToken },
+      payload: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to, type: 'text', text: { body: text }
+      }),
+      muteHttpExceptions: true
+    });
+    const code = resp.getResponseCode();
+    const js = safeParseJson_(resp.getContentText() || '{}');
+    log_(ss,'wa_send',{ site, to, code, json:safeJson_(js) });
+    return (code >= 200 && code < 300)
+      ? jsonOut_({ ok:true, result: js })
+      : jsonOut_({ ok:false, error:'wa_send_fail', code, result: js });
+  } catch (err) {
+    return jsonOut_({ ok:false, error:String(err) });
+  }
+}
+
+/** 3) Listar mensagens (paginado) */
+if (type === 'wa_list_messages' || type === 'list_whatsapp_messages') {
+  const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+  const page = Math.max(1, parseInt(String(data.page || '1'),10));
+  const pageSize = Math.min(100, Math.max(1, parseInt(String(data.pageSize || '20'),10)));
+  const out = listWhatsAppMessages_(ss, site, page, pageSize);
+  return jsonOut_(Object.assign({ ok:true, site }, out));
+}
 
     // ===== nada casou =====
     log_(ss,"ignored", {
@@ -1133,6 +1319,117 @@ log_(ss, "normalized", {
     return jsonOut_({ ok:false, error: String(err) });
   }
 }
+
+/** Resolve site a partir do phone_id salvo em settings_kv.whatsapp.phoneId */
+function resolveSiteFromPhoneId_(ss, phoneId) {
+  try {
+    if (!phoneId) return '';
+    const sh = ss.getSheetByName('settings_kv');
+    if (!sh) return '';
+    const lr = sh.getLastRow();
+    if (lr < 2) return '';
+    const rows = sh.getRange(2,1,lr-2+1,3).getValues(); // A: siteSlug, B: updated_at, C: settings_json
+    for (var i=0;i<rows.length;i++){
+      const site = String(rows[i][0] || '');
+      const st = safeParseJson_(String(rows[i][2] || '{}'));
+      const pid = String(((st.whatsapp||{}).phoneId) || '');
+      if (site && pid && pid === String(phoneId)) return site;
+    }
+    return '';
+  } catch (_e) { return ''; }
+}
+
+/** Lista mensagens paginado por site (planilha whatsapp_messages) */
+function listWhatsAppMessages_(ss, siteSlug, page, pageSize) {
+  const sh = ss.getSheetByName('whatsapp_messages');
+  if (!sh) return { items:[], total:0, page, pageSize };
+  const data = sh.getDataRange().getValues(); // header + linhas
+  if (data.length <= 1) return { items:[], total:0, page, pageSize };
+
+  const hdr = data[0];
+  const idx = {
+    ts: hdr.indexOf('timestamp'),
+    site: hdr.indexOf('siteSlug'),
+    phone: hdr.indexOf('phone_id'),
+    from: hdr.indexOf('from'),
+    to: hdr.indexOf('to_display'),
+    id: hdr.indexOf('msg_id'),
+    type: hdr.indexOf('type'),
+    text: hdr.indexOf('text'),
+    raw: hdr.indexOf('raw_json'),
+  };
+
+  const all = [];
+  for (var i=1;i<data.length;i++){
+    const row = data[i];
+    if (siteSlug && String(row[idx.site]||'') !== siteSlug) continue;
+    all.push({
+      timestamp: row[idx.ts],
+      siteSlug: row[idx.site],
+      phone_id: row[idx.phone],
+      from: row[idx.from],
+      to_display: row[idx.to],
+      msg_id: row[idx.id],
+      type: row[idx.type],
+      text: row[idx.text],
+      raw: row[idx.raw]
+    });
+  }
+  const total = all.length;
+  const start = (page-1)*pageSize;
+  const items = (start >= total) ? [] : all.slice(start, start+pageSize);
+  return { items, total, page, pageSize };
+}
+
+/** Garantir/obter sheet com colunas exatas (já existe na sua base) */
+function ensureSheet_(ss, name, headers) {
+  var sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.appendRow(headers);
+  } else {
+    // garante header mínimo
+    const first = sh.getRange(1,1,1,Math.max(headers.length, sh.getLastColumn())).getValues()[0];
+    if (String(first[0]||'').toLowerCase() !== String(headers[0]||'').toLowerCase()) {
+      sh.clear();
+      sh.appendRow(headers);
+    }
+  }
+  return sh;
+}
+
+/** Lista mensagens da aba whatsapp_messages, filtrando por site */
+function listWhatsappMessages_(ss, site, page, pageSize) {
+  const sh = ss.getSheetByName("whatsapp_messages");
+  if (!sh || sh.getLastRow() < 2) {
+    return { items: [], total: 0, page, pageSize };
+  }
+
+  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues(); // 8 colunas
+  const rows = vals
+    .map((r) => ({
+      timestamp: r[0],
+      siteSlug: String(r[1] || ""),
+      from: String(r[2] || ""),
+      msg_id: String(r[3] || ""),
+      wa_timestamp: String(r[4] || ""),
+      type: String(r[5] || ""),
+      text: String(r[6] || ""),
+      raw_json: String(r[7] || "")
+    }))
+    .filter((o) => !site || o.siteSlug === site)
+    .sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
+      return tb - ta;
+    });
+
+  const total = rows.length;
+  const start = (page - 1) * pageSize;
+  const items = rows.slice(start, start + pageSize);
+  return { items, total, page, pageSize };
+}
+
 
 /** ============================= AUTENTICAÇÃO ============================= */
 
@@ -1246,6 +1543,61 @@ function userLogin_(ss, data) {
   } catch (e) {
     return jsonOut_({ ok:false, error:String(e) });
   }
+}
+
+/** Planilha padronizada para mensagens do WhatsApp */
+function ensureWhatsAppSheet_(ss) {
+  return ensureSheet_(ss, 'whatsapp_messages', [
+    'timestamp','siteSlug','from','display_phone','phone_id','msg_id','type','text','raw_json','status'
+  ]);
+}
+
+/** Tabela de mapeamento phone_id -> siteSlug (aba: whatsapp_phones) */
+function upsertPhoneMap_(ss, phoneId, siteSlug) {
+  if (!phoneId || !siteSlug) return;
+  const sh = ensureSheet_(ss, 'whatsapp_phones', ['phone_id','siteSlug','updated_at']);
+  const rows = sh.getRange(2,1, Math.max(0, sh.getLastRow()-1), 2).getValues();
+  let found = false, r = 2;
+  for (let i=0;i<rows.length;i++,r++) {
+    if (String(rows[i][0]) === String(phoneId)) { found = true; break; }
+  }
+  if (found) {
+    sh.getRange(r,1,1,3).setValues([[String(phoneId), String(siteSlug), new Date()]]);
+  } else {
+    sh.appendRow([String(phoneId), String(siteSlug), new Date()]);
+  }
+}
+
+
+
+/** Envia texto via Cloud API com configs do site (settings_kv) */
+function waSendText_(ss, siteSlug, to, body) {
+  const kv = getKV_(ss, siteSlug); // linha da aba settings_kv
+  const st = safeParseJson_(kv.settings_json || '{}');
+  const W = st.whatsapp || {};
+  const phoneId  = String(W.phoneId || '');
+  const appToken = String(W.appToken || (PropertiesService.getScriptProperties().getProperty('WHATSAPP_APP_TOKEN')||''));
+  if (!phoneId || !appToken) throw new Error('missing_phone_or_token');
+
+  const url = 'https://graph.facebook.com/v20.0/'+ encodeURIComponent(phoneId) +'/messages';
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: String(to),
+    type: 'text',
+    text: { body: String(body) }
+  };
+  const resp = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + appToken },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  const code = resp.getResponseCode();
+  const json = safeParseJson_(resp.getContentText()||'{}');
+  log_(ss, 'wa_send_text', { siteSlug, to, code, json: safeJson_(json) });
+  if (code < 200 || code >= 300) throw new Error('wa_send_fail '+code);
+  return json;
 }
 
 // ===== helpers novos =====
@@ -1370,80 +1722,6 @@ function passwordResetConfirm_(ss, data) {
     sh.getRange(foundRow, map.reset_expires + 1).setValue('');
 
     return jsonOut_({ ok:true, message:'password_reset_success' });
-  } catch (e) {
-    return jsonOut_({ ok:false, error:String(e) });
-  }
-}
-
-/**
- * Entrada esperada pelo doPost(type: "password_reset_request")
- * data: { email: string }
- * resp: { ok, message, link? }
- */
-function passwordResetRequest_(ss, data) {
-  try {
-    var email = String(data && data.email || '').trim().toLowerCase();
-    if (!email) {
-      return jsonOut_({ ok: false, error: 'missing_email' });
-    }
-
-    // Abas e headers
-    var sh = ss.getSheetByName('usuarios');
-    if (!sh) return jsonOut_({ ok:false, error:'sheet_usuarios_not_found' });
-
-    var last = sh.getLastRow();
-    if (last < 2) return jsonOut_({ ok:true, message:'reset_email_sent' }); // não vaza existência
-
-    var head = sh.getRange(1,1,1, sh.getLastColumn()).getValues()[0].map(String);
-    var idxEmail  = head.indexOf('email');
-    var idxToken  = head.indexOf('reset_token');
-    var idxExpire = head.indexOf('reset_token_expire');
-    if (idxEmail < 0)  return jsonOut_({ ok:false, error:'missing_email_header' });
-    if (idxToken < 0)  return jsonOut_({ ok:false, error:'missing_reset_token_header' });
-    if (idxExpire < 0) return jsonOut_({ ok:false, error:'missing_reset_token_expire_header' });
-
-    var rng  = sh.getRange(2,1, last-1, sh.getLastColumn());
-    var rows = rng.getValues();
-    var foundRowIndex = -1;
-
-    for (var i=0;i<rows.length;i++){
-      var rowEmail = String(rows[i][idxEmail] || '').trim().toLowerCase();
-      if (rowEmail === email) { foundRowIndex = i; break; }
-    }
-
-    // Não vazar se usuário existe ou não
-    if (foundRowIndex === -1) {
-      // ainda assim responde como sucesso
-      return jsonOut_({ ok:true, message:'reset_email_sent' });
-    }
-
-    // Gera token e validade (ex.: 2 horas)
-    var token  = Utilities.getUuid();
-    var expire = new Date(Date.now() + 2 * 60 * 60 * 1000); // +2h
-
-    rows[foundRowIndex][idxToken]  = token;
-    rows[foundRowIndex][idxExpire] = expire;
-    rng.setValues(rows);
-
-    // DASH_URL das Propriedades do Script (com fallback)
-    var props   = PropertiesService.getScriptProperties();
-    var dashUrl = String(props.getProperty('DASH_URL') || 'https://eleveaagencia.netlify.app/dashboard');
-    dashUrl = dashUrl.replace(/\/+$/, ''); // tira / no fim
-    var base = dashUrl.replace(/\/dashboard$/, ''); // queremos a raiz
-    var link = base + '/reset?email=' + encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
-
-    // Remetente das props; se não houver, usa TEAM_EMAIL
-    var fromAddr = props.getProperty('RESEND_FROM') || props.getProperty('TEAM_EMAIL') || '';
-
-    // Envia e-mail usando sua função existente
-    try {
-      sendPasswordResetEmail_(fromAddr, email, link);
-    } catch (errMail) {
-      // Mesmo que o envio falhe, não revelar ao usuário final
-      Logger.log('sendPasswordResetEmail_ fail: ' + String(errMail));
-    }
-
-    return jsonOut_({ ok:true, message:'reset_email_sent', link: link });
   } catch (e) {
     return jsonOut_({ ok:false, error:String(e) });
   }
@@ -2779,7 +3057,7 @@ function handleGeneratePrompt_(site) {
     hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
     iPrompt = hdr.indexOf("lovable_prompt");
   }
-  
+
   // Adicionar colunas para novas funcionalidades se não existirem
   var newColumns = ["last_updated_ai","seo_analysis","lead_score","whatsapp_active","auto_seo_enabled","chatbot_enabled"];
   for (var nc = 0; nc < newColumns.length; nc++) {
@@ -2788,7 +3066,7 @@ function handleGeneratePrompt_(site) {
       hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
     }
   }
-  
+
   var rowToWrite = rowFound;
   if (!rowFound) {
     sh.insertRowsAfter(last || 1, 1);
@@ -2799,7 +3077,7 @@ function handleGeneratePrompt_(site) {
   sh.getRange(rowToWrite, 1).setValue(new Date()); // timestamp na 1ª coluna
   // grava prompt
   sh.getRange(rowToWrite, iPrompt+1).setValue(prompt);
-  
+
   // Atualiza timestamp da última modificação IA
   var iLastAI = hdr.indexOf("last_updated_ai");
   if (iLastAI !== -1) sh.getRange(rowToWrite, iLastAI+1).setValue(new Date());
@@ -4207,32 +4485,6 @@ function hasRecentApprovedEventForEmail_(ss, email, maxDays) {
   return false;
 }
 
-function detectBusinessType(businessName, businessDescription, businessCategory) {
-  if (businessCategory) return businessCategory;
-
-  var combined = (businessName + " " + businessDescription).toLowerCase();
-
-  if (combined.match(/(medic|doutor|doutora|clinic|psicolog|fisioter|odonto|dent|saude|health)/)) {
-    return "health";
-  }
-  if (combined.match(/(restaur|lanche|pizza|burger|food|comida|coz|gastr)/)) {
-    return "food";
-  }
-  if (combined.match(/(oficina|mecanic|auto|carro|veiculo|motor)/)) {
-    return "automotive";
-  }
-  if (combined.match(/(joia|anel|colar|relogio|ouro|prata|alianca)/)) {
-    return "jewelry";
-  }
-  if (combined.match(/(constru|reforma|obra|pedreiro|engenh|arquitet)/)) {
-    return "construction";
-  }
-  if (combined.match(/(tech|software|site|app|sistem|program|desenvol)/)) {
-    return "technology";
-  }
-
-  return "general";
-}
 
 /** ============================= FUNÇÕES DE CONFIGURAÇÕES E SHEETS ESSENCIAIS ============================= */
 
@@ -4989,16 +5241,16 @@ function testeAdminDepoisLimpeza() {
 function admin_get_client_features(e, data) {
   try {
     const site = data.site || data.siteSlug;
-    
+
     if (!site) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const settings = findSheetData_('feature_settings', { site: site });
     let clientSettings = settings.length > 0 ? settings[0] : null;
-    
+
     if (!clientSettings) {
       clientSettings = {
         site: site,
@@ -5007,10 +5259,10 @@ function admin_get_client_features(e, data) {
         onboardingCompleted: false,
         lastUpdated: new Date().toISOString()
       };
-      
+
       addSheetRow_('feature_settings', clientSettings);
     }
-    
+
     if (typeof clientSettings.enabledFeatures === 'string') {
       try {
         clientSettings.enabledFeatures = JSON.parse(clientSettings.enabledFeatures);
@@ -5018,14 +5270,14 @@ function admin_get_client_features(e, data) {
         clientSettings.enabledFeatures = NEW_FEATURES_CONFIG.CORE_FEATURES;
       }
     }
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         settings: clientSettings
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5037,26 +5289,26 @@ function admin_update_client_features(e, data) {
   try {
     const site = data.site || data.siteSlug;
     const updates = data.updates;
-    
+
     if (!site || !updates) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site e updates obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     if (updates.enabledFeatures && Array.isArray(updates.enabledFeatures)) {
       updates.enabledFeatures = JSON.stringify(updates.enabledFeatures);
     }
-    
+
     const success = updateSheetRow_('feature_settings', { site: site }, updates);
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: success, 
         settings: updates 
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5069,16 +5321,16 @@ function admin_toggle_client_feature(e, data) {
     const site = data.site || data.siteSlug;
     const featureId = data.featureId;
     const enabled = data.enabled;
-    
+
     if (!site || !featureId || typeof enabled !== 'boolean') {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Parâmetros inválidos' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const settings = findSheetData_('feature_settings', { site: site });
     let enabledFeatures = NEW_FEATURES_CONFIG.CORE_FEATURES.slice();
-    
+
     if (settings.length > 0) {
       try {
         enabledFeatures = JSON.parse(settings[0].enabledFeatures || '[]');
@@ -5086,21 +5338,21 @@ function admin_toggle_client_feature(e, data) {
         enabledFeatures = NEW_FEATURES_CONFIG.CORE_FEATURES.slice();
       }
     }
-    
+
     if (enabled && !enabledFeatures.includes(featureId)) {
       enabledFeatures.push(featureId);
     } else if (!enabled && enabledFeatures.includes(featureId)) {
       enabledFeatures = enabledFeatures.filter(f => f !== featureId);
     }
-    
+
     const success = updateSheetRow_('feature_settings', { site: site }, {
       enabledFeatures: JSON.stringify(enabledFeatures)
     });
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ ok: success }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5112,19 +5364,19 @@ function admin_update_client_plan(e, data) {
   try {
     const site = data.site || data.siteSlug;
     const plan = data.plan;
-    
+
     if (!site || !plan || !['essential', 'vip'].includes(plan)) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site e plano válido obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const success = updateSheetRow_('feature_settings', { site: site }, { plan: plan });
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ ok: success }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5139,16 +5391,16 @@ function admin_update_client_plan(e, data) {
 function multi_language_get_settings(e, data) {
   try {
     const site = data.site || data.siteSlug;
-    
+
     if (!site) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const settings = findSheetData_('language_settings', { site: site });
     let langSettings = settings.length > 0 ? settings[0] : null;
-    
+
     if (!langSettings) {
       langSettings = {
         defaultLanguage: NEW_FEATURES_CONFIG.DEFAULT_LANGUAGE,
@@ -5157,7 +5409,7 @@ function multi_language_get_settings(e, data) {
         fallbackLanguage: NEW_FEATURES_CONFIG.DEFAULT_LANGUAGE
       };
     }
-    
+
     if (typeof langSettings.enabledLanguages === 'string') {
       try {
         langSettings.enabledLanguages = JSON.parse(langSettings.enabledLanguages);
@@ -5165,14 +5417,14 @@ function multi_language_get_settings(e, data) {
         langSettings.enabledLanguages = [NEW_FEATURES_CONFIG.DEFAULT_LANGUAGE];
       }
     }
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         settings: langSettings
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5184,23 +5436,23 @@ function multi_language_update_settings(e, data) {
   try {
     const site = data.site || data.siteSlug;
     const settings = data.settings;
-    
+
     if (!site || !settings) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site e configurações obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     if (settings.enabledLanguages && Array.isArray(settings.enabledLanguages)) {
       settings.enabledLanguages = JSON.stringify(settings.enabledLanguages);
     }
-    
+
     const success = updateSheetRow_('language_settings', { site: site }, settings);
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ ok: success, settings }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5212,27 +5464,27 @@ function multi_language_translate_content(e, data) {
   try {
     const content = data.content;
     const targetLanguage = data.targetLanguage;
-    
+
     if (!content || !targetLanguage) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Conteúdo e idioma obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     let translatedContent;
     try {
       translatedContent = LanguageApp.translate(content, 'pt', targetLanguage);
     } catch (error) {
       translatedContent = content;
     }
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         translatedContent 
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro na tradução' }))
@@ -5247,16 +5499,16 @@ function multi_language_translate_content(e, data) {
 function appointment_get_settings(e, data) {
   try {
     const site = data.site || data.siteSlug;
-    
+
     if (!site) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const settings = findSheetData_('appointment_settings', { site: site });
     let appointmentSettings = settings.length > 0 ? settings[0] : null;
-    
+
     if (!appointmentSettings) {
       appointmentSettings = {
         workingHours: JSON.stringify(NEW_FEATURES_CONFIG.WORKING_HOURS_DEFAULT),
@@ -5267,7 +5519,7 @@ function appointment_get_settings(e, data) {
         googleCalendarIntegration: false
       };
     }
-    
+
     ['workingHours', 'workingDays'].forEach(field => {
       if (typeof appointmentSettings[field] === 'string') {
         try {
@@ -5277,14 +5529,14 @@ function appointment_get_settings(e, data) {
         }
       }
     });
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         settings: appointmentSettings
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5296,24 +5548,24 @@ function appointment_create(e, data) {
   try {
     const site = data.site || data.siteSlug;
     const appointment = data.appointment;
-    
+
     if (!site || !appointment) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site e dados do agendamento obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const existingAppointments = findSheetData_('appointments', { 
       site: site, 
       datetime: appointment.datetime 
     });
-    
+
     if (existingAppointments.length > 0) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Horário não disponível' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const appointmentData = {
       id: generateUniqueId_(),
       site: site,
@@ -5321,16 +5573,16 @@ function appointment_create(e, data) {
       status: 'confirmed',
       createdAt: new Date().toISOString()
     };
-    
+
     const success = addSheetRow_('appointments', appointmentData);
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: success, 
         appointment: success ? appointmentData : null
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5342,45 +5594,45 @@ function appointment_get_availability(e, data) {
   try {
     const site = data.site || data.siteSlug;
     const date = data.date;
-    
+
     if (!site || !date) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site e data obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const settings = findSheetData_('appointment_settings', { site: site });
     const workingHours = settings.length > 0 ? 
       JSON.parse(settings[0].workingHours || '{"start":"09:00","end":"18:00"}') : 
       NEW_FEATURES_CONFIG.WORKING_HOURS_DEFAULT;
-    
+
     const appointments = findSheetData_('appointments', { site: site });
     const dayAppointments = appointments.filter(apt => apt.datetime && apt.datetime.startsWith(date));
-    
+
     const availableSlots = [];
     const startHour = parseInt(workingHours.start.split(':')[0]);
     const endHour = parseInt(workingHours.end.split(':')[0]);
-    
+
     for (let hour = startHour; hour < endHour; hour++) {
       const timeSlot = `${hour.toString().padStart(2, '0')}:00`;
       const slotDateTime = `${date}T${timeSlot}:00`;
-      
+
       const isOccupied = dayAppointments.some(apt => 
         apt.datetime && apt.datetime.includes(timeSlot)
       );
-      
+
       if (!isOccupied) {
         availableSlots.push(timeSlot);
       }
     }
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         availableSlots 
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5395,25 +5647,25 @@ function appointment_get_availability(e, data) {
 function ecommerce_get_products(e, data) {
   try {
     const site = data.site || data.siteSlug;
-    
+
     if (!site) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const filters = { site: site };
     if (data.category) filters.category = data.category;
-    
+
     const products = findSheetData_('products', filters);
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         products 
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5425,13 +5677,13 @@ function ecommerce_create_product(e, data) {
   try {
     const site = data.site || data.siteSlug;
     const product = data.product;
-    
+
     if (!site || !product) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site e produto obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const productData = {
       id: generateUniqueId_(),
       site: site,
@@ -5440,20 +5692,20 @@ function ecommerce_create_product(e, data) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    
+
     if (productData.images && Array.isArray(productData.images)) {
       productData.images = JSON.stringify(productData.images);
     }
-    
+
     const success = addSheetRow_('products', productData);
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: success, 
         product: success ? productData : null
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5464,16 +5716,16 @@ function ecommerce_create_product(e, data) {
 function ecommerce_get_store_settings(e, data) {
   try {
     const site = data.site || data.siteSlug;
-    
+
     if (!site) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const settings = findSheetData_('store_settings', { site: site });
     let storeSettings = settings.length > 0 ? settings[0] : null;
-    
+
     if (!storeSettings) {
       storeSettings = {
         name: 'Minha Loja',
@@ -5482,7 +5734,7 @@ function ecommerce_get_store_settings(e, data) {
         shippingZones: JSON.stringify([])
       };
     }
-    
+
     ['paymentMethods', 'shippingZones'].forEach(field => {
       if (typeof storeSettings[field] === 'string') {
         try {
@@ -5492,14 +5744,14 @@ function ecommerce_get_store_settings(e, data) {
         }
       }
     });
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         settings: storeSettings
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5538,29 +5790,29 @@ function white_label_create_reseller(e, data) {
   try {
     const resellerId = data.resellerId;
     const resellerData = data.resellerData;
-    
+
     if (!resellerId || !resellerData) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'ID e dados do revendedor obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const reseller = {
       id: resellerId,
       ...resellerData,
       status: 'active',
       createdAt: new Date().toISOString()
     };
-    
+
     const success = addSheetRow_('resellers', reseller);
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: success, 
         reseller: success ? reseller : null
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5571,23 +5823,23 @@ function white_label_create_reseller(e, data) {
 function white_label_get_reseller(e, data) {
   try {
     const resellerId = data.resellerId;
-    
+
     if (!resellerId) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'ID do revendedor obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const resellers = findSheetData_('resellers', { id: resellerId });
     const reseller = resellers.length > 0 ? resellers[0] : null;
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         reseller 
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5635,10 +5887,10 @@ function marketplace_get_templates(e, data) {
   try {
     const filters = {};
     if (data.category) filters.category = data.category;
-    
+
     const templates = findSheetData_('marketplace_templates', filters);
     const categories = findSheetData_('template_categories', {});
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
@@ -5646,7 +5898,7 @@ function marketplace_get_templates(e, data) {
         categories
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5657,23 +5909,23 @@ function marketplace_get_templates(e, data) {
 function marketplace_get_template(e, data) {
   try {
     const templateId = data.templateId;
-    
+
     if (!templateId) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'ID do template obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const templates = findSheetData_('marketplace_templates', { id: templateId });
     const template = templates.length > 0 ? templates[0] : null;
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
         template 
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5705,29 +5957,29 @@ function marketplace_get_purchases(e, data) {
 function audit_log_event(e, data) {
   try {
     const auditLog = data.auditLog;
-    
+
     if (!auditLog || !auditLog.site) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Dados de auditoria obrigatórios' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const logData = {
       id: generateUniqueId_(),
       ...auditLog,
       timestamp: new Date().toISOString()
     };
-    
+
     const success = addSheetRow_('audit_logs', logData);
-    
+
     if (success) {
       checkSecurityAlerts_(logData);
     }
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ ok: success }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5738,15 +5990,15 @@ function audit_log_event(e, data) {
 function audit_get_logs(e, data) {
   try {
     const site = data.site || data.siteSlug;
-    
+
     if (!site) {
       return ContentService
         .createTextOutput(JSON.stringify({ ok: false, error: 'Site obrigatório' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const logs = findSheetData_('audit_logs', { site: site });
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({ 
         ok: true, 
@@ -5755,7 +6007,7 @@ function audit_get_logs(e, data) {
         hasMore: false 
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: 'Erro interno' }))
@@ -5972,7 +6224,7 @@ function EMAIL_livre_(to, subject, html) {
 
 function testFeedbacksFunction() {
   Logger.log("=== TESTE FUNÇÕES DE FEEDBACK ===");
-  
+
   // Testa se a função existe
   try {
     var result = listFeedbacksPublic_("LOUNGERIEAMAPAGARDEN", 1, 20);
@@ -5980,7 +6232,7 @@ function testFeedbacksFunction() {
   } catch (e) {
     Logger.log("listFeedbacksPublic_ NÃO existe: " + e);
   }
-  
+
   // Testa se a função com nome diferente existe
   try {
     var result2 = listFeedbacks_("LOUNGERIEAMAPAGARDEN", 1, 20);
@@ -5993,11 +6245,11 @@ function testFeedbacksFunction() {
 function debugNormalizeSlug() {
   var original = "LOUNGERIEAMAPAGARDEN";
   var normalizado = normalizeSlug_(original);
-  
+
   Logger.log("Original: '" + original + "'");
   Logger.log("Normalizado: '" + normalizado + "'");
   Logger.log("São iguais: " + (original === normalizado));
-  
+
   // Teste a função completa
   var resultado = listFeedbacksPublic_(normalizado, 1, 20);
   Logger.log("Resultado com normalizado: " + JSON.stringify(resultado));
@@ -6005,7 +6257,7 @@ function debugNormalizeSlug() {
 
 function debugDoGet() {
   Logger.log("=== TESTE MANUAL doGet ===");
-  
+
   // Simular parâmetros como vem da web app
   var mockEvent = {
     parameter: {
@@ -6015,24 +6267,19 @@ function debugDoGet() {
       pageSize: "20"
     }
   };
-  
+
   Logger.log("Parâmetros simulados: " + JSON.stringify(mockEvent.parameter));
-  
+
   // Chamar doGet com os parâmetros
   var resultado = doGet(mockEvent);
   Logger.log("Resultado doGet: " + resultado.body);
-  
+
   // Verificar se o type está sendo reconhecido
   var type = String(mockEvent.parameter.type || "").toLowerCase();
   Logger.log("Type processado: '" + type + "'");
   Logger.log("Comparação: " + (type === "list_feedbacks_public"));
 }
 
-/** ===== JSON helpers ===== */
-function jsonOut_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
 
 /** ====== Testes rápidos dentro do editor do GAS (Executar) ====== */
 function TEST_ping() {
@@ -6053,6 +6300,31 @@ function TEST_setApproval() {
   const r = feedbackSetApproval_(null, { site:'SEU_SITE_SLUG', id:'ID_DO_FEEDBACK', approved:true, pin:'SEU_PIN_VIP' });
   Logger.log(JSON.stringify(r));
 }
+
+
+
+function safeParseJson_(s) {
+  try { return JSON.parse(String(s||'{}')); } catch(_){ return {}; }
+}
+
+// Lê uma linha de settings_kv por siteSlug
+function getKV_(ss, siteSlug) {
+  const sh = ss.getSheetByName('settings_kv') || ss.insertSheet('settings_kv');
+  if (sh.getLastRow() === 0) sh.appendRow(['siteSlug','updated_at','settings_json']);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0].map(h=>String(h).trim());
+  const idxSlug = headers.indexOf('siteSlug');
+  const idxJson = headers.indexOf('settings_json');
+  for (let i=1;i<data.length;i++){
+    if (String(data[i][idxSlug]||'').trim().toUpperCase() === siteSlug.toUpperCase()){
+      return { siteSlug, settings_json: String(data[i][idxJson]||'') };
+    }
+  }
+  return { siteSlug, settings_json: '{}' };
+}
+
+
+
 
 /**
  * ============================= FIM DAS NOVAS FUNCIONALIDADES VIP =============================
