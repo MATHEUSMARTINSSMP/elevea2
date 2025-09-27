@@ -159,6 +159,27 @@ export default async (req) => {
       return json(200, { ok: true });
     }
 
+    // …dentro do handler principal, junto das outras rotas:
+
+// Listar mensagens do WhatsApp (dashboard)
+if (action === "wa_list_messages") {
+  const site = String(body.site || body.siteSlug || "");
+  const page = Number(body.page || 1);
+  const pageSize = Number(body.pageSize || 20);
+
+  const gas = await callGAS("wa_list_messages", { site, page, pageSize }, "POST");
+  return json(200, gas && gas.ok ? gas : { ok:true, items:[], total:0, page, pageSize });
+}
+
+// Enviar texto pelo WhatsApp
+if (action === "wa_send_text") {
+  const site = String(body.site || body.siteSlug || "");
+  const to   = String(body.to || "");
+  const text = String(body.text || "");
+  const gas = await callGAS("wa_send_text", { site, to, text }, "POST");
+  return json(200, gas || { ok:false, error:"gas_failed" });
+}
+
     // Outras ações… (deixe as que você já tem aqui abaixo)
 
     return json(400, { ok: false, error: "unknown_action" });
