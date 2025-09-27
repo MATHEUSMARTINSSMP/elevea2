@@ -1,3 +1,4 @@
+// netlify/functions/client-api.ts
 const GAS_BASE_URL =
   process.env.GAS_BASE_URL ||
   process.env.ELEVEA_GAS_URL ||
@@ -8,18 +9,22 @@ const ADMIN_DASH_TOKEN =
   process.env.ADMIN_TOKEN ||
   "";
 
-function json(status, body, extraHeaders = {}) {
+function json(status: number, body: any, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
+      // CORS básico
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "content-type,authorization",
+      "access-control-allow-methods": "POST,OPTIONS",
       ...extraHeaders,
     },
   });
 }
 
 // Normaliza itens vindos do GAS para formato único no front
-function normalizeFeedbackItems(items) {
+function normalizeFeedbackItems(items: any[]) {
   if (!Array.isArray(items)) return [];
   return items.map((it, i) => {
     const id = String(it.id ?? it.ID ?? it.rowId ?? it.row ?? i + 1);
@@ -39,15 +44,15 @@ function normalizeFeedbackItems(items) {
 }
 
 // Chamada ao GAS (GET ou POST)
-async function callGAS(action, payload = {}, method = "POST") {
+async function callGAS(action: string, payload: Record<string, any> = {}, method: "GET" | "POST" = "POST") {
   if (!GAS_BASE_URL) return { ok: false, error: "missing_GAS_BASE_URL_env" };
 
   const url =
     method === "GET"
-      ? `${GAS_BASE_URL}?action=${encodeURIComponent(action)}&${new URLSearchParams(payload).toString()}`
+      ? `${GAS_BASE_URL}?action=${encodeURIComponent(action)}&${new URLSearchParams(payload as any).toString()}`
       : `${GAS_BASE_URL}?action=${encodeURIComponent(action)}`;
 
-  const init = {
+  const init: RequestInit = {
     method,
     headers: { "content-type": "application/json" },
     body: method === "POST" ? JSON.stringify(payload) : undefined,
@@ -59,11 +64,18 @@ async function callGAS(action, payload = {}, method = "POST") {
   return data;
 }
 
-export default async (req) => {
+export default async (req: Request) => {
   try {
     // Preflight CORS
     if (req.method === "OPTIONS") {
-      return new Response("", { status: 204 });
+      return new Response("", {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-headers": "content-type,authorization",
+          "access-control-allow-methods": "POST,OPTIONS",
+        },
+      });
     }
 
     if (req.method !== "POST") {
@@ -141,7 +153,7 @@ export default async (req) => {
       return json(200, { ok: true });
     }
 
-    // NOVA ROTA: criar feedback via proxy
+    // Criar feedback via proxy
     if (action === "submit_feedback") {
       const siteSlug = String(body.site || body.siteSlug || "");
       const payload = {
@@ -159,31 +171,35 @@ export default async (req) => {
       return json(200, { ok: true });
     }
 
-    // …dentro do handler principal, junto das outras rotas:
+    // ================== WHATSAPP BUSINESS ==================
 
-// Listar mensagens do WhatsApp (dashboard)
-if (action === "wa_list_messages") {
-  const site = String(body.site || body.siteSlug || "");
-  const page = Number(body.page || 1);
-  const pageSize = Number(body.pageSize || 20);
+    // Listar mensagens do WhatsApp (dashboard)
+    if (action === "wa_list_messages") {
+      const site = String(body.site || body.siteSlug || "");
+      const page = Number(body.page || 1);
+      const pageSize = Number(body.pageSize || 20);
 
-  const gas = await callGAS("wa_list_messages", { site, page, pageSize }, "POST");
-  return json(200, gas && gas.ok ? gas : { ok:true, items:[], total:0, page, pageSize });
-}
+      const gas = await callGAS("wa_list_messages", { site, page, pageSize }, "POST");
+      return json(200, gas && gas.ok ? gas : { ok: true, items: [], total: 0, page, pageSize });
+    }
 
-// Enviar texto pelo WhatsApp
-if (action === "wa_send_text") {
-  const site = String(body.site || body.siteSlug || "");
-  const to   = String(body.to || "");
-  const text = String(body.text || "");
-  const gas = await callGAS("wa_send_text", { site, to, text }, "POST");
-  return json(200, gas || { ok:false, error:"gas_failed" });
-}
+    // Enviar texto pelo WhatsApp (alias aceito no front)
+    if (action === "wa_send" || action === "wa_send_text") {
+      const site = String(body.site || body.siteSlug || "");
+      const to = String(body.to || "");
+      const text = String(body.text || "");
 
-    // Outras ações… (deixe as que você já tem aqui abaixo)
+      // Preferimos chamar a rota mais explícita do GAS
+      const gas = await callGAS("wa_send_text", { site, to, text }, "POST");
+      return json(200, gas || { ok: false, error: "gas_failed" });
+    }
 
+    // -------------------------------------------------------
+
+    // Outras ações… (mantenha novas rotas sempre acima)
     return json(400, { ok: false, error: "unknown_action" });
-  } catch (e) {
-    return json(500, { ok: false, error: String(e) });
+
+  } catch (e: any) {
+    return json(500, { ok: false, error: String(e?.message || e) });
   }
 };
