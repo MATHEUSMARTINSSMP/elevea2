@@ -133,6 +133,22 @@ export default async (req) => {
       });
     }
 
+    // Enviar mensagem usando Template
+if (action === "wa_send_template") {
+  const site = String(body.site || body.siteSlug || "");
+  const to = String(body.to || "");
+  const template = String(body.template || "hello_world");
+  const lang = String(body.lang || "en_US");
+
+  const gas = await callGAS(
+    "wa_send_template",
+    { site, to, template, lang },
+    "POST"
+  );
+
+  return json(200, gas || { ok: false, error: "gas_failed" });
+}
+
     // Aprovação (PIN/ADMIN)
     if (action === "feedback_set_approval") {
       const site = String(body.site || body.siteSlug || "");
