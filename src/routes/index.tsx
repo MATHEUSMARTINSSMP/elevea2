@@ -7,6 +7,7 @@ const HomePage        = lazy(() => import("@/pages/Index"));
 const LoginPage       = lazy(() => import("@/pages/auth/Login"));
 const ObrigadoPage    = lazy(() => import("@/pages/obrigado/index"));
 const ResetPage       = lazy(() => import("@/pages/reset/index"));
+const PoliticasPage   = lazy(() => import("@/pages/politicas/index"));
 const NotFoundPage    = lazy(() => import("@/pages/NotFound"));
 
 // logadas
@@ -20,6 +21,7 @@ export default function Routes() {
     { path: "/login", element: <LoginPage /> },
     { path: "/obrigado", element: <ObrigadoPage /> },
     { path: "/reset/*", element: <ResetPage /> },
+    { path: "/politicas", element: <PoliticasPage /> }, // <-- aqui
 
     // logadas
     { path: "/client/*", element: <ClientDashboard /> },
