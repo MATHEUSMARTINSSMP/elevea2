@@ -1,4 +1,6 @@
-// netlify/functions/client-api.ts
+// netlify/functions/client-api.ts  (pode ser .js também)
+
+// ===== ENV =====
 const GAS_BASE_URL =
   process.env.GAS_BASE_URL ||
   process.env.ELEVEA_GAS_URL ||
@@ -9,6 +11,7 @@ const ADMIN_DASH_TOKEN =
   process.env.ADMIN_TOKEN ||
   "";
 
+// ===== HELPERS =====
 function json(status, body, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
@@ -63,9 +66,10 @@ async function callGAS(action, payload = {}, method = "POST") {
   return data;
 }
 
+// ===== HANDLER =====
 export default async (req) => {
   try {
-    // Preflight CORS
+    // CORS preflight
     if (req.method === "OPTIONS") {
       return new Response("", {
         status: 204,
@@ -84,12 +88,12 @@ export default async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
 
-    // Segurança extra para chamadas "secure"
+    // Segurança extra para rotas "secure"
     if (action === "feedback_set_approval" || action === "list_feedbacks_secure") {
       body.adminToken = body.adminToken || ADMIN_DASH_TOKEN || "";
     }
 
-    // ----- ROTAS -----
+    // ===== ROTAS =====
 
     // Público (apenas aprovados)
     if (action === "list_feedbacks") {
@@ -133,22 +137,6 @@ export default async (req) => {
       });
     }
 
-    // Enviar mensagem usando Template
-if (action === "wa_send_template") {
-  const site = String(body.site || body.siteSlug || "");
-  const to = String(body.to || "");
-  const template = String(body.template || "hello_world");
-  const lang = String(body.lang || "en_US");
-
-  const gas = await callGAS(
-    "wa_send_template",
-    { site, to, template, lang },
-    "POST"
-  );
-
-  return json(200, gas || { ok: false, error: "gas_failed" });
-}
-
     // Aprovação (PIN/ADMIN)
     if (action === "feedback_set_approval") {
       const site = String(body.site || body.siteSlug || "");
@@ -168,7 +156,7 @@ if (action === "wa_send_template") {
       return json(200, { ok: true });
     }
 
-    // Criar feedback
+    // Criar feedback (público)
     if (action === "submit_feedback") {
       const siteSlug = String(body.site || body.siteSlug || "");
       const payload = {
@@ -186,7 +174,7 @@ if (action === "wa_send_template") {
       return json(200, { ok: true });
     }
 
-    // ================== WHATSAPP BUSINESS ==================
+    // ============= WHATSAPP BUSINESS =============
 
     // Listar mensagens do WhatsApp
     if (action === "wa_list_messages") {
@@ -198,12 +186,29 @@ if (action === "wa_send_template") {
       return json(200, gas && gas.ok ? gas : { ok: true, items: [], total: 0, page, pageSize });
     }
 
-    // Enviar texto pelo WhatsApp (alias aceito no front)
+    // Enviar texto pelo WhatsApp
     if (action === "wa_send" || action === "wa_send_text") {
       const site = String(body.site || body.siteSlug || "");
       const to = String(body.to || "");
       const text = String(body.text || "");
       const gas = await callGAS("wa_send_text", { site, to, text }, "POST");
+      return json(200, gas || { ok: false, error: "gas_failed" });
+    }
+
+    // Enviar mensagem usando Template (GENÉRICO)
+    if (action === "wa_send_template") {
+      const site = String(body.site || body.siteSlug || "");
+      const to = String(body.to || "");
+      const template = String(body.template || "hello_world");
+      const lang = String(body.lang || "en_US");
+      const components = Array.isArray(body.components) ? body.components : undefined; // opcional
+
+      const gas = await callGAS(
+        "wa_send_template",
+        { site, to, template, lang, components },
+        "POST"
+      );
+
       return json(200, gas || { ok: false, error: "gas_failed" });
     }
 
