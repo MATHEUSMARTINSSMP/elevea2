@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useAuth } from "@/hooks/useAuth";
+
+// === Seções principais ===
 import AIChat from "./components/AIChat";
 import AIContentGenerator from "./components/AIContentGenerator";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
@@ -16,16 +18,24 @@ import FeatureManager from "./components/FeatureManager";
 import { EcommerceDashboard } from "./components/EcommerceDashboard";
 import TemplateMarketplace from "./components/TemplateMarketplace";
 import AuditLogs from "./components/AuditLogs";
+
+// === Extras / UI ===
 import { AICopywriter } from "@/components/ui/ai-copywriter";
 import { ComingSoonCard } from "@/components/ui/coming-soon-card";
-// mantendo seus imports de skeletons
-import { DashboardCardSkeleton, MetricsSkeleton, ContentSkeleton } from "@/components/ui/loading-skeletons";
+import {
+  DashboardCardSkeleton,
+  MetricsSkeleton,
+  ContentSkeleton,
+} from "@/components/ui/loading-skeletons";
+
+// Dev mocks para ambiente local
 import { interceptNetlifyFunctions } from "@/utils/devMocks";
 
 /* ================= CONFIG ================= */
-const PLAN_TIMEOUT_MS = 8000; // Increased from 3s to 8s for better reliability
-const PLAN_RETRY_COUNT = 2; // Number of retries for plan validation
+const PLAN_TIMEOUT_MS = 8000; // timeout maior p/ estabilidade
+const PLAN_RETRY_COUNT = 3;   // nº de tentativas de retry
 const CARDS_TIMEOUT_MS = 5000;
+
 const UPGRADE_URL =
   (import.meta as any).env?.VITE_UPGRADE_URL ||
   "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=99dceb0e108a4f238a84fbef3e91bab8";
