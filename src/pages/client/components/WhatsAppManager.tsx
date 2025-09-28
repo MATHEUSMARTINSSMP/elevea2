@@ -17,6 +17,8 @@ import { DashboardCardSkeleton } from "@/components/ui/loading-skeletons";
 /* ===== react-chat-elements (histórico estilo WhatsApp) ===== */
 import { MessageList } from "react-chat-elements";
 import "react-chat-elements/dist/main.css";
+/* CSS de overrides para visual dark/WhatsApp */
+import "@/styles/chat-overrides.css";
 
 /* ================== Tipos ================== */
 type MsgType = "received" | "sent" | "auto_response";
@@ -119,20 +121,22 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
       const data = await r.json();
       if (!data?.ok) throw new Error(data?.error || "Erro ao listar mensagens");
 
-      const mapped: WaItem[] = (data.items || []).map((m: any) => ({
-        id: String(m.id ?? m.msg_id ?? Math.random()),
-        phoneNumber: String(m.from || m.phone || m.msisdn || ""),
-        contactName: m.name || m.contactName || fmtPhoneBR(String(m.from || m.phone || "")),
-        message: String(m.text || m.message || ""),
-        timestamp: String(m.timestamp || m.ts || new Date().toISOString()),
-        type:
-          m.direction === "in" || m.type === "received"
-            ? "received"
-            : m.auto
-            ? "auto_response"
-            : "sent",
-        status: m.status as MsgStatus,
-      }));
+      const mapped: WaItem[] = (data.items || []).map((m: any) => {
+        // Heurística para direção:
+        // - Preferir 'direction' vindo do GAS (in/out)
+        // - Se não houver, considerar 'from' diferente do seu número como recebido
+        const direction = (m.direction || "").toString().toLowerCase();
+        const isIn = direction === "in" || direction === "received";
+        return {
+          id: String(m.id ?? m.msg_id ?? Math.random()),
+          phoneNumber: String(m.from || m.phone || m.msisdn || ""),
+          contactName: m.name || m.contactName || fmtPhoneBR(String(m.from || m.phone || "")),
+          message: String(m.text || m.message || ""),
+          timestamp: String(m.timestamp || m.ts || new Date().toISOString()),
+          type: isIn ? "received" : m.auto ? "auto_response" : "sent",
+          status: m.status as MsgStatus,
+        };
+      });
 
       setItems(mapped);
 
@@ -170,7 +174,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
       // substituições (tudo pelo conteúdo da mensagem)
       const msg = applyVars(text, {
         saudacao: saudacao(),
-        nome: "", // unitário: sem nome; em massa: virá do CSV
+        nome: "",
         data: nowDate(),
         hora: nowTime(),
       });
@@ -340,13 +344,13 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     .map((m) => {
       const mine = m.type !== "received";
       return {
-        position: mine ? "right" : "left",
+        position: (mine ? "right" : "left") as "right" | "left",
         type: "text",
-        text: m.message,
+        text: m.message || " ", // evita caixa vazia
         date: new Date(m.timestamp),
         title: mine ? undefined : m.contactName || fmtPhoneBR(m.phoneNumber),
         status: mine ? (m.status === "read" ? "read" : "sent") : undefined,
-      } as any;
+      };
     });
 
   return (
@@ -370,9 +374,9 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
             </Badge>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"                           {/* <- tira “botão branco” */}
               onClick={fetchMessages}
-              className="border-white/20 text-white hover:bg-white/10"
+              className="text-white hover:bg-white/10"
             >
               <RefreshCcwIcon className="w-4 h-4 mr-2" />
               Atualizar
@@ -412,7 +416,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
             </button>
           </div>
 
-          <div ref={listRef} className="max-h-[440px] overflow-y-auto p-2">
+          <div ref={listRef} className="max-h-[460px] overflow-y-auto p-2 rce-wrap">
             {rceData.length === 0 ? (
               <div className="text-center py-10 text-slate-400">
                 <MessageCircleIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
