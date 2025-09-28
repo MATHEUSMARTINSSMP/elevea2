@@ -101,25 +101,32 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
   const canSendText = phone.trim() && text.trim();
 
   /* --------- carregar histórico (GAS) --------- */
-  async function fetchMessages() {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await fetch("/.netlify/functions/client-api", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "wa_list_messages",
-          site: siteSlug,
-          page: 1,
-          pageSize: 50,
-          pin: vipPin || undefined,
-        }),
-      });
-      if (!r.ok) throw new Error(`Falha ao carregar (${r.status})`);
-      const data = await r.json();
+async function fetchMessages() {
+  setLoading(true);
+  setError(null);
+  try {
+    const r = await fetch("/.netlify/functions/client-api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "wa_list_messages",
+        site: siteSlug,
+        page: 1,
+        pageSize: 50,
+        pin: vipPin || undefined,
+      }),
+    });
+    if (!r.ok) throw new Error(`Falha ao carregar (${r.status})`);
+    const data = await r.json();
 
-      if (!data?.ok) throw new Error(data?.error || "Erro ao listar mensagens");
+    if (!data?.ok) throw new Error(data?.error || "Erro ao listar mensagens");
+    // ... resto do seu mapping/estatísticas
+  } catch (e: any) {
+    setError(e?.message || "Falha ao carregar histórico");
+  } finally {
+    setLoading(false);
+  }
+}
 
       const mapped: WaItem[] = (data.items || []).map((m: any) => ({
         id: String(m.id ?? m.msg_id ?? Math.random()),
@@ -527,21 +534,21 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
         </form>
 
         {/* Diretrizes rápidas */}
-        <div className="p-4 rounded-lg bg-blue-400/10 border border-blue-400/20">
-          <div className="flex items-center gap-2 mb-2">
-            <BotIcon className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-medium text-blue-300">Diretrizes Meta</span>
-          </div>
-          <ul className="text-xs text-blue-300/80 list-disc pl-5 space-y-1">
-            <li>Personalização é feita <strong>no texto</strong> com os chips acima ({{"{{saudacao}}"}}, {{"{{nome}}"}}, etc.).</li>
-            <li>Dentro de 24h: mensagem livre. Fora de 24h: usar template aprovado pela Meta.</li>
-            <li>Envie apenas para contatos com consentimento e ofereça opt-out quando necessário.</li>
-          </ul>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+<div className="p-4 rounded-lg bg-blue-400/10 border border-blue-400/20">
+  <div className="flex items-center gap-2 mb-2">
+    <BotIcon className="w-4 h-4 text-blue-400" />
+    <span className="text-sm font-medium text-blue-300">Diretrizes Meta</span>
+  </div>
+  <ul className="text-xs text-blue-300/80 list-disc pl-5 space-y-1">
+    <li>
+      Personalização é feita <strong>no texto</strong> com os chips acima (
+      <code>{`{{saudacao}}`}</code>, <code>{`{{nome}}`}</code>, <code>{`{{data}}`}</code>, <code>{`{{hora}}`}</code>).
+    </li>
+    <li>Dentro de 24h: mensagem livre. Fora de 24h: usar template aprovado pela Meta.</li>
+    <li>Envie apenas para contatos com consentimento e ofereça opt-out quando necessário.</li>
+  </ul>
+</div>
+
 
 /* ================== Subcomponentes UI ================== */
 function Stat({ title, value }: { title: string; value: React.ReactNode }) {
