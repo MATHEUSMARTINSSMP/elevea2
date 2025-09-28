@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   MessageCircleIcon,
   SendIcon,
-  UsersIcon,
   UploadIcon,
   BotIcon,
   CheckCircleIcon,
@@ -54,8 +53,22 @@ const saudacao = () => {
   return "Boa noite";
 };
 
+const nowDate = () =>
+  new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+const nowTime = () =>
+  new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
 const applyVars = (tpl: string, vars: Record<string, string>) =>
-  tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => vars[k] ?? "");
+  tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => (vars[k] ?? ""));
+
+/* Variáveis disponíveis (chips) — tudo via mensagem */
+const AVAILABLE_VARS = [
+  { key: "saudacao", label: "{{saudacao}}" },
+  { key: "nome",      label: "{{nome}}" },
+  { key: "data",      label: "{{data}}" },
+  { key: "hora",      label: "{{hora}}" },
+];
 
 /* ================== Componente ================== */
 export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerProps) {
@@ -70,7 +83,6 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
   // envio unitário
   const [phone, setPhone] = useState("");
   const [text, setText] = useState("");
-  const [templateName, setTemplateName] = useState("");
 
   // envio em massa
   const [bulkRows, setBulkRows] = useState<Array<{ phone: string; nome?: string }>>([]);
@@ -81,6 +93,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
   });
 
   const listRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const canSendText = phone.trim() && text.trim();
 
@@ -145,10 +158,12 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     setSending(true);
     setError(null);
     try {
-      // substituições básicas
+      // substituições (tudo pelo conteúdo da mensagem)
       const msg = applyVars(text, {
         saudacao: saudacao(),
-        nome: "",
+        nome: "",                // unitário: sem nome; em massa: virá do CSV
+        data: nowDate(),
+        hora: nowTime(),
       });
 
       const r = await fetch("/.netlify/functions/client-api", {
@@ -157,7 +172,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
         body: JSON.stringify({
           action: "wa_send_text",
           site: siteSlug,
-          to: phone.replace(/\D/g, ""), // só dígitos
+          to: phone.replace(/\D/g, ""),
           text: msg,
           pin: vipPin || undefined,
         }),
@@ -165,7 +180,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
       const data = await r.json();
       if (!r.ok || !data?.ok) throw new Error(data?.error || "Erro ao enviar");
 
-      // adiciona no histórico otimista
+      // otimista
       setItems((prev) => [
         ...prev,
         {
@@ -181,8 +196,6 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
 
       setText("");
       setPhone("");
-
-      // atualiza do servidor (garante consistência)
       fetchMessages();
     } catch (e: any) {
       setError(e?.message || "Falha ao enviar");
@@ -191,32 +204,9 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     }
   }
 
-  /* --------- enviar template --------- */
-  async function sendTemplate(toPhone: string, tpl: string) {
-    try {
-      const r = await fetch("/.netlify/functions/client-api", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "wa_send_template",
-          site: siteSlug,
-          to: toPhone.replace(/\D/g, ""),
-          template: tpl,
-          lang: "en_US",
-          pin: vipPin || undefined,
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok || !data?.ok) throw new Error(data?.error || "Erro ao enviar template");
-      fetchMessages();
-    } catch (e: any) {
-      setError(e?.message || "Falha no template");
-    }
-  }
-
-  /* --------- upload CSV para envio em massa --------- */
+  /* --------- upload CSV (phone,nome) --------- */
   function parseCSV(text: string) {
-    // Cabeçalho esperado: phone[,nome]
+    // Cabeçalho esperado: phone[,nome] (só isso)
     // Aceita ; ou , como separador
     const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!rows.length) return [];
@@ -241,7 +231,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     const f = e.target.files?.[0];
     if (!f) return;
     if (!/\.csv$/i.test(f.name)) {
-      alert("Envie um arquivo .csv (Excel > Salvar como CSV). Cabeçalhos: phone,nome");
+      alert("Envie um .csv (Excel > Salvar como CSV). Cabeçalhos: phone,nome");
       return;
     }
     const content = await f.text();
@@ -258,11 +248,12 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     let ok = 0, fail = 0;
 
     for (const row of bulkRows) {
-      const vars = {
+      const msg = applyVars(text, {
         saudacao: saudacao(),
         nome: row.nome || "",
-      };
-      const msg = applyVars(text, vars);
+        data: nowDate(),
+        hora: nowTime(),
+      });
 
       try {
         const r = await fetch("/.netlify/functions/client-api", {
@@ -287,6 +278,26 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
 
     setBulkSending(false);
     fetchMessages();
+  }
+
+  /* --------- inserir variável no campo de mensagem --------- */
+  function insertVar(token: string) {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setText((prev) => (prev ? `${prev} ${token}` : token));
+      return;
+    }
+    const start = ta.selectionStart ?? ta.value.length;
+    const end = ta.selectionEnd ?? ta.value.length;
+    const value = ta.value;
+    const next = value.slice(0, start) + token + value.slice(end);
+    setText(next);
+    // reposiciona cursor após o token
+    requestAnimationFrame(() => {
+      ta.focus();
+      const pos = start + token.length;
+      ta.setSelectionRange(pos, pos);
+    });
   }
 
   /* --------- efeitos --------- */
@@ -355,7 +366,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
               WhatsApp Business
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Chatbot automático e gestão de conversas (API oficial Meta)
+              Envio para contato único ou lista (CSV). Personalize pela mensagem.
             </CardDescription>
           </div>
 
@@ -404,11 +415,8 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
           </div>
         </div>
 
-        {/* Envio unitário (SEM refresh de página) */}
-        <form
-          onSubmit={(e) => e.preventDefault()}
-          className="space-y-4 p-4 rounded-lg bg-white/5 border border-white/10"
-        >
+        {/* Envio unitário (SEM refresh) */}
+        <form onSubmit={(e) => e.preventDefault()} className="space-y-4 p-4 rounded-lg bg-white/5 border border-white/10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs text-slate-400">Número do WhatsApp</label>
@@ -419,48 +427,61 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
                 onChange={(e) => setPhone(e.target.value)}
                 className="bg-white/10 border-white/20 text-white placeholder-slate-400"
               />
-              <div className="text-[10px] text-white/50">
-                Formato livre (aceito): ddd + número. Enviaremos no padrão E.164.
-              </div>
+              <div className="text-[10px] text-white/50">Aceito: ddd + número (será convertido para E.164).</div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Template aprovado (opcional)</label>
-              <select
-                className="w-full p-2 rounded-lg bg-white/10 border border-white/20 text-white"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-              >
-                <option value="">— Selecionar template —</option>
-                <option value="hello_world">hello_world</option>
-                {/* adicione outros templates aprovados aqui */}
-              </select>
-              {templateName && (
-                <div className="text-[10px] text-emerald-300 mt-1">
-                  Envio fora da janela de 24h usa Template aprovado.
+              <label className="text-xs text-slate-400">Importar lista (CSV)</label>
+              <label className="w-full">
+                <input type="file" accept=".csv" onChange={onUploadCSV} className="hidden" />
+                <div className="w-full h-10 rounded-md border border-dashed border-white/25 flex items-center justify-center cursor-pointer hover:bg-white/5 transition">
+                  <UploadIcon className="w-4 h-4 mr-2" />
+                  CSV: <span className="ml-1 opacity-80">phone,nome</span>
+                </div>
+              </label>
+              {bulkRows.length > 0 && (
+                <div className="text-[10px] text-emerald-300">
+                  {bulkRows.length} contatos carregados
                 </div>
               )}
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-slate-400">Mensagem (dentro de 24h)</label>
+            <label className="text-xs text-slate-400">Mensagem (use os chips para personalizar)</label>
             <Textarea
-              placeholder="Use variáveis como {{saudacao}} e {{nome}}. Ex.: {{saudacao}}! Obrigado por entrar em contato."
+              ref={textareaRef}
+              placeholder="Ex.: {{saudacao}} {{nome}}, tudo bem? Passando para avisar que hoje ({{data}}) temos uma condição especial."
               value={text}
               onChange={(e) => setText(e.target.value)}
               className="bg-white/10 border-white/20 text-white placeholder-slate-400 min-h-24"
             />
-            <div className="text-[10px] text-white/50">
-              Dicas: {{`{{saudacao}}`}} = {saudacao()} • {{`{{nome}}`}} = nome do cliente (se disponível no CSV).
+            <div className="flex flex-wrap gap-2 pt-1">
+              {AVAILABLE_VARS.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => insertVar(v.label)}
+                  className="text-[11px] px-2 py-1 rounded-md border border-white/15 bg-white/5 hover:bg-white/10"
+                  title={`Inserir ${v.label}`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-white/50 pt-1">
+              Pré-visualização rápida:&nbsp;
+              <span className="opacity-80">
+                {applyVars(text || "", { saudacao: saudacao(), nome: "Maria", data: nowDate(), hora: nowTime() }) || "—"}
+              </span>
             </div>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
             <Button
               type="button"
-              onClick={() => (templateName ? sendTemplate(phone, templateName) : sendText())}
-              disabled={sending || !phone.trim() || (!templateName && !text.trim())}
+              onClick={sendText}
+              disabled={sending || !phone.trim() || !text.trim()}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {sending ? (
@@ -476,48 +497,37 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
               )}
             </Button>
 
-            {/* Upload CSV para envio em massa */}
-            <label className="w-full">
-              <input type="file" accept=".csv" onChange={onUploadCSV} className="hidden" />
-              <div className="w-full h-10 rounded-md border border-dashed border-white/25 flex items-center justify-center cursor-pointer hover:bg-white/5 transition">
-                <UploadIcon className="w-4 h-4 mr-2" />
-                Importar CSV (phone,nome)
-              </div>
-            </label>
+            {bulkRows.length > 0 && (
+              <Button
+                type="button"
+                onClick={sendBulk}
+                disabled={bulkSending || !text.trim()}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {bulkSending ? "Enviando para a lista…" : `Enviar para ${bulkRows.length} contatos`}
+              </Button>
+            )}
           </div>
 
           {bulkRows.length > 0 && (
             <div className="rounded-md border border-white/15 p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <div className="text-white/80">
-                  Lista carregada: <strong>{bulkRows.length}</strong> contatos
-                </div>
-                <Button
-                  type="button"
-                  onClick={sendBulk}
-                  disabled={bulkSending || !text.trim()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  {bulkSending ? "Enviando em massa…" : "Enviar para a lista"}
-                </Button>
-              </div>
-              <div className="text-xs text-white/60 mt-2">
+              <div className="text-xs text-white/70">
                 Progresso: {bulkProgress.ok} enviados • {bulkProgress.fail} falhas de {bulkProgress.total}
               </div>
             </div>
           )}
         </form>
 
-        {/* Bloco informativo (conformidade Meta) */}
+        {/* Diretrizes rápidas */}
         <div className="p-4 rounded-lg bg-blue-400/10 border border-blue-400/20">
           <div className="flex items-center gap-2 mb-2">
             <BotIcon className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-medium text-blue-300">Diretrizes Meta (resumo)</span>
+            <span className="text-sm font-medium text-blue-300">Diretrizes Meta</span>
           </div>
           <ul className="text-xs text-blue-300/80 list-disc pl-5 space-y-1">
-            <li>Dentro de 24h: mensagens de serviço/atendimento (texto livre) são permitidas.</li>
-            <li>Fora de 24h: use <strong>Template</strong> aprovado.</li>
-            <li>Evite conteúdo promocional fora das políticas; mantenha consentimento do cliente.</li>
+            <li>Tudo de personalização é feito pela <strong>mensagem</strong> (chips acima).</li>
+            <li>Dentro de 24h: mensagem de atendimento livre. Fora de 24h: usar template aprovado.</li>
+            <li>Use apenas contatos com consentimento; mantenha opt-out quando necessário.</li>
           </ul>
         </div>
       </CardContent>
