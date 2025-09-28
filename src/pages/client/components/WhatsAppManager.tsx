@@ -46,8 +46,7 @@ export interface WhatsAppManagerProps {
 
 /* ================== Utils ================== */
 const fmtPhoneBR = (p: string) =>
-  p.replace(/^(\+?55)/, "")
-    .replace(/(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
+  p.replace(/^(\+?55)/, "").replace(/(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
 
 const saudacao = () => {
   const h = new Date().getHours();
@@ -63,14 +62,14 @@ const nowTime = () =>
   new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
 const applyVars = (tpl: string, vars: Record<string, string>) =>
-  tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => (vars[k] ?? ""));
+  tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => vars[k] ?? "");
 
 /* Variáveis disponíveis (chips) — tudo via mensagem */
 const AVAILABLE_VARS = [
   { key: "saudacao", label: "{{saudacao}}" },
-  { key: "nome",      label: "{{nome}}" },
-  { key: "data",      label: "{{data}}" },
-  { key: "hora",      label: "{{hora}}" },
+  { key: "nome", label: "{{nome}}" },
+  { key: "data", label: "{{data}}" },
+  { key: "hora", label: "{{hora}}" },
 ];
 
 /* ================== Componente ================== */
@@ -98,35 +97,27 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const canSendText = phone.trim() && text.trim();
+  const canSendText = Boolean(phone.trim() && text.trim());
 
   /* --------- carregar histórico (GAS) --------- */
-async function fetchMessages() {
-  setLoading(true);
-  setError(null);
-  try {
-    const r = await fetch("/.netlify/functions/client-api", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "wa_list_messages",
-        site: siteSlug,
-        page: 1,
-        pageSize: 50,
-        pin: vipPin || undefined,
-      }),
-    });
-    if (!r.ok) throw new Error(`Falha ao carregar (${r.status})`);
-    const data = await r.json();
-
-    if (!data?.ok) throw new Error(data?.error || "Erro ao listar mensagens");
-    // ... resto do seu mapping/estatísticas
-  } catch (e: any) {
-    setError(e?.message || "Falha ao carregar histórico");
-  } finally {
-    setLoading(false);
-  }
-}
+  async function fetchMessages() {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch("/.netlify/functions/client-api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "wa_list_messages",
+          site: siteSlug,
+          page: 1,
+          pageSize: 50,
+          pin: vipPin || undefined,
+        }),
+      });
+      if (!r.ok) throw new Error(`Falha ao carregar (${r.status})`);
+      const data = await r.json();
+      if (!data?.ok) throw new Error(data?.error || "Erro ao listar mensagens");
 
       const mapped: WaItem[] = (data.items || []).map((m: any) => ({
         id: String(m.id ?? m.msg_id ?? Math.random()),
@@ -134,8 +125,12 @@ async function fetchMessages() {
         contactName: m.name || m.contactName || fmtPhoneBR(String(m.from || m.phone || "")),
         message: String(m.text || m.message || ""),
         timestamp: String(m.timestamp || m.ts || new Date().toISOString()),
-        type: (m.type === "text" && m.direction === "in") ? "received"
-            : (m.auto ? "auto_response" : "sent"),
+        type:
+          m.direction === "in" || m.type === "received"
+            ? "received"
+            : m.auto
+            ? "auto_response"
+            : "sent",
         status: m.status as MsgStatus,
       }));
 
@@ -154,7 +149,11 @@ async function fetchMessages() {
       });
 
       // rolar para o fim
-      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }), 150);
+      setTimeout(() => {
+        if (listRef.current) {
+          listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+        }
+      }, 150);
     } catch (e: any) {
       setError(e?.message || "Falha ao carregar histórico");
     } finally {
@@ -171,7 +170,7 @@ async function fetchMessages() {
       // substituições (tudo pelo conteúdo da mensagem)
       const msg = applyVars(text, {
         saudacao: saudacao(),
-        nome: "",                // unitário: sem nome; em massa: virá do CSV
+        nome: "", // unitário: sem nome; em massa: virá do CSV
         data: nowDate(),
         hora: nowTime(),
       });
@@ -194,7 +193,7 @@ async function fetchMessages() {
       setItems((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: (crypto as any).randomUUID?.() ?? String(Math.random()),
           phoneNumber: phone.replace(/\D/g, ""),
           contactName: fmtPhoneBR(phone),
           message: msg,
@@ -206,7 +205,6 @@ async function fetchMessages() {
 
       setText("");
       setPhone("");
-      // não recarrega a página — apenas atualiza histórico
       fetchMessages();
     } catch (e: any) {
       setError(e?.message || "Falha ao enviar");
@@ -216,9 +214,9 @@ async function fetchMessages() {
   }
 
   /* --------- upload CSV (phone,nome) --------- */
-  function parseCSV(text: string) {
-    // Cabeçalho esperado: phone[,nome] (só isso). Aceita ; ou , como separador.
-    const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  function parseCSV(content: string) {
+    // Cabeçalho esperado: phone[,nome]. Aceita ; ou , como separador.
+    const rows = content.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!rows.length) return [];
     const sep = rows[0].includes(";") ? ";" : ",";
     const header = rows[0].split(sep).map((h) => h.trim().toLowerCase());
@@ -255,7 +253,8 @@ async function fetchMessages() {
     setBulkSending(true);
     setError(null);
     const total = bulkRows.length;
-    let ok = 0, fail = 0;
+    let ok = 0,
+      fail = 0;
 
     for (const row of bulkRows) {
       const msg = applyVars(text, {
@@ -345,7 +344,7 @@ async function fetchMessages() {
         type: "text",
         text: m.message,
         date: new Date(m.timestamp),
-        title: mine ? undefined : (m.contactName || fmtPhoneBR(m.phoneNumber)),
+        title: mine ? undefined : m.contactName || fmtPhoneBR(m.phoneNumber),
         status: mine ? (m.status === "read" ? "read" : "sent") : undefined,
       } as any;
     });
@@ -420,12 +419,7 @@ async function fetchMessages() {
                 Nenhuma conversa ainda.
               </div>
             ) : (
-              <MessageList
-                className="rce-chat-list"
-                lockable
-                toBottomHeight="100%"
-                dataSource={rceData}
-              />
+              <MessageList className="rce-chat-list" lockable toBottomHeight="100%" dataSource={rceData} />
             )}
           </div>
         </div>
@@ -455,9 +449,7 @@ async function fetchMessages() {
                 </div>
               </label>
               {bulkRows.length > 0 && (
-                <div className="text-[10px] text-emerald-300">
-                  {bulkRows.length} contatos carregados
-                </div>
+                <div className="text-[10px] text-emerald-300">{bulkRows.length} contatos carregados</div>
               )}
             </div>
           </div>
@@ -485,9 +477,14 @@ async function fetchMessages() {
               ))}
             </div>
             <div className="text-[10px] text-white/50 pt-1">
-              Pré-visualização rápida:&nbsp;
+              Pré-visualização rápida:{" "}
               <span className="opacity-80">
-                {applyVars(text || "", { saudacao: saudacao(), nome: "Maria", data: nowDate(), hora: nowTime() }) || "—"}
+                {applyVars(text || "", {
+                  saudacao: saudacao(),
+                  nome: "Maria",
+                  data: nowDate(),
+                  hora: nowTime(),
+                }) || "—"}
               </span>
             </div>
           </div>
@@ -534,21 +531,25 @@ async function fetchMessages() {
         </form>
 
         {/* Diretrizes rápidas */}
-<div className="p-4 rounded-lg bg-blue-400/10 border border-blue-400/20">
-  <div className="flex items-center gap-2 mb-2">
-    <BotIcon className="w-4 h-4 text-blue-400" />
-    <span className="text-sm font-medium text-blue-300">Diretrizes Meta</span>
-  </div>
-  <ul className="text-xs text-blue-300/80 list-disc pl-5 space-y-1">
-    <li>
-      Personalização é feita <strong>no texto</strong> com os chips acima (
-      <code>{`{{saudacao}}`}</code>, <code>{`{{nome}}`}</code>, <code>{`{{data}}`}</code>, <code>{`{{hora}}`}</code>).
-    </li>
-    <li>Dentro de 24h: mensagem livre. Fora de 24h: usar template aprovado pela Meta.</li>
-    <li>Envie apenas para contatos com consentimento e ofereça opt-out quando necessário.</li>
-  </ul>
-</div>
-
+        <div className="p-4 rounded-lg bg-blue-400/10 border border-blue-400/20">
+          <div className="flex items-center gap-2 mb-2">
+            <BotIcon className="w-4 h-4 text-blue-400" />
+            <span className="text-sm font-medium text-blue-300">Diretrizes Meta</span>
+          </div>
+          <ul className="text-xs text-blue-300/80 list-disc pl-5 space-y-1">
+            <li>
+              Personalização é feita <strong>no texto</strong> com os chips acima (
+              <code>{`{{saudacao}}`}</code>, <code>{`{{nome}}`}</code>, <code>{`{{data}}`}</code>,{" "}
+              <code>{`{{hora}}`}</code>).
+            </li>
+            <li>Dentro de 24h: mensagem livre. Fora de 24h: usar template aprovado pela Meta.</li>
+            <li>Envie apenas para contatos com consentimento e ofereça opt-out quando necessário.</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 /* ================== Subcomponentes UI ================== */
 function Stat({ title, value }: { title: string; value: React.ReactNode }) {
