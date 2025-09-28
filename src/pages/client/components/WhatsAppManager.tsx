@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +9,14 @@ import {
   SendIcon,
   UploadIcon,
   BotIcon,
-  CheckCircleIcon,
   ClockIcon,
   RefreshCcwIcon,
 } from "lucide-react";
 import { DashboardCardSkeleton } from "@/components/ui/loading-skeletons";
+
+/* ===== react-chat-elements (histórico estilo WhatsApp) ===== */
+import { MessageList } from "react-chat-elements";
+import "react-chat-elements/dist/main.css";
 
 /* ================== Tipos ================== */
 type MsgType = "received" | "sent" | "auto_response";
@@ -121,7 +124,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
       const mapped: WaItem[] = (data.items || []).map((m: any) => ({
         id: String(m.id ?? m.msg_id ?? Math.random()),
         phoneNumber: String(m.from || m.phone || m.msisdn || ""),
-        contactName: m.name || m.contactName || "Contato",
+        contactName: m.name || m.contactName || fmtPhoneBR(String(m.from || m.phone || "")),
         message: String(m.text || m.message || ""),
         timestamp: String(m.timestamp || m.ts || new Date().toISOString()),
         type: (m.type === "text" && m.direction === "in") ? "received"
@@ -143,7 +146,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
         responseRate: totalMessages ? Math.round((auto / totalMessages) * 100) : 0,
       });
 
-      // scroll para último
+      // rolar para o fim
       setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }), 150);
     } catch (e: any) {
       setError(e?.message || "Falha ao carregar histórico");
@@ -186,7 +189,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
         {
           id: crypto.randomUUID(),
           phoneNumber: phone.replace(/\D/g, ""),
-          contactName: "Contato",
+          contactName: fmtPhoneBR(phone),
           message: msg,
           timestamp: new Date().toISOString(),
           type: "sent",
@@ -196,6 +199,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
 
       setText("");
       setPhone("");
+      // não recarrega a página — apenas atualiza histórico
       fetchMessages();
     } catch (e: any) {
       setError(e?.message || "Falha ao enviar");
@@ -206,8 +210,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
 
   /* --------- upload CSV (phone,nome) --------- */
   function parseCSV(text: string) {
-    // Cabeçalho esperado: phone[,nome] (só isso)
-    // Aceita ; ou , como separador
+    // Cabeçalho esperado: phone[,nome] (só isso). Aceita ; ou , como separador.
     const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!rows.length) return [];
     const sep = rows[0].includes(";") ? ";" : ",";
@@ -292,7 +295,6 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     const value = ta.value;
     const next = value.slice(0, start) + token + value.slice(end);
     setText(next);
-    // reposiciona cursor após o token
     requestAnimationFrame(() => {
       ta.focus();
       const pos = start + token.length;
@@ -306,52 +308,6 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     fetchMessages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteSlug, vipPin]);
-
-  const isSameDay = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() &&
-  a.getMonth() === b.getMonth() &&
-  a.getDate() === b.getDate();
-
-function DayDivider({ d }: { d: Date }) {
-  const label = d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" });
-  return (
-    <div className="flex items-center gap-3 px-3 py-2">
-      <div className="h-px bg-white/10 flex-1" />
-      <span className="text-[11px] text-white/60">{label}</span>
-      <div className="h-px bg-white/10 flex-1" />
-    </div>
-  );
-}
-
-  /* --------- helpers UI --------- */
-  const bubble = (m: WaItem) => {
-    const mine = m.type !== "received";
-    return (
-      <div className={`flex ${mine ? "justify-end" : "justify-start"} px-2`}>
-        <div
-          className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow border
-          ${mine
-              ? "bg-emerald-600 text-white border-emerald-500"
-              : m.type === "auto_response"
-              ? "bg-blue-600/20 text-blue-100 border-blue-500/30"
-              : "bg-white/10 text-white border-white/15"}`}
-        >
-          <div className="whitespace-pre-wrap break-words">{m.message}</div>
-          <div className={`text-[10px] mt-1 opacity-70 ${mine ? "text-white" : "text-white/80"}`}>
-            {new Date(m.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}{" "}
-            {mine && m.status === "delivered" && "✓✓"}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const Empty = (
-    <div className="text-center py-10 text-slate-400">
-      <MessageCircleIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-      Nenhuma conversa ainda.
-    </div>
-  );
 
   if (!siteSlug || !vipPin) {
     return (
@@ -371,6 +327,21 @@ function DayDivider({ d }: { d: Date }) {
   }
 
   if (loading) return <DashboardCardSkeleton />;
+
+  /* ===== Adapter p/ react-chat-elements ===== */
+  const rceData = [...items]
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .map((m) => {
+      const mine = m.type !== "received";
+      return {
+        position: mine ? "right" : "left",
+        type: "text",
+        text: m.message,
+        date: new Date(m.timestamp),
+        title: mine ? undefined : (m.contactName || fmtPhoneBR(m.phoneNumber)),
+        status: mine ? (m.status === "read" ? "read" : "sent") : undefined,
+      } as any;
+    });
 
   return (
     <Card className="rounded-2xl border border-white/10 bg-[#0e1729] text-white">
@@ -421,73 +392,38 @@ function DayDivider({ d }: { d: Date }) {
           </div>
         )}
 
-        {/* Chat / histórico */}
-<div className="rounded-xl border border-white/10 bg-[#0b1324]">
-  <div className="px-4 py-2 border-b border-white/10 text-xs text-white/60 flex items-center justify-between">
-    <span>Histórico (GAS) — mais recentes no final</span>
-    <button
-      type="button"
-      onClick={fetchMessages}
-      className="text-[11px] px-2 py-1 rounded border border-white/15 hover:bg-white/10"
-      title="Atualizar"
-    >
-      Atualizar
-    </button>
-  </div>
+        {/* Histórico (react-chat-elements) */}
+        <div className="rounded-xl border border-white/10 bg-[#0b1324]">
+          <div className="px-4 py-2 border-b border-white/10 text-xs text-white/60 flex items-center justify-between">
+            <span>Histórico (GAS) — mais recentes no final</span>
+            <button
+              type="button"
+              onClick={fetchMessages}
+              className="text-[11px] px-2 py-1 rounded border border-white/15 hover:bg-white/10"
+              title="Atualizar"
+            >
+              Atualizar
+            </button>
+          </div>
 
-  <div ref={listRef} className="max-h-[420px] overflow-y-auto py-3">
-    {items.length === 0 ? (
-      <div className="text-center py-10 text-slate-400">
-        <MessageCircleIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-        Nenhuma conversa ainda.
-      </div>
-    ) : (
-      (() => {
-        // ordena por timestamp ASC para conversar “natural”
-        const sorted = [...items].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-
-        const rows: React.ReactNode[] = [];
-        let lastDate: Date | null = null;
-
-        for (const m of sorted) {
-          const dt = new Date(m.timestamp);
-          if (!lastDate || !isSameDay(lastDate, dt)) {
-            rows.push(<DayDivider key={`d-${dt.toISOString()}`} d={dt} />);
-            lastDate = dt;
-          }
-
-          const mine = m.type !== "received";
-          rows.push(
-            <div key={m.id} className={`px-3 py-1 flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow border
-                  ${mine
-                    ? "bg-emerald-600 text-white border-emerald-500"
-                    : m.type === "auto_response"
-                    ? "bg-blue-600/15 text-blue-100 border-blue-400/30"
-                    : "bg-white/10 text-white border-white/15"}`}
-              >
-                {m.contactName && !mine && (
-                  <div className="text-[11px] mb-0.5 opacity-75">{m.contactName}</div>
-                )}
-                <div className="whitespace-pre-wrap break-words">{m.message}</div>
-                <div className={`text-[10px] mt-1 opacity-70 ${mine ? "text-white" : "text-white/80"}`}>
-                  {dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  {mine && m.status === "delivered" ? "  ✓✓" : ""}
-                </div>
+          <div ref={listRef} className="max-h-[440px] overflow-y-auto p-2">
+            {rceData.length === 0 ? (
+              <div className="text-center py-10 text-slate-400">
+                <MessageCircleIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                Nenhuma conversa ainda.
               </div>
-            </div>
-          );
-        }
-        return <div className="space-y-1">{rows}</div>;
-      })()
-    )}
-  </div>
-</div>
+            ) : (
+              <MessageList
+                className="rce-chat-list"
+                lockable
+                toBottomHeight="100%"
+                dataSource={rceData}
+              />
+            )}
+          </div>
+        </div>
 
-        {/* Envio unitário (SEM refresh) */}
+        {/* Envio unitário / em massa */}
         <form onSubmit={(e) => e.preventDefault()} className="space-y-4 p-4 rounded-lg bg-white/5 border border-white/10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -597,9 +533,9 @@ function DayDivider({ d }: { d: Date }) {
             <span className="text-sm font-medium text-blue-300">Diretrizes Meta</span>
           </div>
           <ul className="text-xs text-blue-300/80 list-disc pl-5 space-y-1">
-            <li>Tudo de personalização é feito pela <strong>mensagem</strong> (chips acima).</li>
-            <li>Dentro de 24h: mensagem de atendimento livre. Fora de 24h: usar template aprovado.</li>
-            <li>Use apenas contatos com consentimento; mantenha opt-out quando necessário.</li>
+            <li>Personalização é feita <strong>no texto</strong> com os chips acima ({{"{{saudacao}}"}}, {{"{{nome}}"}}, etc.).</li>
+            <li>Dentro de 24h: mensagem livre. Fora de 24h: usar template aprovado pela Meta.</li>
+            <li>Envie apenas para contatos com consentimento e ofereça opt-out quando necessário.</li>
           </ul>
         </div>
       </CardContent>
