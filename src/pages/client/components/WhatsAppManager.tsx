@@ -307,6 +307,22 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteSlug, vipPin]);
 
+  const isSameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate();
+
+function DayDivider({ d }: { d: Date }) {
+  const label = d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" });
+  return (
+    <div className="flex items-center gap-3 px-3 py-2">
+      <div className="h-px bg-white/10 flex-1" />
+      <span className="text-[11px] text-white/60">{label}</span>
+      <div className="h-px bg-white/10 flex-1" />
+    </div>
+  );
+}
+
   /* --------- helpers UI --------- */
   const bubble = (m: WaItem) => {
     const mine = m.type !== "received";
@@ -406,14 +422,70 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
         )}
 
         {/* Chat / histórico */}
-        <div className="rounded-xl border border-white/10 bg-white/5">
-          <div className="px-4 py-2 border-b border-white/10 text-xs text-white/60">
-            Histórico (GAS) — mais recentes no final
-          </div>
-          <div ref={listRef} className="max-h-[360px] overflow-y-auto py-3 space-y-2">
-            {items.length ? items.map((m) => <div key={m.id}>{bubble(m)}</div>) : Empty}
-          </div>
-        </div>
+<div className="rounded-xl border border-white/10 bg-[#0b1324]">
+  <div className="px-4 py-2 border-b border-white/10 text-xs text-white/60 flex items-center justify-between">
+    <span>Histórico (GAS) — mais recentes no final</span>
+    <button
+      type="button"
+      onClick={fetchMessages}
+      className="text-[11px] px-2 py-1 rounded border border-white/15 hover:bg-white/10"
+      title="Atualizar"
+    >
+      Atualizar
+    </button>
+  </div>
+
+  <div ref={listRef} className="max-h-[420px] overflow-y-auto py-3">
+    {items.length === 0 ? (
+      <div className="text-center py-10 text-slate-400">
+        <MessageCircleIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        Nenhuma conversa ainda.
+      </div>
+    ) : (
+      (() => {
+        // ordena por timestamp ASC para conversar “natural”
+        const sorted = [...items].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+
+        const rows: React.ReactNode[] = [];
+        let lastDate: Date | null = null;
+
+        for (const m of sorted) {
+          const dt = new Date(m.timestamp);
+          if (!lastDate || !isSameDay(lastDate, dt)) {
+            rows.push(<DayDivider key={`d-${dt.toISOString()}`} d={dt} />);
+            lastDate = dt;
+          }
+
+          const mine = m.type !== "received";
+          rows.push(
+            <div key={m.id} className={`px-3 py-1 flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow border
+                  ${mine
+                    ? "bg-emerald-600 text-white border-emerald-500"
+                    : m.type === "auto_response"
+                    ? "bg-blue-600/15 text-blue-100 border-blue-400/30"
+                    : "bg-white/10 text-white border-white/15"}`}
+              >
+                {m.contactName && !mine && (
+                  <div className="text-[11px] mb-0.5 opacity-75">{m.contactName}</div>
+                )}
+                <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                <div className={`text-[10px] mt-1 opacity-70 ${mine ? "text-white" : "text-white/80"}`}>
+                  {dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  {mine && m.status === "delivered" ? "  ✓✓" : ""}
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return <div className="space-y-1">{rows}</div>;
+      })()
+    )}
+  </div>
+</div>
 
         {/* Envio unitário (SEM refresh) */}
         <form onSubmit={(e) => e.preventDefault()} className="space-y-4 p-4 rounded-lg bg-white/5 border border-white/10">
