@@ -3,6 +3,8 @@
 /* ========= ENV ========= */
 const GAS_BASE_URL =
   process.env.GAS_BASE_URL ||
+  process.env.ELEVEA_GAS_BASE_URL ||
+  process.env.GAS_URL ||
   process.env.ELEVEA_GAS_URL ||
   "";
 
@@ -12,20 +14,74 @@ const ADMIN_DASH_TOKEN =
   "";
 
 /* ========= HELPERS ========= */
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "content-type,authorization",
+  "access-control-allow-methods": "GET,POST,OPTIONS",
+};
+
 function json(status, body, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
-      "access-control-allow-headers": "content-type,authorization",
-      "access-control-allow-methods": "GET,POST,OPTIONS",
+      ...CORS,
       ...extraHeaders,
     },
   });
 }
 
-// Normaliza feedbacks (formato único no front)
+function qs(obj = {}) {
+  return new URLSearchParams(
+    Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== undefined && v !== null && v !== "")
+        .map(([k, v]) => [k, String(v)])
+    )
+  ).toString();
+}
+
+async function timedFetch(url, init, ms = 15000) {
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+// Chamada ao GAS (GET/POST) com proteção de JSON e timeout
+async function callGAS(action, payload = {}, method = "POST") {
+  if (!GAS_BASE_URL) return { ok: false, error: "missing_GAS_BASE_URL_env" };
+
+  const url =
+    method === "GET"
+      ? `${GAS_BASE_URL}?action=${encodeURIComponent(action)}&${qs(payload)}`
+      : `${GAS_BASE_URL}?action=${encodeURIComponent(action)}`;
+
+  const res = await timedFetch(
+    url,
+    {
+      method,
+      headers: { "content-type": "application/json" },
+      body: method === "POST" ? JSON.stringify(payload) : undefined,
+    },
+    15000
+  ).catch((e) => ({ __err: e }));
+
+  if (res?.__err) return { ok: false, error: String(res.__err?.name || res.__err) };
+  if (!res.ok) return { ok: false, error: `gas_http_${res.status}` };
+
+  const txt = await res.text();
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return { ok: false, error: "invalid_json_from_gas", raw: String(txt).slice(0, 300) };
+  }
+}
+
+// Normaliza feedbacks para formato único
 function normalizeFeedbackItems(items) {
   if (!Array.isArray(items)) return [];
   return items.map((it, i) => {
@@ -39,63 +95,55 @@ function normalizeFeedbackItems(items) {
     const approvedBool = String(it.approved ?? it.isApproved ?? it.visible ?? "")
       .toLowerCase() === "true";
     return {
-      id, timestamp, name, message, email, phone,
-      rating: ratingNum, approved: approvedBool,
+      id,
+      timestamp,
+      name,
+      message,
+      email,
+      phone,
+      rating: ratingNum,
+      approved: approvedBool,
       sentiment: it.sentiment || undefined,
     };
   });
 }
 
-// Chamada ao GAS (GET/POST)
-async function callGAS(action, payload = {}, method = "POST") {
-  if (!GAS_BASE_URL) return { ok: false, error: "missing_GAS_BASE_URL_env" };
-
-  const url =
-    method === "GET"
-      ? `${GAS_BASE_URL}?action=${encodeURIComponent(action)}&${new URLSearchParams(payload).toString()}`
-      : `${GAS_BASE_URL}?action=${encodeURIComponent(action)}`;
-
-  const res = await fetch(url, {
-    method,
-    headers: { "content-type": "application/json" },
-    body: method === "POST" ? JSON.stringify(payload) : undefined,
-  });
-
-  if (!res.ok) return { ok: false, error: `gas_http_${res.status}` };
-  const data = await res.json().catch(() => ({}));
-  return data;
-}
-
 /* ========= HANDLER ========= */
 export default async (req) => {
   try {
-    // CORS
-    if (req.method === "OPTIONS") {
-      return new Response("", {
-        status: 204,
-        headers: {
-          "access-control-allow-origin": "*",
-          "access-control-allow-headers": "content-type,authorization",
-          "access-control-allow-methods": "GET,POST,OPTIONS",
-        },
-      });
-    }
+    // CORS preflight
+    if (req.method === "OPTIONS") return new Response("", { status: 204, headers: CORS });
 
     const isGET = req.method === "GET";
     const isPOST = req.method === "POST";
     if (!isGET && !isPOST) return json(405, { ok: false, error: "method_not_allowed" });
 
+    // Health GET
+    if (isGET) {
+      const url = new URL(req.url);
+      const action = String(url.searchParams.get("action") || "");
+      if (!action) return json(200, { ok: false, error: "ignored_get" });
+    }
+
     const url = new URL(req.url);
     const q = url.searchParams;
     const body = isPOST ? (await req.json().catch(() => ({}))) : {};
-    const action = String((isGET ? q.get("action") : body.action) || "");
+    const action = String((isGET ? q.get("action") : body.action) || "").trim();
+
+    // Debug de ambiente
+    if (action === "debug_env") {
+      return json(200, {
+        ok: true,
+        env: { GAS_BASE_URL: GAS_BASE_URL || null, NODE_ENV: process.env.NODE_ENV || null },
+      });
+    }
 
     // Segurança extra para rotas secure
     if (action === "feedback_set_approval" || action === "list_feedbacks_secure") {
       body.adminToken = body.adminToken || ADMIN_DASH_TOKEN || "";
     }
 
-    /* ======== ROTAS DASHBOARD (GET) ======== */
+    /* ======== DASHBOARD (GET → GAS GET) ======== */
     if (action === "get_status") {
       const site = String((isGET ? q.get("site") : body.site) || "");
       return json(200, await callGAS("get_status", { site }, "GET"));
@@ -106,11 +154,19 @@ export default async (req) => {
       return json(200, await callGAS("get_settings", { site }, "GET"));
     }
 
-    // aceita client_plan e client-plan (GET)
+    // aceita client_plan e client-plan (GET → GAS GET)
     if (action === "client_plan" || action === "client-plan") {
       const site = String((isGET ? q.get("site") : body.site) || "");
       const email = String((isGET ? q.get("email") : body.email) || "");
       return json(200, await callGAS("client_plan", { site, email }, "GET"));
+    }
+
+    // auth_status (POST → GAS POST) para aceitar PIN
+    if (action === "auth_status") {
+      const site = String(body.site || body.siteSlug || (isGET ? q.get("site") : "") || "");
+      const email = String(body.email || (isGET ? q.get("email") : "") || "");
+      const pin = String(body.pin || body.vipPin || (isGET ? q.get("pin") : "") || "");
+      return json(200, await callGAS("auth_status", { site, email, pin }, "POST"));
     }
 
     /* ======== FEEDBACKS (POST) ======== */
@@ -119,11 +175,18 @@ export default async (req) => {
       const page = Number(body.page || 1);
       const pageSize = Number(body.pageSize || 20);
       const gas = await callGAS("list_feedbacks_public", { site, page, pageSize }, "GET");
-      return json(200, gas?.ok === false ? { ok: true, items: [] } : {
-        ok: true,
-        items: normalizeFeedbackItems(gas.items || []),
-        total: gas.total || 0, page: gas.page || page, pageSize: gas.pageSize || pageSize,
-      });
+      return json(
+        200,
+        gas?.ok === false
+          ? { ok: true, items: [], total: 0, page, pageSize }
+          : {
+              ok: true,
+              items: normalizeFeedbackItems(gas.items || []),
+              total: gas.total || 0,
+              page: gas.page || page,
+              pageSize: gas.pageSize || pageSize,
+            }
+      );
     }
 
     if (action === "list_feedbacks_secure") {
@@ -131,13 +194,23 @@ export default async (req) => {
       const pin = String(body.pin || body.vipPin || "");
       const page = Number(body.page || 1);
       const pageSize = Number(body.pageSize || 50);
-      const gas = await callGAS("list_feedbacks_secure",
-        { site, pin, page, pageSize, adminToken: body.adminToken }, "POST");
-      return json(200, gas?.ok === false ? { ok: true, items: [] } : {
-        ok: true,
-        items: normalizeFeedbackItems(gas.items || []),
-        total: gas.total || 0, page: gas.page || page, pageSize: gas.pageSize || pageSize,
-      });
+      const gas = await callGAS(
+        "list_feedbacks_secure",
+        { site, pin, page, pageSize, adminToken: body.adminToken },
+        "POST"
+      );
+      return json(
+        200,
+        gas?.ok === false
+          ? { ok: true, items: [], total: 0, page, pageSize }
+          : {
+              ok: true,
+              items: normalizeFeedbackItems(gas.items || []),
+              total: gas.total || 0,
+              page: gas.page || page,
+              pageSize: gas.pageSize || pageSize,
+            }
+      );
     }
 
     if (action === "feedback_set_approval") {
@@ -145,8 +218,11 @@ export default async (req) => {
       const id = String(body.id || "");
       const approved = !!body.approved;
       const pin = String(body.pin || body.vipPin || "");
-      const gas = await callGAS("feedback_set_approval",
-        { site, id, approved, pin, adminToken: body.adminToken }, "POST");
+      const gas = await callGAS(
+        "feedback_set_approval",
+        { site, id, approved, pin, adminToken: body.adminToken },
+        "POST"
+      );
       return json(200, gas?.ok === false ? { ok: false, error: gas?.error || "gas_failed" } : { ok: true });
     }
 
@@ -155,8 +231,12 @@ export default async (req) => {
       const payload = {
         type: "submit_feedback",
         siteSlug,
-        id: body.id, name: body.name, rating: body.rating, comment: body.comment,
-        email: body.email, phone: body.phone,
+        id: body.id,
+        name: body.name,
+        rating: body.rating,
+        comment: body.comment,
+        email: body.email,
+        phone: body.phone,
       };
       const gas = await callGAS("submit_feedback", payload, "POST");
       return json(200, gas?.ok === false ? { ok: false, error: gas?.error || "gas_failed" } : { ok: true });
@@ -171,7 +251,6 @@ export default async (req) => {
       return json(200, gas?.ok ? gas : { ok: true, items: [], total: 0, page, pageSize });
     }
 
-    // >>> Faltava esta rota, usada pelo WhatsAppManager
     if (action === "wa_list_contacts") {
       const site = String(body.site || body.siteSlug || "");
       const page = Number(body.page || 1);
@@ -201,7 +280,6 @@ export default async (req) => {
 
     /* -------------------------------------------------- */
     return json(400, { ok: false, error: "unknown_action" });
-
   } catch (e) {
     return json(500, { ok: false, error: String(e?.message || e) });
   }
