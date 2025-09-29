@@ -256,7 +256,8 @@ export default async (req) => {
       const page = Number(body.page || 1);
       const pageSize = Number(body.pageSize || 100);
       const pin = String(body.pin || body.vipPin || "");
-      const gas = await callGAS("wa_list_contacts", { site, page, pageSize, pin }, "POST");
+      // usa GET para bater no doGet do GAS e evitar timeouts de corpo grande
+      const gas = await callGAS("wa_list_contacts", { site, page, pageSize, pin }, "GET");
       return json(200, gas?.ok ? gas : { ok: true, items: [], total: 0, page, pageSize });
     }
 
