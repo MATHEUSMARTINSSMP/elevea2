@@ -339,7 +339,6 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
 
   if (loading) return <DashboardCardSkeleton />;
 
-  /* ===== Adapter p/ react-chat-elements ===== */
   const rceData = [...items]
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map((m) => {
@@ -406,7 +405,6 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
           </div>
         )}
 
-        {/* Histórico (react-chat-elements) */}
         <div className="rounded-xl border border-white/10 bg-[#0b1324]">
           <div className="px-4 py-2 border-b border-white/10 text-xs text-white/60 flex items-center justify-between">
             <span>Histórico (GAS) — mais recentes no final</span>
