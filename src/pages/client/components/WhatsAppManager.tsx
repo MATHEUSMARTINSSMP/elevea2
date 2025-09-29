@@ -368,22 +368,23 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
           </div>
 
           <div className="flex items-center gap-3">
-            <Badge className="px-3 py-1 rounded-full border border-green-400/20 bg-green-400/10 text-green-400">
-              <div className="w-2 h-2 bg-green-400 rounded-full mr-2" />
-              Ativo
-            </Badge>
-            <Button
-              type="button"
-              variant="ghost"                           {/* <- tira “botão branco” */}
-              onClick={fetchMessages}
-              className="text-white hover:bg-white/10"
-            >
-              <RefreshCcwIcon className="w-4 h-4 mr-2" />
-              Atualizar
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
+  <Badge className="px-3 py-1 rounded-full border border-green-400/20 bg-green-400/10 text-green-400">
+    <div className="w-2 h-2 bg-green-400 rounded-full mr-2" />
+    Ativo
+  </Badge>
+
+  {/* usar variant="ghost" para evitar botão branco */}
+  <Button
+    type="button"
+    variant="ghost"
+    onClick={fetchMessages}
+    className="text-white hover:bg-white/10"
+  >
+    <RefreshCcwIcon className="w-4 h-4 mr-2" />
+    Atualizar
+  </Button>
+</div>
+</CardHeader>
 
       <CardContent className="space-y-6">
         {error && (
