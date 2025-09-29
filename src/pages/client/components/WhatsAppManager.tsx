@@ -14,9 +14,6 @@ import {
 } from "lucide-react";
 import { DashboardCardSkeleton } from "@/components/ui/loading-skeletons";
 
-/* ===== react-chat-elements (histórico estilo WhatsApp) ===== */
-import { MessageList } from "react-chat-elements";
-import "react-chat-elements/dist/main.css";
 /* CSS de overrides para visual dark/WhatsApp */
 import "@/styles/chat-overrides.css";
 
