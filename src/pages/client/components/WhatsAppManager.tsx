@@ -312,7 +312,7 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
     });
   }
 
-  /* --------- efeitos --------- */
+    /* --------- efeitos --------- */
   useEffect(() => {
     if (!siteSlug || !vipPin) return;
     fetchMessages();
@@ -327,10 +327,14 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
             <MessageCircleIcon className="w-5 h-5" />
             WhatsApp Business
           </CardTitle>
-          <CardDescription className="text-slate-400">Acesso restrito: PIN VIP necessário.</CardDescription>
+          <CardDescription className="text-slate-400">
+            Acesso restrito: PIN VIP necessário.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-slate-400 text-sm">Informe seu PIN VIP no topo do Dashboard.</div>
+          <div className="text-slate-400 text-sm">
+            Informe seu PIN VIP no topo do Dashboard.
+          </div>
         </CardContent>
       </Card>
     );
@@ -368,23 +372,25 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
           </div>
 
           <div className="flex items-center gap-3">
-  <Badge className="px-3 py-1 rounded-full border border-green-400/20 bg-green-400/10 text-green-400">
-    <div className="w-2 h-2 bg-green-400 rounded-full mr-2" />
-    Ativo
-  </Badge>
+            <Badge className="px-3 py-1 rounded-full border border-green-400/20 bg-green-400/10 text-green-400 flex items-center">
+              <span className="w-2 h-2 bg-green-400 rounded-full mr-2" />
+              Ativo
+            </Badge>
 
-  {/* usar variant="ghost" para evitar botão branco */}
-  <Button
-    type="button"
-    variant="ghost"
-    onClick={fetchMessages}
-    className="text-white hover:bg-white/10"
-  >
-    <RefreshCcwIcon className="w-4 h-4 mr-2" />
-    Atualizar
-  </Button>
-</div>
-</CardHeader>
+            {/* usar variant="ghost" para evitar botão branco */}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={fetchMessages}
+              className="text-white hover:bg-white/10"
+              title="Atualizar"
+            >
+              <RefreshCcwIcon className="w-4 h-4 mr-2" />
+              Atualizar
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
 
       <CardContent className="space-y-6">
         {error && (
