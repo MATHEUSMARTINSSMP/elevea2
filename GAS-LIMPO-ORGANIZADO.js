@@ -302,7 +302,7 @@ function openSS_() {
 function doGet(e) {
   const ss = openSS_();
   const p = (e && e.parameter) ? e.parameter : {};
-  const type = String(p.type || "").toLowerCase();
+  const type = String(p.type || p.action || "").toLowerCase(); // aceita tanto 'type' quanto 'action'
 
   // Normalizados para reuso nas rotas GET
   const site = normalizeSlug_(String(p.site || p.siteSlug || ""));
