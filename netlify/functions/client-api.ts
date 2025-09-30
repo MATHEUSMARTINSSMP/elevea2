@@ -316,8 +316,17 @@ export default async (req) => {
       return json(200, gas || { ok: false, error: "gas_failed" });
     }
 
+    /* ========= PROXY GENÉRICO PARA TODAS AS OUTRAS ACTIONS ========= */
+    // Se chegou aqui, repassa a action direto pro GAS com todo o body
+    // Isso garante que TODAS as actions funcionem sem precisar mapear uma por uma
+    if (action) {
+      console.log(`[client-api] Proxying generic action: ${action}`);
+      const gas = await callGAS(action, body, "POST");
+      return json(200, gas || { ok: false, error: "gas_failed" });
+    }
+
     /* -------------------------------------------------- */
-    return json(400, { ok: false, error: "unknown_action" });
+    return json(400, { ok: false, error: "no_action_provided" });
   } catch (e) {
     return json(500, { ok: false, error: String(e?.message || e) });
   }

@@ -1172,6 +1172,7 @@ if (type === 'wa_import_contacts') {
 
     // ============================= NOVAS FUNCIONALIDADES VIP =============================
     if (type === 'admin_get_client_features')      { log_(ss, "route_admin_get_client_features", {});      return admin_get_client_features(e, normalizedData); }
+    if (type === 'get_user_features')              { log_(ss, "route_get_user_features", {});              return admin_get_client_features(e, normalizedData); } // alias para frontend
     if (type === 'admin_update_client_features')   { log_(ss, "route_admin_update_client_features", {});   return admin_update_client_features(e, normalizedData); }
     if (type === 'admin_toggle_client_feature')    { log_(ss, "route_admin_toggle_client_feature", {});    return admin_toggle_client_feature(e, normalizedData); }
     if (type === 'admin_update_client_plan')       { log_(ss, "route_admin_update_client_plan", {});       return admin_update_client_plan(e, normalizedData); }
