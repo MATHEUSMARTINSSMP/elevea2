@@ -285,6 +285,37 @@ export default async (req) => {
       return json(200, gas || { ok: false, error: "gas_failed" });
     }
 
+    if (action === "wa_get_templates") {
+      const site = String(body.site || body.siteSlug || "");
+      const pin = String(body.pin || body.vipPin || "");
+      const gas = await callGAS("wa_get_templates", { site, pin }, "GET");
+      return json(200, gas?.ok ? gas : { ok: true, templates: [] });
+    }
+
+    if (action === "wa_upsert_template") {
+      const site = String(body.site || body.siteSlug || "");
+      const pin = String(body.pin || body.vipPin || "");
+      const template = body.template || {};
+      const gas = await callGAS("wa_upsert_template", { site, pin, template: JSON.stringify(template) }, "POST");
+      return json(200, gas || { ok: false, error: "gas_failed" });
+    }
+
+    if (action === "wa_update_contact") {
+      const site = String(body.site || body.siteSlug || "");
+      const pin = String(body.pin || body.vipPin || "");
+      const contact = body.contact || {};
+      const gas = await callGAS("wa_update_contact", { site, pin, contact: JSON.stringify(contact) }, "POST");
+      return json(200, gas || { ok: false, error: "gas_failed" });
+    }
+
+    if (action === "wa_import_contacts") {
+      const site = String(body.site || body.siteSlug || "");
+      const pin = String(body.pin || body.vipPin || "");
+      const contacts = Array.isArray(body.contacts) ? body.contacts : [];
+      const gas = await callGAS("wa_import_contacts", { site, pin, contacts: JSON.stringify(contacts) }, "POST");
+      return json(200, gas || { ok: false, error: "gas_failed" });
+    }
+
     /* -------------------------------------------------- */
     return json(400, { ok: false, error: "unknown_action" });
   } catch (e) {
