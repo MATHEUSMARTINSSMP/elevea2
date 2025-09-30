@@ -418,14 +418,47 @@ export default function WhatsAppManager({ siteSlug, vipPin }: WhatsAppManagerPro
             </button>
           </div>
 
-          <div ref={listRef} className="max-h-[460px] overflow-y-auto p-2 rce-wrap">
-            {rceData.length === 0 ? (
+          <div ref={listRef} className="max-h-[460px] overflow-y-auto p-2 space-y-2">
+            {items.length === 0 ? (
               <div className="text-center py-10 text-slate-400">
                 <MessageCircleIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 Nenhuma conversa ainda.
               </div>
             ) : (
-              <MessageList className="rce-chat-list" lockable toBottomHeight="100%" dataSource={rceData} />
+              items.map((msg) => {
+                const isReceived = msg.type === "received";
+                const isAuto = msg.type === "auto_response";
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex ${isReceived ? "justify-start" : "justify-end"}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
+                        isReceived
+                          ? "bg-white/10 text-white"
+                          : isAuto
+                          ? "bg-blue-500/20 text-blue-100"
+                          : "bg-emerald-600 text-white"
+                      }`}
+                    >
+                      {msg.contactName && isReceived && (
+                        <div className="text-xs opacity-70 mb-1">{msg.contactName}</div>
+                      )}
+                      <div className="whitespace-pre-wrap break-words">{msg.message}</div>
+                      <div className="text-[10px] opacity-60 mt-1 flex items-center gap-1">
+                        {new Date(msg.timestamp).toLocaleTimeString("pt-BR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        {!isReceived && msg.status === "delivered" && (
+                          <span className="ml-1">✓✓</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>

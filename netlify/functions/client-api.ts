@@ -70,10 +70,16 @@ async function callGAS(action, payload = {}, method = "POST") {
     15000
   ).catch((e) => ({ __err: e }));
 
-  if (res?.__err) return { ok: false, error: String(res.__err?.name || res.__err) };
-  if (!res.ok) return { ok: false, error: `gas_http_${res.status}` };
+  // Type guard para verificar se é erro
+  if (res && typeof res === 'object' && '__err' in res) {
+    return { ok: false, error: String((res as any).__err?.name || (res as any).__err) };
+  }
+  
+  // Se chegou aqui, é Response
+  const response = res as Response;
+  if (!response.ok) return { ok: false, error: `gas_http_${response.status}` };
 
-  const txt = await res.text();
+  const txt = await response.text();
   try {
     return JSON.parse(txt);
   } catch {
