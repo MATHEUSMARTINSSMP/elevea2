@@ -304,6 +304,10 @@ function doGet(e) {
   const p = (e && e.parameter) ? e.parameter : {};
   const type = String(p.type || "").toLowerCase();
 
+  // Normalizados para reuso nas rotas GET
+  const site = normalizeSlug_(String(p.site || p.siteSlug || ""));
+  const email = String(p.email || "").trim().toLowerCase();
+
   // CORS preflight support
   if (type === "options" || type === "cors") {
     return jsonOut_({ ok: true, message: "CORS preflight" });
@@ -320,6 +324,11 @@ function doGet(e) {
   /* -------- ping -------- */
   if (type === "ping") {
     return jsonOut_({ ok: true, note: "webapp alive (GET)", build: BUILD });
+  }
+
+  /* -------- client_plan (plano do cliente) -------- */
+  if (type === "client_plan") {
+    return jsonOut_(get_client_plan_v2(site, email));
   }
 
   /* -------- validate (cadastro) -------- */
@@ -356,10 +365,10 @@ function doGet(e) {
       return jsonOut_({ ok: false, error: "unauthorized" });
     }
 
-    var site = normalizeSlug_(String(p.site || p.siteSlug || ""));
+    var siteSlug_ = normalizeSlug_(String(p.site || p.siteSlug || ""));
     var manual = String(p.manualBlock || p.block || "").toLowerCase();
     var manualBlock = (manual === "1" || manual === "true" || manual === "yes" || manual === "on");
-    if (!site) return jsonOut_({ ok: false, error: "missing_site" });
+    if (!siteSlug_) return jsonOut_({ ok: false, error: "missing_site" });
 
     var shCad = ss.getSheetByName("cadastros");
     if (!shCad) return jsonOut_({ ok: false, error: "missing_sheet_cadastros" });
@@ -391,7 +400,7 @@ function doGet(e) {
     var updated = false;
     for (var j = 0; j < rows.length; j++) {
       var s = normalizeSlug_(String(rows[j][idxSite] || ""));
-      if (s === site) {
+      if (s === siteSlug_) {
         rows[j][idxManual] = manualBlock ? "TRUE" : "";
         if (idxUpd !== -1) rows[j][idxUpd] = new Date().toISOString();
         updated = true;
@@ -402,16 +411,15 @@ function doGet(e) {
 
     shCad.getRange(2, 1, last-1, shCad.getLastColumn()).setValues(rows);
     try { ensureLogSheet_(ss).appendRow([new Date(),"get_admin_set_ok","","","","","admin_set","","","ok",""]); } catch(_){}
-    return jsonOut_({ ok:true, siteSlug: site, manual_block: manualBlock });
+    return jsonOut_({ ok:true, siteSlug: siteSlug_, manual_block: manualBlock });
   }
 
   /* -------- client_billing (dados de cobrança) -------- */
   if (type === "client_billing") {
-    const email = String(p.email || "").trim().toLowerCase(); // ✅ toLowerCase
-    if (!email) return jsonOut_({ ok: false, error: "missing_email" });
+    const emailLC = email; // já normalizado
+    if (!emailLC) return jsonOut_({ ok: false, error: "missing_email" });
 
     try {
-      // ✅ MUDANÇA: usar planilha "usuarios" em vez de "cadastros"
       const shUsuarios = ensureUsuariosSheet_(ss);
       const data = shUsuarios.getDataRange().getValues();
       const headers = data[0].map(h => String(h).trim());
@@ -421,18 +429,15 @@ function doGet(e) {
 
       if (idxEmail === -1) return jsonOut_({ ok: false, error: "missing_email_header" });
 
-      // ✅ BUSCA com toLowerCase para evitar problemas de case
-      const row = data.find(r => String(r[idxEmail] || "").trim().toLowerCase() === email);
+      const row = data.find(r => String(r[idxEmail] || "").trim().toLowerCase() === emailLC);
       if (!row) return jsonOut_({ ok: false, error: "user_not_found" });
 
       const siteSlug = String(row[idxSite] || "");
       const plan = String(row[idxPlan] || "essential");
 
-      // 🎯 CORREÇÃO: Buscar dados de pagamento do MercadoPago ou planilha de pagamentos
       var lastPayment = null;
       var nextCharge = null;
 
-      // Tentar buscar último pagamento na planilha de pagamentos (se existir)
       try {
         var shPagamentos = ss.getSheetByName("pagamentos");
         if (shPagamentos) {
@@ -443,38 +448,21 @@ function doGet(e) {
           var idxAmount = pagHeaders.indexOf("amount") !== -1 ? pagHeaders.indexOf("amount") : pagHeaders.indexOf("valor");
 
           if (idxSitePag !== -1 && idxDate !== -1) {
-            // Buscar último pagamento para este site
             var pagamentos = pagData.slice(1).filter(function(r) {
               return String(r[idxSitePag] || "").trim() === siteSlug;
             });
-
             if (pagamentos.length > 0) {
-              // Pegar o mais recente
               var ultimoPag = pagamentos[pagamentos.length - 1];
               var payDate = ultimoPag[idxDate];
               var payAmount = idxAmount !== -1 ? ultimoPag[idxAmount] : 97.0;
-
               if (payDate) {
-                lastPayment = {
-                  date: new Date(payDate).toISOString(),
-                  amount: parseFloat(payAmount) || 97.0
-                };
-
-                // Calcular próxima cobrança (último pagamento + 1 mês)
-                try {
-                  var nextDate = new Date(payDate);
-                  nextDate.setMonth(nextDate.getMonth() + 1);
-                  nextCharge = nextDate.toISOString();
-                } catch (e) {
-                  log_(ss, "nextCharge_calc_error", { error: String(e) });
-                }
+                lastPayment = { date: new Date(payDate).toISOString(), amount: parseFloat(payAmount) || 97.0 };
+                try { var nextDate = new Date(payDate); nextDate.setMonth(nextDate.getMonth() + 1); nextCharge = nextDate.toISOString(); } catch (e) { log_(ss, "nextCharge_calc_error", { error: String(e) }); }
               }
             }
           }
         }
-      } catch (e) {
-        log_(ss, "payment_lookup_error", { error: String(e) });
-      }
+      } catch (e) { log_(ss, "payment_lookup_error", { error: String(e) }); }
 
       const billing = {
         ok: true,
@@ -482,25 +470,19 @@ function doGet(e) {
         status: "pending",
         provider: "mercadopago",
         siteSlug: siteSlug,
-        nextPayment: nextCharge,     // Compatibilidade
-        nextCharge: nextCharge,      // Campo que frontend espera
-        lastPayment: lastPayment     // Dados do último pagamento
+        nextPayment: nextCharge,
+        nextCharge: nextCharge,
+        lastPayment: lastPayment
       };
 
       try {
-        ensureLogSheet_(ss).appendRow([
-          new Date(), "get_client_billing", "", "", "", "",
-          "client_billing", siteSlug, email, "ok", ""
-        ]);
+        ensureLogSheet_(ss).appendRow([ new Date(), "get_client_billing", "", "", "", "", "client_billing", siteSlug, emailLC, "ok", "" ]);
       } catch (_) {}
 
       return jsonOut_(billing);
     } catch (e) {
       try {
-        ensureLogSheet_(ss).appendRow([
-          new Date(), "get_client_billing_fail", "", "", "", "",
-          "client_billing", "", email, "error", String(e)
-        ]);
+        ensureLogSheet_(ss).appendRow([ new Date(), "get_client_billing_fail", "", "", "", "", "client_billing", "", emailLC, "error", String(e) ]);
       } catch (_) {}
       return jsonOut_({ ok: false, error: String(e) });
     }
@@ -512,7 +494,6 @@ function doGet(e) {
   }
 
   if (type === "status") {
-    // devolve objeto calculado por getStatusForSite_ (já com fallback de status)
     var slug = normalizeSlug_(String(p.site || ""));
     return jsonOut_(getStatusForSite_(slug));
   }
@@ -551,7 +532,6 @@ function doGet(e) {
     return jsonOut_(getTraffic_(slugTr, rng));
   }
 
-  // Lista imagens públicas do Drive do cliente
   if (type === "assets") {
     var slugA = normalizeSlug_(String(p.site || ""));
     return handleAssetsList_(slugA);
@@ -723,6 +703,17 @@ function doPost(e) {
     if (data.action === 'get_site_structure')   { log_(ss,"route_get_site_structure",{}); return jsonOut_(get_site_structure(data.site)); }
     if (data.action === 'save_site_structure')  { log_(ss,"route_save_site_structure",{}); return jsonOut_(save_site_structure(data.site, data.structure)); }
     if (data.action === 'validate_vip_pin')     { log_(ss,"route_validate_vip_pin",{});   return jsonOut_(validate_vip_pin(data.site, data.pin)); }
+        // Plano do cliente (vip | essential)
+    if (data.action === 'client_plan') {
+      log_(ss, "route_client_plan", {});
+      return jsonOut_(get_client_plan(data.site, data.email));
+    }
+
+    // Status de autenticação + plano efetivo
+    if (data.action === 'auth_status') {
+      log_(ss, "route_auth_status", {});
+      return jsonOut_(get_auth_status(data.site, data.pin, data.email));
+    }
 
     /* ===================== OVERRIDE (admin) ===================== */
     if (data.type === 'override' || data.type === 'manual_block' || data.type === 'admin_toggle') {
@@ -829,45 +820,6 @@ if (type === 'wa_webhook_verify') {
   return jsonOut_({ ok: false, error: 'bad_verify_token' });
 }
 
-// Webhook de eventos do WhatsApp (POST do Meta)
-if (type === 'wa_webhook') {
-  try {
-    const body = safeParseJson_(String((e.postData && e.postData.contents) || '{}'));
-
-    // 1) Descobrir o site a partir do phone_id que veio no payload
-    const phoneId = String(
-      (((body.entry || [])[0] || {}).changes || [])[0]?.value?.metadata?.phone_number_id || ''
-    );
-    const siteSlug = resolveSiteFromPhoneId_(ss, phoneId);
-
-    // 2) Persistir as mensagens recebidas (planilha "whatsapp_messages")
-    if (siteSlug) {
-      const sh = ensureSheet_(ss, 'whatsapp_messages',
-        ['timestamp', 'siteSlug', 'phone_id', 'from', 'to', 'type', 'text', 'raw_json']);
-      const messages = ((((body.entry || [])[0] || {}).changes || [])[0]?.value?.messages) || [];
-      messages.forEach(m => {
-        const t = String(m.type || '');
-        const txt = t === 'text' ? String(m.text?.body || '') : '';
-        sh.appendRow([
-          new Date(),
-          siteSlug,
-          phoneId,
-          String(m.from || ''),
-          String(((((body.entry || [])[0] || {}).changes || [])[0]?.value?.metadata?.display_phone_number) || ''),
-          t,
-          txt,
-          safeJson_(m)
-        ]);
-      });
-    }
-
-    return jsonOut_({ ok: true });
-  } catch (err) {
-    log_(ss, 'wa_webhook_fail', { error: String(err) });
-    return jsonOut_({ ok: false, error: String(err) });
-  }
-}
-
 // Função util: normaliza número em E.164 (sem símbolos)
 function normE164_(v) {
   v = String(v || '').trim();
@@ -894,7 +846,7 @@ if (type === 'wa_send' || type === 'wa_send_text') {
 
     if (!phoneId || !appToken) return jsonOut_({ ok: false, error: 'missing_phone_or_token' });
 
-    const url = 'https://graph.facebook.com/v20.0/' + encodeURIComponent(phoneId) + '/messages';
+    const url = 'https://graph.facebook.com/v23.0/' + encodeURIComponent(phoneId) + '/messages';
     const payload = {
       messaging_product: 'whatsapp',
       to,
@@ -942,7 +894,7 @@ if (type === 'wa_send_template') {
 
     if (!phoneId || !appToken) return jsonOut_({ ok: false, error: 'missing_phone_or_token' });
 
-    const url = 'https://graph.facebook.com/v20.0/' + encodeURIComponent(phoneId) + '/messages';
+    const url = 'https://graph.facebook.com/v23.0/' + encodeURIComponent(phoneId) + '/messages';
 
     const payload = {
       messaging_product: 'whatsapp',
@@ -984,6 +936,154 @@ if (type === 'wa_list_messages') {
 
   const r = listWhatsAppMessages_(ss, site, page, pageSize);
   return jsonOut_(Object.assign({ ok: true, site }, r));
+}
+
+// ===== FUNÇÃO: wa_get_templates =====
+// Retorna templates genéricos configurados no sistema
+if (type === 'wa_get_templates') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    if (!site) return jsonOut_({ ok: false, error: 'missing_site' });
+
+        // Tenta ler templates da planilha; cai para genéricos se vazio
+    const list = listWhatsAppTemplates_(ss, site);
+    if (list.length > 0) {
+      log_(ss, 'wa_get_templates', { site, count: list.length, source: 'sheet' });
+      return jsonOut_({ ok: true, templates: list });
+    }
+
+    // Fallback: Templates genéricos
+    const genericTemplates = [
+      { id:'hello_world', name:'hello_world', lang:'en_US', displayName:'Boas-vindas', description:'Mensagem de boas-vindas padrão', category:'welcome', status:'APPROVED' },
+      { id:'template_1', name:'template_promocao', lang:'pt_BR', displayName:'Mensagem 1 - Promoção', description:'Template de promoção genérico', category:'marketing', status:'APPROVED' },
+      { id:'template_2', name:'template_agendamento', lang:'pt_BR', displayName:'Mensagem 2 - Agendamento', description:'Template de agendamento genérico', category:'appointment', status:'APPROVED' },
+      { id:'template_3', name:'template_cobranca', lang:'pt_BR', displayName:'Mensagem 3 - Cobrança', description:'Template de cobrança genérico', category:'billing', status:'APPROVED' },
+      { id:'template_4', name:'template_suporte', lang:'pt_BR', displayName:'Mensagem 4 - Suporte', description:'Template de suporte genérico', category:'support', status:'APPROVED' }
+    ];
+
+    log_(ss, 'wa_get_templates', { site, count: genericTemplates.length, source: 'fallback' });
+    return jsonOut_({ ok: true, templates: genericTemplates });
+
+  } catch (err) {
+    return jsonOut_({ ok: false, error: String(err) });
+  }
+}
+
+// ===== FUNÇÃO: wa_list_contacts =====  
+// Lista contatos WhatsApp com paginação
+if (type === 'wa_list_contacts') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    const page = Number(data.page || 1);
+    const pageSize = Math.min(Number(data.pageSize || 20), 100);
+    
+    if (!site) return jsonOut_({ ok: false, error: 'missing_site' });
+
+    const contacts = listWhatsAppContacts_(ss, site, page, pageSize, data.filters || {});
+    
+    log_(ss, 'wa_list_contacts', { 
+      site, 
+      page, 
+      pageSize, 
+      total: contacts.total,
+      returned: contacts.items.length 
+    });
+    
+    return jsonOut_({ 
+      ok: true, 
+      items: contacts.items,
+      total: contacts.total,
+      page: contacts.page,
+      pageSize: contacts.pageSize
+    });
+
+  } catch (err) {
+    return jsonOut_({ ok: false, error: String(err) });
+  }
+}
+
+// ===== FUNÇÃO: wa_upsert_template =====
+if (type === 'wa_upsert_template') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    if (!site) return jsonOut_({ ok:false, error:'missing_site' });
+
+    const tpl = {
+      id: String(data.id || ''),                 // se vazio, será gerado
+      name: String(data.name || ''),
+      displayName: String(data.displayName || ''),
+      lang: String(data.lang || 'pt_BR'),
+      description: String(data.description || ''),
+      category: String(data.category || ''),
+      status: String(data.status || 'APPROVED'),
+      content: String(data.content || ''),       // corpo do template (opcional)
+      variables: Array.isArray(data.variables) ? data.variables : [] // ex.: ['nome','saudacao']
+    };
+
+    const result = upsertWhatsAppTemplate_(ss, site, tpl);
+    log_(ss, 'wa_upsert_template', { site, id: result.id });
+    return jsonOut_({ ok:true, id: result.id });
+  } catch (err) {
+    return jsonOut_({ ok:false, error:String(err) });
+  }
+}
+
+// ===== FUNÇÃO: wa_update_contact =====
+if (type === 'wa_update_contact') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    if (!site) return jsonOut_({ ok:false, error:'missing_site' });
+
+    const where = {
+      id: data.id ? String(data.id) : undefined,
+      telefone_normalizado: data.telefone ? normE164_(data.telefone) : undefined
+    };
+    const patch = {
+      nome: typeof data.nome === 'string' ? data.nome : undefined,
+      profilePicUrl: typeof data.profilePicUrl === 'string' ? data.profilePicUrl : undefined,
+      empresa: typeof data.empresa === 'string' ? data.empresa : undefined,
+      email: typeof data.email === 'string' ? data.email : undefined,
+      tags: typeof data.tags === 'string' ? data.tags : undefined,
+      ativo: typeof data.ativo !== 'undefined' ? !!data.ativo : undefined
+    };
+
+    const r = updateWhatsAppContact_(ss, site, where, patch);
+    return jsonOut_(Object.assign({ ok:true }, r));
+  } catch (err) {
+    return jsonOut_({ ok:false, error:String(err) });
+  }
+}
+
+// ===== FUNÇÃO: wa_import_contacts =====
+// Importa contatos WhatsApp em lote
+if (type === 'wa_import_contacts') {
+  try {
+    const site = normalizeSlug_(String(data.site || data.siteSlug || ''));
+    const contacts = Array.isArray(data.contacts) ? data.contacts : [];
+    
+    if (!site) return jsonOut_({ ok: false, error: 'missing_site' });
+    if (contacts.length === 0) return jsonOut_({ ok: false, error: 'no_contacts_provided' });
+
+    const result = importWhatsAppContacts_(ss, site, contacts);
+    
+    log_(ss, 'wa_import_contacts', {
+      site,
+      totalProvided: contacts.length,
+      success: result.success,
+      skipped: result.skipped,
+      errors: result.errors.length
+    });
+    
+    return jsonOut_({ 
+      ok: true, 
+      success: result.success,
+      skipped: result.skipped,
+      errors: result.errors
+    });
+
+  } catch (err) {
+    return jsonOut_({ ok: false, error: String(err) });
+  }
 }
 
     // ===== LEADS =====
@@ -1261,7 +1361,7 @@ if (type === 'wa_send' || type === 'wa_send_text') {
 
     if (!phoneId || !appToken) return jsonOut_({ ok:false, error:'missing_phone_or_token' });
 
-    const url = 'https://graph.facebook.com/v20.0/' + encodeURIComponent(phoneId) + '/messages';
+    const url = 'https://graph.facebook.com/v23.0/' + encodeURIComponent(phoneId) + '/messages';
     const resp = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
@@ -1405,17 +1505,19 @@ function listWhatsappMessages_(ss, site, page, pageSize) {
     return { items: [], total: 0, page, pageSize };
   }
 
-  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues(); // 8 colunas
+  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 9).getValues(); // 9 colunas
   const rows = vals
     .map((r) => ({
       timestamp: r[0],
       siteSlug: String(r[1] || ""),
-      from: String(r[2] || ""),
-      msg_id: String(r[3] || ""),
-      wa_timestamp: String(r[4] || ""),
-      type: String(r[5] || ""),
-      text: String(r[6] || ""),
-      raw_json: String(r[7] || "")
+      from: String(r[3] || ""),        // agora vem na 4ª coluna
+      msg_id: String(r[5] || ""),      // 6ª coluna
+      wa_timestamp: "",                // não usamos coluna dedicada; o front usa 'timestamp'
+      type: String(r[6] || ""),        // 7ª
+      text: String(r[7] || ""),        // 8ª
+      raw_json: String(r[8] || "")     // 9ª
+
+
     }))
     .filter((o) => !site || o.siteSlug === site)
     .sort((a, b) => {
@@ -1548,7 +1650,8 @@ function userLogin_(ss, data) {
 /** Planilha padronizada para mensagens do WhatsApp */
 function ensureWhatsAppSheet_(ss) {
   return ensureSheet_(ss, 'whatsapp_messages', [
-    'timestamp','siteSlug','from','display_phone','phone_id','msg_id','type','text','raw_json','status'
+    'timestamp', 'siteSlug', 'phone_id', 'from', 'to_display',
+    'msg_id', 'type', 'text', 'raw_json'
   ]);
 }
 
@@ -1727,6 +1830,48 @@ function passwordResetConfirm_(ss, data) {
   }
 }
 
+/**
+ * Lê plano do cliente na aba "usuarios" com headers reais:
+ * email | siteSlug | ... | plan | ...
+ * Pode casar por siteSlug OU email. Default "essential".
+ */
+function get_client_plan_v2(siteSlug, emailLC) {
+  try {
+    const ss = openSS_();
+    const sh = ensureUsuariosSheet_(ss); // mesma usada em client_billing
+    const data = sh.getDataRange().getValues();
+    if (!data || data.length < 2) return { ok: true, plan: "essential" };
+
+    const head = data[0].map(h => String(h).trim());
+    const idxEmail = head.indexOf("email");
+    const idxSite  = head.indexOf("siteSlug"); // nome da sua planilha
+    const idxPlanA = head.indexOf("plan");     // nome da sua planilha
+    const idxPlanB = head.indexOf("plano");    // fallback se existir
+
+    const idxPlan = (idxPlanA !== -1 ? idxPlanA : idxPlanB);
+    if (idxPlan === -1) return { ok: false, error: "missing_plan_header" };
+
+    const slug = normalizeSlug_(String(siteSlug || ""));
+    const em   = String(emailLC || "").trim().toLowerCase();
+
+    let plan = "essential";
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const rowSite  = normalizeSlug_(String(row[idxSite]  || ""));
+      const rowEmail = String(row[idxEmail] || "").trim().toLowerCase();
+
+      if ((slug && rowSite === slug) || (em && rowEmail === em)) {
+        const raw = String(row[idxPlan] || "").toLowerCase();
+        plan = raw.includes("vip") ? "vip" : "essential";
+        break;
+      }
+    }
+    return { ok: true, plan };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 /** ============================= ESTRUTURA DE SITES ============================= */
 
 /**
@@ -1883,6 +2028,76 @@ function validate_vip_pin(site, pin) {
 
   } catch (e) {
     return { ok: false, valid: false, error: "Erro ao validar PIN: " + e.message };
+  }
+}
+
+/**
+ * Lê o plano do cliente a partir da aba "usuarios".
+ * Retorna { ok:true, plan: "vip" | "essential" }
+ */
+function get_client_plan(site, email) {
+  try {
+    const ss = openSS_();
+    const sh = ss.getSheetByName("usuarios");
+    if (!sh) return { ok: false, error: "usuarios_sheet_not_found" };
+
+    const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    const idxSite  = head.indexOf("site");
+    const idxPlan  = head.indexOf("plano");
+    const idxEmail = head.indexOf("email");
+    if (idxSite === -1 || idxPlan === -1)
+      return { ok: false, error: "missing_columns_site_or_plano" };
+
+    const data = sh.getRange(2, 1, Math.max(0, sh.getLastRow() - 1), sh.getLastColumn()).getValues();
+    const targetSlug  = normalizeSlug_(String(site || ""));
+    const targetEmail = String(email || "").trim().toLowerCase();
+
+    let plan = "essential";
+    for (let i = 0; i < data.length; i++) {
+      const rowSite  = normalizeSlug_(String(data[i][idxSite]  || ""));
+      const rowEmail = String(data[i][idxEmail] || "").trim().toLowerCase();
+      if (rowSite === targetSlug || (targetEmail && rowEmail === targetEmail)) {
+        const raw = String(data[i][idxPlan] || "").toLowerCase();
+        plan = raw.includes("vip") ? "vip" : "essential";
+        break;
+      }
+    }
+    return { ok: true, plan };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/**
+ * Consolida status do site + plano e valida PIN VIP se informado.
+ * Retorna { ok:true, status, active, plan }
+ */
+function get_auth_status(site, pin, email) {
+  try {
+    const slug = normalizeSlug_(String(site || ""));
+    const s = getStatusForSite_(slug); // já retorna ok/active/status/email/preapproval_id
+    if (!s || !s.ok) {
+      return { ok: false, error: (s && s.error) ? String(s.error) : "status_unavailable" };
+    }
+
+    // plano padrão vindo da aba usuarios
+    const p = get_client_plan(slug, email);
+    let plan = (p && p.ok) ? p.plan : "essential";
+
+    // se PIN válido, força VIP
+    if (pin) {
+      const v = validate_vip_pin(slug, pin);
+      if (v && v.ok && v.valid) plan = "vip";
+    }
+
+    return {
+      ok: true,
+      status: String(s.status || "pending"),
+      active: !!s.active,
+      plan
+    };
+  } catch (e) {
+    return { ok: false, error: String(e) };
   }
 }
 
@@ -6325,6 +6540,667 @@ function getKV_(ss, siteSlug) {
 
 
 
+
+/** ============================= FUNÇÕES WHATSAPP EXPANDIDAS ============================= */
+
+/**
+ * Normaliza números de telefone para formato E.164 brasileiro
+ * Aceita todos os formatos: +55 (96) 99203-1385, 55 96 99203-1385, (96) 99203-1385, 96 99203-1385, 99203-1385
+ * Retorna: 5596992031385 ou null se inválido
+ */
+function normalizePhoneNumber_(phoneInput, defaultDDD = '96') {
+  try {
+    if (!phoneInput) return null;
+    
+    // Remove tudo que não é dígito
+    let digits = String(phoneInput).replace(/\D/g, '');
+    
+    if (!digits) return null;
+    
+    // Se tem menos de 8 dígitos, é muito pequeno
+    if (digits.length < 8) return null;
+    
+    // Se tem mais de 14 dígitos, é muito grande
+    if (digits.length > 14) return null;
+    
+    // Remove código país se presente (55 no início)
+    if (digits.startsWith('55') && digits.length > 10) {
+      digits = digits.substring(2);
+    }
+    
+    // Se tem exatamente 8 dígitos, adiciona DDD padrão e 9º dígito
+    if (digits.length === 8) {
+      digits = defaultDDD + '9' + digits;
+    }
+    // Se tem 9 dígitos, adiciona DDD padrão
+    else if (digits.length === 9) {
+      digits = defaultDDD + digits;
+    }
+    // Se tem 10 dígitos (DDD + 8 dígitos), adiciona 9º dígito se é celular
+    else if (digits.length === 10) {
+      let ddd = digits.substring(0, 2);
+      let number = digits.substring(2);
+      // Se começa com 9, 8, 7, 6 é provável que seja celular sem o 9
+      if (['6', '7', '8', '9'].includes(number[0])) {
+        digits = ddd + '9' + number;
+      }
+    }
+    
+    // Agora deve ter 11 dígitos (DDD + 9 dígitos)
+    if (digits.length !== 11) return null;
+    
+    // Valida DDD (11-99)
+    let ddd = parseInt(digits.substring(0, 2));
+    if (ddd < 11 || ddd > 99) return null;
+    
+    // Valida se o número parece válido (9º dígito deve ser 9 para celular)
+    let ninthDigit = digits[2];
+    if (ninthDigit !== '9') {
+      // Se não tem 9º dígito, pode ser fixo, mas vamos assumir celular
+      let dddPart = digits.substring(0, 2);
+      let numberPart = digits.substring(2);
+      digits = dddPart + '9' + numberPart;
+    }
+    
+    // Retorna no formato E.164 brasileiro
+    return '55' + digits;
+    
+  } catch (error) {
+    console.error('Erro ao normalizar telefone:', error);
+    return null;
+  }
+}
+
+/**
+ * Processa variáveis em mensagens WhatsApp
+ * Variáveis suportadas: {{saudacao}}, {{nome}}, {{empresa}}, {{data}}, {{hora}}, {{site}}
+ */
+function processMessageVariables_(message, variables = {}) {
+  try {
+    if (!message) return '';
+    
+    let processed = String(message);
+    
+    // Saudação automática baseada no horário
+    if (processed.includes('{{saudacao}}')) {
+      let hour = new Date().getHours();
+      let greeting = 'Olá';
+      if (hour < 12) greeting = 'Bom dia';
+      else if (hour < 18) greeting = 'Boa tarde';
+      else greeting = 'Boa noite';
+      processed = processed.replace(/\{\{saudacao\}\}/g, greeting);
+    }
+    
+    // Data atual
+    if (processed.includes('{{data}}')) {
+      let date = new Date().toLocaleDateString('pt-BR');
+      processed = processed.replace(/\{\{data\}\}/g, date);
+    }
+    
+    // Hora atual
+    if (processed.includes('{{hora}}')) {
+      let time = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+      processed = processed.replace(/\{\{hora\}\}/g, time);
+    }
+    
+    // Outras variáveis dinâmicas
+    Object.keys(variables).forEach(key => {
+      let placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      processed = processed.replace(placeholder, String(variables[key] || ''));
+    });
+    
+    return processed;
+    
+  } catch (error) {
+    console.error('Erro ao processar variáveis da mensagem:', error);
+    return message;
+  }
+}
+
+/**
+ * Obtém templates WhatsApp disponíveis para um site
+ * Retorna lista de templates com nomes amigáveis
+ */
+function getWhatsAppTemplates_(ss, siteSlug) {
+  try {
+    // Templates padrão que sempre estarão disponíveis
+    let templates = [
+      {
+        id: 'hello_world',
+        name: 'hello_world',
+        lang: 'en_US',
+        displayName: 'Boas-vindas',
+        description: 'Mensagem de boas-vindas padrão',
+        category: 'welcome'
+      },
+      {
+        id: 'template_1',
+        name: 'template_promocao',
+        lang: 'pt_BR', 
+        displayName: 'Mensagem 1 - Promoção',
+        description: 'Template para campanhas promocionais',
+        category: 'marketing'
+      },
+      {
+        id: 'template_2',
+        name: 'template_agendamento',
+        lang: 'pt_BR',
+        displayName: 'Mensagem 2 - Agendamento',
+        description: 'Template para confirmação de agendamentos', 
+        category: 'appointment'
+      },
+      {
+        id: 'template_3',
+        name: 'template_cobranca',
+        lang: 'pt_BR',
+        displayName: 'Mensagem 3 - Cobrança',
+        description: 'Template para lembretes de pagamento',
+        category: 'billing'
+      },
+      {
+        id: 'template_4',
+        name: 'template_suporte',
+        lang: 'pt_BR',
+        displayName: 'Mensagem 4 - Suporte',
+        description: 'Template para atendimento ao cliente',
+        category: 'support'
+      }
+    ];
+    
+    // Busca templates personalizados na planilha (se existir)
+    try {
+      let customTemplatesSheet = ss.getSheetByName('whatsapp_templates');
+      if (customTemplatesSheet && customTemplatesSheet.getLastRow() > 1) {
+        let data = customTemplatesSheet.getDataRange().getValues();
+        let headers = data[0];
+        
+        for (let i = 1; i < data.length; i++) {
+          let row = data[i];
+          let siteFromSheet = String(row[headers.indexOf('siteSlug')] || '').toUpperCase();
+          
+          if (siteFromSheet === siteSlug.toUpperCase()) {
+            templates.push({
+              id: String(row[headers.indexOf('template_id')] || ''),
+              name: String(row[headers.indexOf('template_name')] || ''),
+              lang: String(row[headers.indexOf('language')] || 'pt_BR'),
+              displayName: String(row[headers.indexOf('display_name')] || ''),
+              description: String(row[headers.indexOf('description')] || ''),
+              category: String(row[headers.indexOf('category')] || 'custom')
+            });
+          }
+        }
+      }
+    } catch (customError) {
+      // Se der erro ao buscar templates personalizados, continua com os padrão
+      console.error('Erro ao buscar templates personalizados:', customError);
+    }
+    
+    return templates.filter(t => t.name && t.displayName);
+    
+  } catch (error) {
+    console.error('Erro ao obter templates WhatsApp:', error);
+    // Retorna pelo menos os templates básicos
+    return [{
+      id: 'hello_world',
+      name: 'hello_world', 
+      lang: 'en_US',
+      displayName: 'Boas-vindas',
+      description: 'Mensagem de boas-vindas',
+      category: 'welcome'
+    }];
+  }
+}
+
+/**
+ * Valida dados de contato importados de Excel
+ */
+function validateContactData_(contactData) {
+  try {
+    let errors = [];
+    let warnings = [];
+    
+    if (!contactData.nome || String(contactData.nome).trim() === '') {
+      errors.push('Nome é obrigatório');
+    }
+    
+    if (!contactData.telefone || String(contactData.telefone).trim() === '') {
+      errors.push('Telefone é obrigatório');
+    } else {
+      let normalizedPhone = normalizePhoneNumber_(contactData.telefone);
+      if (!normalizedPhone) {
+        errors.push('Formato de telefone inválido: ' + contactData.telefone);
+      } else {
+        contactData.telefone_normalizado = normalizedPhone;
+      }
+    }
+    
+    // Validações opcionais que geram warnings
+    if (!contactData.empresa || String(contactData.empresa).trim() === '') {
+      warnings.push('Empresa não informada');
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors: errors,
+      warnings: warnings,
+      data: contactData
+    };
+    
+  } catch (error) {
+    return {
+      valid: false,
+      errors: ['Erro na validação: ' + String(error)],
+      warnings: [],
+      data: contactData
+    };
+  }
+}
+
+/**
+ * Importa contatos de dados Excel/CSV
+ */
+function importContactsFromExcel_(ss, siteSlug, contactsData) {
+  try {
+    let results = {
+      success: 0,
+      errors: 0,
+      warnings: 0,
+      details: []
+    };
+    
+    // Cria planilha de contatos se não existir
+    let contactsSheet = ss.getSheetByName('whatsapp_contacts');
+    if (!contactsSheet) {
+      contactsSheet = ss.insertSheet('whatsapp_contacts');
+            contactsSheet.appendRow([
+        'id', 'siteSlug', 'nome', 'profilePicUrl', 'telefone', 'telefone_normalizado',
+        'empresa', 'email', 'tags', 'ativo', 'criado_em', 'atualizado_em'
+      ]);
+    }
+    
+    for (let i = 0; i < contactsData.length; i++) {
+      let contact = contactsData[i];
+      let validation = validateContactData_(contact);
+      
+      if (validation.valid) {
+        try {
+          // Adiciona dados do sistema
+          let contactId = Utilities.getUuid().substring(0, 8);
+          let now = new Date();
+          
+            contactsSheet.appendRow([
+            contactId,
+            siteSlug.toUpperCase(),
+            String(contact.nome || '').trim(),
+            String(contact.profilePicUrl || '').trim(),
+            String(contact.telefone || '').trim(),
+            validation.data.telefone_normalizado,
+            String(contact.empresa || '').trim(),
+            String(contact.email || '').trim(),
+            String(contact.tags || '').trim(),
+            true, // ativo
+            now,
+            now
+          ]);
+
+          
+          results.success++;
+          results.details.push({
+            row: i + 1,
+            status: 'success',
+            name: contact.nome,
+            phone: validation.data.telefone_normalizado,
+            warnings: validation.warnings
+          });
+          
+          if (validation.warnings.length > 0) {
+            results.warnings += validation.warnings.length;
+          }
+          
+        } catch (insertError) {
+          results.errors++;
+          results.details.push({
+            row: i + 1,
+            status: 'error',
+            name: contact.nome,
+            errors: ['Erro ao inserir: ' + String(insertError)]
+          });
+        }
+        
+      } else {
+        results.errors++;
+        results.details.push({
+          row: i + 1,
+          status: 'error',
+          name: contact.nome || 'N/A',
+          errors: validation.errors
+        });
+      }
+    }
+    
+    // Log da importação
+    log_(ss, 'whatsapp_contacts_import', {
+      site: siteSlug,
+      total: contactsData.length,
+      success: results.success,
+      errors: results.errors,
+      warnings: results.warnings
+    });
+    
+    return results;
+    
+  } catch (error) {
+    console.error('Erro na importação de contatos:', error);
+    return {
+      success: 0,
+      errors: contactsData.length,
+      warnings: 0,
+      details: [{
+        status: 'error',
+        errors: ['Erro geral na importação: ' + String(error)]
+      }]
+    };
+  }
+}
+
+/**
+ * Lista contatos WhatsApp de um site
+ */
+function listWhatsAppContacts_(ss, siteSlug, page = 1, pageSize = 20, filters = {}) {
+  try {
+    let contactsSheet = ss.getSheetByName('whatsapp_contacts');
+    if (!contactsSheet || contactsSheet.getLastRow() <= 1) {
+      return { items: [], total: 0, page: page, pageSize: pageSize };
+    }
+    
+    let data = contactsSheet.getDataRange().getValues();
+    let headers = data[0];
+    let rows = data.slice(1);
+    
+    // Filtrar por site
+    let contacts = rows.filter(row => {
+      let site = String(row[headers.indexOf('siteSlug')] || '').toUpperCase();
+      let ativo = row[headers.indexOf('ativo')];
+      return site === siteSlug.toUpperCase() && ativo !== false;
+    }).map(row => {
+      return {
+                id: String(row[headers.indexOf('id')] || ''),
+        nome: String(row[headers.indexOf('nome')] || ''),
+        profilePicUrl: String(
+          headers.indexOf('profilePicUrl') >= 0 ? (row[headers.indexOf('profilePicUrl')] || '') : ''
+        ),
+        telefone: String(row[headers.indexOf('telefone_normalizado')] || ''),
+        empresa: String(row[headers.indexOf('empresa')] || ''),
+        email: String(row[headers.indexOf('email')] || ''),
+        tags: String(row[headers.indexOf('tags')] || ''),
+        criado_em: row[headers.indexOf('criado_em')]
+      };
+    });
+    
+    // Aplicar filtros adicionais
+    if (filters.nome) {
+      contacts = contacts.filter(c => 
+        c.nome.toLowerCase().includes(String(filters.nome).toLowerCase())
+      );
+    }
+    
+    if (filters.empresa) {
+      contacts = contacts.filter(c => 
+        c.empresa.toLowerCase().includes(String(filters.empresa).toLowerCase())
+      );
+    }
+    
+    if (filters.tags) {
+      contacts = contacts.filter(c => 
+        c.tags.toLowerCase().includes(String(filters.tags).toLowerCase())
+      );
+    }
+    
+    // Ordenar por data de criação (mais recente primeiro)
+    contacts.sort((a, b) => {
+      let dateA = new Date(a.criado_em).getTime() || 0;
+      let dateB = new Date(b.criado_em).getTime() || 0;
+      return dateB - dateA;
+    });
+    
+    // Paginação
+    let total = contacts.length;
+    let start = (page - 1) * pageSize;
+    let items = contacts.slice(start, start + pageSize);
+    
+    return { items, total, page, pageSize };
+    
+  } catch (error) {
+    console.error('Erro ao listar contatos:', error);
+    return { items: [], total: 0, page: page, pageSize: pageSize };
+  }
+}
+
+/**
+ * Garante que a planilha whatsapp_contacts tenha as colunas atuais
+ */
+function ensureWhatsAppContactsHeaders_(ss) {
+  let sh = ss.getSheetByName('whatsapp_contacts');
+  if (!sh) return;
+  const data = sh.getDataRange().getValues();
+  if (data.length === 0) return;
+  const headers = data[0];
+
+  const needed = [
+    'id','siteSlug','nome','profilePicUrl','telefone','telefone_normalizado',
+    'empresa','email','tags','ativo','criado_em','atualizado_em'
+  ];
+
+  // Adiciona colunas ausentes ao final
+  let missing = needed.filter(h => headers.indexOf(h) === -1);
+  if (missing.length > 0) {
+    sh.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+  }
+}
+
+/**
+ * Garante cabeçalho da planilha whatsapp_templates
+ */
+function ensureWhatsAppTemplatesHeaders_(ss) {
+  let sh = ss.getSheetByName('whatsapp_templates');
+  if (!sh) return;
+  const data = sh.getDataRange().getValues();
+  if (data.length === 0) return;
+
+  const headers = data[0];
+  const needed = [
+    'id','siteSlug','name','displayName','lang','description','category','status',
+    'content','variables','createdAt','updatedAt'
+  ];
+
+  let missing = needed.filter(h => headers.indexOf(h) === -1);
+  if (missing.length > 0) {
+    sh.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+  }
+}
+
+/**
+ * Lista templates da planilha
+ */
+function listWhatsAppTemplates_(ss, siteSlug) {
+  let sh = ss.getSheetByName('whatsapp_templates');
+  if (!sh || sh.getLastRow() <= 1) return [];
+
+  const values = sh.getDataRange().getValues();
+  const headers = values[0];
+
+  const idx = {};
+  headers.forEach((h, i) => idx[String(h)] = i);
+
+  const list = [];
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    if (String(row[idx.siteSlug] || '').toUpperCase() !== String(siteSlug).toUpperCase()) continue;
+
+    list.push({
+      id: String(row[idx.id] || ''),
+      name: String(row[idx.name] || ''),
+      displayName: String(row[idx.displayName] || ''),
+      lang: String(row[idx.lang] || 'pt_BR'),
+      description: String(row[idx.description] || ''),
+      category: String(row[idx.category] || ''),
+      status: String(row[idx.status] || 'APPROVED'),
+      content: String(row[idx.content] || ''),
+      variables: (function(v){
+        if (!v) return [];
+        if (Array.isArray(v)) return v;
+        try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch(e){ return []; }
+      })(row[idx.variables]),
+      createdAt: row[idx.createdAt] || null,
+      updatedAt: row[idx.updatedAt] || null
+    });
+  }
+  return list;
+}
+
+/**
+ * Cria ou atualiza template
+ */
+function upsertWhatsAppTemplate_(ss, siteSlug, tpl) {
+  let sh = ss.getSheetByName('whatsapp_templates');
+  if (!sh) {
+    sh = ss.insertSheet('whatsapp_templates');
+    sh.appendRow([
+      'id','siteSlug','name','displayName','lang','description','category','status',
+      'content','variables','createdAt','updatedAt'
+    ]);
+  } else {
+    ensureWhatsAppTemplatesHeaders_(ss);
+  }
+
+  const values = sh.getDataRange().getValues();
+  const headers = values[0];
+  const idx = {};
+  headers.forEach((h, i) => idx[String(h)] = i);
+
+  // Procura por id
+  let rowIndex = -1;
+  if (tpl.id) {
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][idx.id] || '') === String(tpl.id)) {
+        rowIndex = i;
+        break;
+      }
+    }
+  }
+
+  const now = new Date();
+  const rowArr = new Array(headers.length).fill('');
+
+  function set(field, value) {
+    if (headers.indexOf(field) >= 0) rowArr[headers.indexOf(field)] = value;
+  }
+
+  // Se novo id vazio, gera
+  const id = tpl.id && String(tpl.id).trim() !== '' ? String(tpl.id) : Utilities.getUuid().substring(0, 8);
+
+  set('id', id);
+  set('siteSlug', String(siteSlug || '').toUpperCase());
+  set('name', String(tpl.name || ''));
+  set('displayName', String(tpl.displayName || ''));
+  set('lang', String(tpl.lang || 'pt_BR'));
+  set('description', String(tpl.description || ''));
+  set('category', String(tpl.category || ''));
+  set('status', String(tpl.status || 'APPROVED'));
+  set('content', String(tpl.content || ''));
+  set('variables', JSON.stringify(Array.isArray(tpl.variables) ? tpl.variables : []));
+  set('updatedAt', now);
+
+  if (rowIndex < 0) {
+    set('createdAt', now);
+    sh.appendRow(rowArr);
+  } else {
+    // sobrescreve a linha existente
+    const rowNumber = rowIndex + 1; // 1-based
+    sh.getRange(rowNumber + 0, 1, 1, rowArr.length).setValues([rowArr]);
+  }
+
+  return { ok:true, id };
+}
+
+/**
+ * Atualiza um contato (por id OU telefone_normalizado) com campos parciais
+ * accepted fields: nome, profilePicUrl, empresa, email, tags, ativo
+ */
+function updateWhatsAppContact_(ss, siteSlug, where, patch) {
+  let sh = ss.getSheetByName('whatsapp_contacts');
+  if (!sh) throw new Error('contacts_sheet_missing');
+
+  // Garante cabeçalhos atuais
+  ensureWhatsAppContactsHeaders_(ss);
+
+  const values = sh.getDataRange().getValues();
+  const headers = values[0];
+
+  const idx = {
+    id: headers.indexOf('id'),
+    siteSlug: headers.indexOf('siteSlug'),
+    nome: headers.indexOf('nome'),
+    profilePicUrl: headers.indexOf('profilePicUrl'),
+    telefone_normalizado: headers.indexOf('telefone_normalizado'),
+    empresa: headers.indexOf('empresa'),
+    email: headers.indexOf('email'),
+    tags: headers.indexOf('tags'),
+    ativo: headers.indexOf('ativo'),
+    atualizado_em: headers.indexOf('atualizado_em')
+  };
+
+  // Localiza linha
+  let rowIndex = -1; // base 0 no array, +1 na planilha
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const sameSite = String(row[idx.siteSlug] || '').toUpperCase() === String(siteSlug || '').toUpperCase();
+    const idMatch = where.id ? String(row[idx.id] || '') === String(where.id) : false;
+    const telMatch = where.telefone_normalizado
+      ? String(row[idx.telefone_normalizado] || '') === String(where.telefone_normalizado)
+      : false;
+    if (sameSite && (idMatch || telMatch)) {
+      rowIndex = i;
+      break;
+    }
+  }
+  if (rowIndex < 0) throw new Error('contact_not_found');
+
+  // Aplica patch
+  const updates = {};
+  function setIfPresent(field, value) {
+    const col = idx[field];
+    if (col >= 0 && typeof value !== 'undefined') updates[col] = value;
+  }
+
+  setIfPresent('nome', typeof patch.nome === 'string' ? patch.nome.trim() : undefined);
+  setIfPresent('profilePicUrl', typeof patch.profilePicUrl === 'string' ? patch.profilePicUrl.trim() : undefined);
+  setIfPresent('empresa', typeof patch.empresa === 'string' ? patch.empresa.trim() : undefined);
+  setIfPresent('email', typeof patch.email === 'string' ? patch.email.trim() : undefined);
+  setIfPresent('tags', typeof patch.tags === 'string' ? patch.tags.trim() : undefined);
+  if (typeof patch.ativo !== 'undefined') {
+    setIfPresent('ativo', !!patch.ativo);
+  }
+  setIfPresent('atualizado_em', new Date());
+
+  // Escreve células alteradas
+  const rowNumber = rowIndex + 1; // 1-based
+  Object.keys(updates).forEach(colIdxStr => {
+    const colIdx = Number(colIdxStr);
+    sh.getRange(rowNumber + 1 - 0, colIdx + 1, 1, 1).setValue(updates[colIdx]); // +1 cabeçalho
+  });
+
+  return { ok: true };
+}
+
+function _fixWAHeadersOnce() {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName('whatsapp_messages');
+  if (!sh) return;
+  sh.getRange(1,1,1,9).setValues([[
+    'timestamp','siteSlug','phone_id','from','to_display','msg_id','type','text','raw_json'
+  ]]);
+}
 
 /**
  * ============================= FIM DAS NOVAS FUNCIONALIDADES VIP =============================
