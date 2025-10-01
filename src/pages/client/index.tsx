@@ -99,6 +99,17 @@ export default function ClientDashboard() {
     if (user?.role === "admin") window.location.replace("/admin/dashboard");
   }, [user?.role]);
 
+  // Verificar se voltou do Google OAuth com sucesso
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('gmb') === 'ok') {
+      // Mostrar mensagem de sucesso
+      alert('✅ Google My Business conectado com sucesso!');
+      // Limpar a URL
+      window.history.replaceState({}, document.title, '/client/dashboard');
+    }
+  }, []);
+
   // Carrega status + assets
   useEffect(() => {
     let alive = true;

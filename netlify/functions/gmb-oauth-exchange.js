@@ -113,7 +113,7 @@ export default async (req) => {
       });
     }
 
-    // Redireciona de volta ao dashboard
+    // Redireciona de volta ao dashboard do cliente
     return new Response(null, {
       status: 302,
       headers: { 
