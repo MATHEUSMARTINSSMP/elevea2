@@ -5,6 +5,7 @@ import { useRoutes, Navigate } from "react-router-dom";
 // públicas
 const HomePage        = lazy(() => import("@/pages/Index"));
 const LoginPage       = lazy(() => import("@/pages/auth/Login"));
+const GoogleCallback  = lazy(() => import("@/pages/auth/google/callback"));
 const ObrigadoPage    = lazy(() => import("@/pages/obrigado/index"));
 const ResetPage       = lazy(() => import("@/pages/reset/index"));
 const PoliticasPage   = lazy(() => import("@/pages/politicas/index"));
@@ -19,9 +20,10 @@ export default function Routes() {
     // públicas
     { path: "/", element: <HomePage /> },
     { path: "/login", element: <LoginPage /> },
+    { path: "/auth/google/callback", element: <GoogleCallback /> },
     { path: "/obrigado", element: <ObrigadoPage /> },
     { path: "/reset/*", element: <ResetPage /> },
-    { path: "/politicas", element: <PoliticasPage /> }, // <-- aqui
+    { path: "/politicas", element: <PoliticasPage /> },
 
     // logadas
     { path: "/client/*", element: <ClientDashboard /> },
