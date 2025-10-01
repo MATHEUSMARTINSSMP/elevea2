@@ -187,11 +187,23 @@ export default function GoogleReviews({ siteSlug, vipPin, userEmail }: GoogleRev
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  <a
-                    href={`/.netlify/functions/gmb-oauth-start?site=${encodeURIComponent(siteSlug)}&email=${encodeURIComponent(userEmail)}`}
+                  <button
+                    onClick={() => {
+                      // Salvar state no sessionStorage antes de redirecionar
+                      const state = JSON.stringify({
+                        site: siteSlug,
+                        email: userEmail,
+                        ts: Date.now(),
+                        n: Math.random().toString(36).slice(2)
+                      });
+                      sessionStorage.setItem('gmb_state', state);
+                      
+                      // Redirecionar para o start
+                      window.location.href = `/.netlify/functions/gmb-oauth-start?site=${encodeURIComponent(siteSlug)}&email=${encodeURIComponent(userEmail)}`;
+                    }}
                   >
                     Conectar Google
-                  </a>
+                  </button>
                 </Button>
               )}
             </div>
@@ -271,11 +283,23 @@ export default function GoogleReviews({ siteSlug, vipPin, userEmail }: GoogleRev
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  <a
-                    href={`/.netlify/functions/gmb-oauth-start?site=${encodeURIComponent(siteSlug)}&email=${encodeURIComponent(userEmail)}`}
+                  <button
+                    onClick={() => {
+                      // Salvar state no sessionStorage antes de redirecionar
+                      const state = JSON.stringify({
+                        site: siteSlug,
+                        email: userEmail,
+                        ts: Date.now(),
+                        n: Math.random().toString(36).slice(2)
+                      });
+                      sessionStorage.setItem('gmb_state', state);
+                      
+                      // Redirecionar para o start
+                      window.location.href = `/.netlify/functions/gmb-oauth-start?site=${encodeURIComponent(siteSlug)}&email=${encodeURIComponent(userEmail)}`;
+                    }}
                   >
                     Conectar Google
-                  </a>
+                  </button>
                 </Button>
               )}
             </div>

@@ -119,12 +119,19 @@ export async function recordHit(data: Partial<AnalyticsHit> = {}) {
 }
 
 // Enviar evento para o GAS
-export async function recordEvent(data: AnalyticsEvent) {
+export async function recordEvent(data: AnalyticsEvent & { site?: string }) {
   try {
     const deviceInfo = getDeviceInfo();
+    const siteSlug = data.site || SITE_SLUG;
+    
+    // Se não tem site, não registrar evento
+    if (!siteSlug) {
+      console.warn('Analytics ignorado - site não fornecido');
+      return { ok: true, message: 'Analytics ignorado' };
+    }
     
     const eventData = {
-      site: SITE_SLUG,
+      site: siteSlug,
       event: data.event,
       category: data.category,
       value: data.value || 0,
@@ -135,7 +142,7 @@ export async function recordEvent(data: AnalyticsEvent) {
       }
     };
 
-    const response = await fetch(`${GAS_URL}?type=recordEvent_&site=${encodeURIComponent(SITE_SLUG)}`, {
+    const response = await fetch(`${GAS_URL}?type=recordEvent_&site=${encodeURIComponent(siteSlug)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(eventData)

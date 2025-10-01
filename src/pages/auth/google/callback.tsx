@@ -22,46 +22,55 @@ export default function GoogleCallback() {
           return; 
         }
 
-        // Validar state comparando com sessionStorage (segurança CSRF)
-        const savedState = sessionStorage.getItem('gmb_oauth_state');
-        const savedSite = sessionStorage.getItem('gmb_oauth_site');
-        const savedEmail = sessionStorage.getItem('gmb_oauth_email');
-        
-        if (!savedState || state !== savedState) {
-          setError("State inválido - possível ataque CSRF");
-          return;
-        }
-        
-        if (!savedSite || !savedEmail) {
-          setError("Dados de sessão perdidos - tente novamente");
-          return;
-        }
-        
-        // Validar dados do state
+        // Validar e extrair dados do state
+        let stateData;
         try {
-          const stateData = JSON.parse(atob(state.replace(/-/g, '+').replace(/_/g, '/')));
-          if (stateData.site !== savedSite || stateData.email !== savedEmail) {
-            setError("State não confere com dados salvos");
-            return;
-          }
-          
-          // Validar timestamp (state não pode ser muito antigo - 10 minutos)
-          const stateAge = Date.now() - (stateData.ts || 0);
-          if (stateAge > 10 * 60 * 1000) {
-            setError("State expirado - tente novamente");
-            return;
-          }
+          stateData = JSON.parse(atob(state.replace(/-/g, '+').replace(/_/g, '/')));
         } catch (e) {
-          console.warn('Erro ao validar state:', e);
           setError("State corrompido - tente novamente");
+          return;
+        }
+        
+        const { site: siteSlug, email: userEmail } = stateData;
+        
+        if (!siteSlug || !userEmail) {
+          setError("State inválido - dados ausentes");
+          return;
+        }
+        
+        // Validar timestamp (state não pode ser muito antigo - 10 minutos)
+        const stateAge = Date.now() - (stateData.ts || 0);
+        if (stateAge > 10 * 60 * 1000) {
+          setError("State expirado - tente novamente");
           return;
         }
 
         setMsg("Processando autorização...");
 
-        // Redireciona o navegador para a função que troca o code por tokens e salva no GAS.
-        const url = `/.netlify/functions/gmb-oauth-exchange?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
-        window.location.replace(url);
+        // Fazer POST para exchange (não redirect)
+        try {
+          const response = await fetch('/.netlify/functions/gmb-oauth-exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code,
+              state,
+              redirect_uri: 'https://eleveaagencia.netlify.app/auth/google/callback',
+              siteSlug,
+              userEmail
+            })
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+          
+          // Sucesso - redirecionar para dashboard
+          window.location.replace(`/client/dashboard?gmb=ok&site=${encodeURIComponent(siteSlug)}`);
+        } catch (err: any) {
+          setError(`Erro na troca de tokens: ${err.message}`);
+        }
       } catch (e) {
         console.error('Erro no callback:', e);
         setError(`Erro interno: ${String(e)}`);

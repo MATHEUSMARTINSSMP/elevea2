@@ -37,10 +37,22 @@ export default async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const code = String(url.searchParams.get('code') || '').trim();
-    const stateStr = String(url.searchParams.get('state') || '').trim();
-    const error = url.searchParams.get('error');
+    // Aceitar tanto GET (query params) quanto POST (body)
+    let code, stateStr, error, site, email;
+    
+    if (req.method === 'POST') {
+      const body = await req.json();
+      code = String(body.code || '').trim();
+      stateStr = String(body.state || '').trim();
+      error = body.error;
+      site = String(body.siteSlug || '').trim();
+      email = String(body.userEmail || '').trim();
+    } else {
+      const url = new URL(req.url);
+      code = String(url.searchParams.get('code') || '').trim();
+      stateStr = String(url.searchParams.get('state') || '').trim();
+      error = url.searchParams.get('error');
+    }
     
     // Verificar se houve erro do Google
     if (error) {
@@ -79,7 +91,11 @@ export default async (req) => {
       });
     }
 
-    const { site, email } = stateData;
+    // Se não vieram do body, extrair do state
+    if (!site || !email) {
+      site = stateData.site;
+      email = stateData.email;
+    }
 
     if (!site || !email || site.length < 2 || !email.includes('@')) {
       return new Response(JSON.stringify({ ok: false, error: 'Dados de state inválidos' }), { 
@@ -93,8 +109,11 @@ export default async (req) => {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        code, client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
-        redirect_uri: REDIRECT_URI, grant_type: 'authorization_code'
+        code, 
+        client_id: CLIENT_ID, 
+        client_secret: CLIENT_SECRET,
+        redirect_uri: REDIRECT_URI, // Deve ser idêntico ao cadastrado no GCP
+        grant_type: 'authorization_code'
       }).toString(),
     });
     const tokens = await tokenRes.json();
