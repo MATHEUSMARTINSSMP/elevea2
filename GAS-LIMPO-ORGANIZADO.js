@@ -726,6 +726,7 @@ function doPost(e) {
     if (data.action === 'save_site_structure')  { log_(ss,"route_save_site_structure",{}); return jsonOut_(save_site_structure(data.site, data.structure)); }
     if (data.action === 'validate_vip_pin')     { log_(ss,"route_validate_vip_pin",{});   return jsonOut_(validate_vip_pin(data.site, data.pin)); }
     if (data.action === 'gmb_save_credentials') { log_(ss,"route_gmb_save_credentials",{}); return jsonOut_(gmbSaveCredentials_(ss, data.site, data.email, data.tokens)); }
+    if (data.action === 'setup_google_credentials') { log_(ss,"route_setup_google_credentials",{}); return jsonOut_(setupGoogleCredentials_()); }
     if (data.action === 'gmb_get_reviews')      { log_(ss,"route_gmb_get_reviews",{});    return jsonOut_(gmbGetReviews_(ss, data.site, data.email)); }
     if (data.action === 'gmb_disconnect')       { log_(ss,"route_gmb_disconnect",{});     return jsonOut_(gmbDisconnect_(ss, data.site, data.email)); }
         // Plano do cliente (vip | essential)
@@ -1624,6 +1625,23 @@ function consolidateContacts_(rows) {
   }
   // retorno como array
   return Object.keys(map).map(function (k) { return map[k]; });
+}
+
+/**
+ * Configura credenciais do Google Cloud no PropertiesService
+ * IMPORTANTE: Execute esta função UMA VEZ com suas credenciais reais
+ */
+function setupGoogleCredentials_() {
+  const props = PropertiesService.getScriptProperties();
+  
+  // SUBSTITUA pelos seus valores reais do Google Cloud Console
+  props.setProperties({
+    'GMB_CLIENT_ID': 'YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com',
+    'GMB_CLIENT_SECRET': 'YOUR_GOOGLE_CLIENT_SECRET_HERE'
+  });
+  
+  console.log('✅ Credenciais Google configuradas no PropertiesService');
+  return { ok: true, message: 'Credenciais configuradas' };
 }
 
 /**
