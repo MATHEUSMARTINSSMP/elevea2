@@ -82,6 +82,8 @@ export default function GoogleReviews({ siteSlug, vipPin, userEmail }: GoogleRev
     else setLoading(true);
     
     try {
+      console.log('🔍 Buscando reviews para:', { site: siteSlug, email: userEmail });
+      
       const response = await fetch('/.netlify/functions/client-api', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -98,18 +100,23 @@ export default function GoogleReviews({ siteSlug, vipPin, userEmail }: GoogleRev
       }
 
       const result = await response.json();
+      console.log('📊 Resultado da API:', result);
+      
       if (result.ok) {
         setReviewsData(result.data);
         setError(null);
         setIsConnected(true);
         setNeedsConnection(false);
         setLastFetch(now);
+        console.log('✅ Reviews carregados com sucesso');
       } else {
+        console.log('❌ Erro na API:', result.error);
         // Verificar se é erro de credenciais não encontradas
         if (result.error?.includes('Credenciais não encontradas') || 
             result.error?.includes('Conecte sua conta Google')) {
           setNeedsConnection(true);
           setError(null);
+          console.log('🔐 Credenciais não encontradas, pedindo conexão');
         } else {
           throw new Error(result.error || 'Erro desconhecido');
         }
