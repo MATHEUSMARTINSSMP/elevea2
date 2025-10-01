@@ -103,10 +103,15 @@ export default function ClientDashboard() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('gmb') === 'ok') {
+      const site = urlParams.get('site');
       // Mostrar mensagem de sucesso
-      alert('✅ Google My Business conectado com sucesso!');
+      alert(`✅ Google My Business conectado com sucesso para ${site || 'seu site'}!\n\nAguarde alguns segundos para as informações carregarem...`);
       // Limpar a URL
       window.history.replaceState({}, document.title, '/client/dashboard');
+      // Forçar refresh da página após 2 segundos para recarregar componentes
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
     }
   }, []);
 
