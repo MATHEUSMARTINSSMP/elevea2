@@ -1,0 +1,117 @@
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Menu, X } from 'lucide-react';
+import { WHATSAPP_URL } from '@/lib/whatsapp';
+import LanguageSelector from './LanguageSelector';
+
+const Header = () => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const menuItems = [
+    { name: 'Sobre', href: '#sobre' },
+    { name: 'Por que Digital', href: '#digital' },
+    { name: 'Planos', href: '#planos' },
+    { name: 'Diferenciais', href: '#diferenciais' },
+    { name: 'Depoimentos', href: '#depoimentos' },
+    { name: 'Como Funciona', href: '#como-funciona' },
+    { name: 'FAQ', href: '#faq' },
+    { name: 'Contato', href: '#contato' },
+  ];
+
+  return (
+    <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+      <div className="container">
+        <div className="flex items-center justify-between h-14 sm:h-16">
+          {/* LOGO */}
+          <a
+            href="#topo"
+            className="flex-shrink-0 flex items-center"
+            aria-label="Ir para o topo"
+          >
+            <img
+              src="/logo-elevea.png"
+              alt="Logo Elevea"
+              className="h-8 sm:h-10 w-auto"
+              loading="eager"
+              decoding="sync"
+            />
+          </a>
+
+          {/* Desktop Navigation */}
+          <nav className="nav-mobile items-center space-x-4 sm:space-x-6">
+            {menuItems.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="text-muted-foreground hover:text-primary transition-smooth text-xs sm:text-sm font-medium"
+              >
+                {item.name}
+              </a>
+            ))}
+          </nav>
+
+          {/* CTA Desktop */}
+          <div className="nav-mobile items-center gap-2 sm:gap-3">
+            <LanguageSelector variant="header" />
+            <Button asChild size="sm" variant="outline" className="text-xs sm:text-sm">
+              <a href="/login" data-translate="member-area">
+                Área de Membros
+              </a>
+            </Button>
+            <Button asChild size="sm" className="btn-gold text-xs sm:text-sm">
+              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" data-translate="contact-button">
+                Falar Conosco
+              </a>
+            </Button>
+          </div>
+
+          {/* Mobile menu button */}
+          <div className="nav-mobile-toggle">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-expanded={isMenuOpen}
+              aria-label={isMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+            >
+              {isMenuOpen ? <X className="h-4 w-4 sm:h-5 sm:w-5" /> : <Menu className="h-4 w-4 sm:h-5 sm:w-5" />}
+            </Button>
+          </div>
+        </div>
+
+        {/* Mobile Navigation */}
+        {isMenuOpen && (
+          <div className="nav-mobile-toggle py-4 space-y-4 border-t border-border">
+            {menuItems.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="block text-muted-foreground hover:text-primary transition-smooth text-sm font-medium py-2"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                {item.name}
+              </a>
+            ))}
+            <div className="pt-4 space-y-3">
+              <div className="mb-3">
+                <LanguageSelector variant="dashboard" />
+              </div>
+              <Button asChild size="sm" variant="outline" className="w-full btn-mobile">
+                <a href="/login" data-translate="member-area">
+                  Área de Membros
+                </a>
+              </Button>
+              <Button asChild size="sm" className="w-full btn-gold btn-mobile">
+                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" data-translate="contact-button">
+                  Falar Conosco
+                </a>
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </header>
+  );
+};
+
+export default Header;

@@ -1,0 +1,42 @@
+# === Build / Publish ===
+[build]
+  command   = "npm run build"
+  publish   = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  CI        = "false"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# === Dev Server ===
+[dev]
+  command = "npm run dev:vite"
+  targetPort = 5000
+  port = 8888
+  publish = "dist"
+  functions = "netlify/functions"
+
+# === Functions (Node) ===
+[functions]
+  directory    = "netlify/functions"
+  node_bundler = "esbuild"
+
+# === Redirects / HTTP Functions ===
+[[redirects]]
+  from   = "/api/mp-webhook"
+  to     = "/.netlify/functions/mp-webhook"
+  status = 200
+
+# SPA fallback (mantenha por ÚLTIMO)
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# CORS p/ todas as Functions
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin  = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"

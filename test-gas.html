@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste GAS - ELEVEA</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste GAS - ELEVEA</h1>
+    
+    <div class="test">
+        <h3>🔗 Teste Direto GAS</h3>
+        <p>Testando conexão direta com o Google Apps Script:</p>
+        <button onclick="testDirectGAS()">Testar GAS Direto</button>
+        <div id="gas-direct-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>🌐 Teste via Netlify Functions</h3>
+        <p>Testando via funções Netlify (client-api):</p>
+        <button onclick="testViaNetlify()">Testar via Netlify</button>
+        <div id="netlify-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>📊 Teste de Plano</h3>
+        <p>Testando detecção de plano VIP/Essential:</p>
+        <input type="text" id="site-input" placeholder="Site Slug" value="TESTE" style="margin-right: 10px;">
+        <input type="text" id="email-input" placeholder="Email" value="test@test.com" style="margin-right: 10px;">
+        <button onclick="testPlan()">Testar Plano</button>
+        <div id="plan-result"></div>
+    </div>
+
+    <script>
+        // URL do GAS (substitua pela sua URL real)
+        const GAS_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+        
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            element.parentElement.className = `test ${isError ? 'error' : 'success'}`;
+        }
+
+        // Teste direto GAS
+        async function testDirectGAS() {
+            try {
+                console.log('🔗 Testing direct GAS connection...');
+                const response = await fetch(`${GAS_URL}?type=ping`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                showResult('gas-direct-result', data);
+            } catch (error) {
+                console.error('❌ Direct GAS error:', error);
+                showResult('gas-direct-result', { 
+                    error: error.message,
+                    note: 'Verifique se a URL do GAS está correta e se o script está publicado'
+                }, true);
+            }
+        }
+
+        // Teste via Netlify
+        async function testViaNetlify() {
+            try {
+                console.log('🌐 Testing via Netlify functions...');
+                const response = await fetch('/.netlify/functions/client-api?action=debug_env', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                showResult('netlify-result', data);
+            } catch (error) {
+                console.error('❌ Netlify error:', error);
+                showResult('netlify-result', { error: error.message }, true);
+            }
+        }
+
+        // Teste de plano
+        async function testPlan() {
+            const site = document.getElementById('site-input').value;
+            const email = document.getElementById('email-input').value;
+            
+            if (!site || !email) {
+                showResult('plan-result', { error: 'Site e email são obrigatórios' }, true);
+                return;
+            }
+
+            try {
+                console.log('📊 Testing plan detection...', { site, email });
+                
+                // Teste via client-api
+                const response = await fetch(`/.netlify/functions/client-api?action=client_plan&site=${encodeURIComponent(site)}&email=${encodeURIComponent(email)}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                showResult('plan-result', data);
+            } catch (error) {
+                console.error('❌ Plan test error:', error);
+                showResult('plan-result', { error: error.message }, true);
+            }
+        }
+
+        // Auto-executar teste básico
+        window.addEventListener('load', () => {
+            console.log('🧪 Test page loaded');
+            testViaNetlify();
+        });
+    </script>
+</body>
+</html>
+

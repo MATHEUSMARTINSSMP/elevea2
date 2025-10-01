@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Dashboard - ELEVEA</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug Dashboard ELEVEA</h1>
+    
+    <div class="test info">
+        <h3>📋 Informações do Ambiente</h3>
+        <p><strong>URL Atual:</strong> <span id="current-url"></span></p>
+        <p><strong>User Agent:</strong> <span id="user-agent"></span></p>
+        <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+    </div>
+
+    <div class="test">
+        <h3>🔗 Teste de Conectividade - GAS</h3>
+        <button onclick="testGASConnection()">Testar Conexão GAS</button>
+        <div id="gas-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>📊 Teste de Funções Netlify</h3>
+        <button onclick="testNetlifyFunctions()">Testar Funções Netlify</button>
+        <div id="netlify-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>👤 Teste de Autenticação</h3>
+        <button onclick="testAuth()">Testar Auth</button>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>📈 Teste de Dashboard</h3>
+        <button onclick="testDashboard()">Testar Dashboard</button>
+        <div id="dashboard-result"></div>
+    </div>
+
+    <script>
+        // Informações do ambiente
+        document.getElementById('current-url').textContent = window.location.href;
+        document.getElementById('user-agent').textContent = navigator.userAgent;
+        document.getElementById('timestamp').textContent = new Date().toISOString();
+
+        // Função para mostrar resultados
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            element.parentElement.className = `test ${isError ? 'error' : 'success'}`;
+        }
+
+        // Teste de conexão GAS
+        async function testGASConnection() {
+            try {
+                const response = await fetch('/.netlify/functions/client-api?action=debug_env', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                showResult('gas-result', data);
+            } catch (error) {
+                showResult('gas-result', { error: error.message }, true);
+            }
+        }
+
+        // Teste de funções Netlify
+        async function testNetlifyFunctions() {
+            const tests = [
+                { name: 'get_status', url: '/.netlify/functions/client-api?action=get_status&site=TESTE' },
+                { name: 'get_settings', url: '/.netlify/functions/client-api?action=get_settings&site=TESTE' },
+                { name: 'client_plan', url: '/.netlify/functions/client-api?action=client_plan&site=TESTE&email=test@test.com' }
+            ];
+
+            const results = {};
+            
+            for (const test of tests) {
+                try {
+                    const response = await fetch(test.url, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const data = await response.json();
+                    results[test.name] = { status: response.status, data };
+                } catch (error) {
+                    results[test.name] = { error: error.message };
+                }
+            }
+            
+            showResult('netlify-result', results);
+        }
+
+        // Teste de autenticação
+        async function testAuth() {
+            try {
+                const response = await fetch('/.netlify/functions/auth-session?action=me', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                showResult('auth-result', data);
+            } catch (error) {
+                showResult('auth-result', { error: error.message }, true);
+            }
+        }
+
+        // Teste de dashboard
+        async function testDashboard() {
+            try {
+                // Simula as chamadas que o Dashboard faz
+                const promises = [
+                    fetch('/.netlify/functions/client-api?action=get_status&site=TESTE'),
+                    fetch('/.netlify/functions/client-api?action=get_settings&site=TESTE'),
+                    fetch('/.netlify/functions/client-api?action=client_plan&site=TESTE&email=test@test.com')
+                ];
+
+                const responses = await Promise.allSettled(promises);
+                const results = responses.map((response, index) => {
+                    if (response.status === 'fulfilled') {
+                        return {
+                            index,
+                            status: response.value.status,
+                            ok: response.value.ok
+                        };
+                    } else {
+                        return {
+                            index,
+                            error: response.reason.message
+                        };
+                    }
+                });
+
+                showResult('dashboard-result', results);
+            } catch (error) {
+                showResult('dashboard-result', { error: error.message }, true);
+            }
+        }
+
+        // Auto-executar testes básicos
+        window.addEventListener('load', () => {
+            console.log('🔍 Debug Dashboard carregado');
+            testGASConnection();
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,61 @@
+modules = ["web", "nodejs-20"]
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["npm", "run", "start"]
+build = ["npm", "run", "build"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
+
+[[ports]]
+localPort = 8888
+externalPort = 5000
+
+[[ports]]
+localPort = 32865
+externalPort = 3001
+
+[[ports]]
+localPort = 33473
+externalPort = 3003
+
+[[ports]]
+localPort = 41131
+externalPort = 3000
+
+[agent]
+integrations = ["javascript_openai:1.0.0"]
+expertMode = true

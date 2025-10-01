@@ -1,0 +1,26 @@
+# Configurações de Desenvolvimento - ELEVEA
+# Copie este arquivo para .env.local e configure suas variáveis
+
+# URL do Google Apps Script (obrigatório)
+VITE_GAS_URL=https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec
+GAS_BASE_URL=https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec
+ELEVEA_GAS_URL=https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec
+
+# URLs de upgrade (opcional)
+VITE_UPGRADE_URL=https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=YOUR_PREF_ID
+
+# OpenAI API (para funcionalidades IA)
+OPENAI_API_KEY=sk-your-openai-key-here
+
+# WhatsApp Business API (opcional)
+WHATSAPP_ACCESS_TOKEN=your-whatsapp-token
+WHATSAPP_APP_SECRET=your-whatsapp-secret
+WHATSAPP_VERIFY_TOKEN=your-verify-token
+
+# Admin Dashboard Token (opcional)
+ADMIN_DASH_TOKEN=your-admin-token
+
+# Debug mode
+VITE_DEBUG=true
+NODE_ENV=development
+

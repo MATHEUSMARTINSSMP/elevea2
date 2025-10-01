@@ -1,0 +1,212 @@
+function buildLovablePrompt_(ctx) {
+  var plan      = String(ctx.plan || "").toLowerCase();          // "vip" | "essential"
+  var site      = String(ctx.siteSlug || "").toUpperCase();
+  var email     = String(ctx.email || "");
+  var logoUrl   = String(ctx.logoUrl || "");
+  var fotosUrl  = String(ctx.fotosUrl || "");
+  var historia  = String(ctx.historia || "");
+  var produtos  = String(ctx.produtos || "");
+  var fundacao  = String(ctx.fundacao || "");
+  var paletaId  = String(ctx.paleta || "");
+  var template  = String(ctx.template || "");
+
+  var L = [];
+
+  /* — Objetivo */
+  L.push("Crie uma landing institucional (one-page) completa para um pequeno negócio local.");
+  L.push("Use Vite + React + TypeScript + Tailwind. Uma única rota pública '/' (sem telas logadas).");
+  L.push("Hospedagem Netlify. O repositório terá `src/elevea.sections.json` e um script de pós-deploy que envia esse JSON ao meu GAS.");
+
+  /* — ENV VARS (Netlify) que você deve ler no build/runtime */
+  L.push("Variáveis do Netlify que DEVEM ser usadas:");
+  L.push("- ELEVEA_SITE_SLUG      → slug MAIÚSCULO do site (ex.: ACME-MOTOS)");
+  L.push("- ELEVEA_GAS_URL        → URL do GAS (/exec)");
+  L.push("- ELEVEA_ADMIN_TOKEN    → token igual ao ADMIN_DASH_TOKEN no GAS (para publicar sections)");
+  L.push("- ELEVEA_STATUS_URL     → (opcional) mesma URL do GAS para checar status e carregar settings");
+
+  /* — Detecção automática do tipo de negócio */
+  var businessText = [historia, produtos].filter(Boolean).join(" ");
+  var businessDetection = detectBusinessType(businessText);
+  var businessCategory = businessDetection.category;
+
+  L.push("TIPO DE NEGÓCIO DETECTADO: " + businessCategory.toUpperCase());
+  L.push("Palavras-chave: " + businessDetection.keywords.join(", "));
+
+  /* — Mapa de sessões personalizadas por tipo de negócio */
+  var sectionsConfig = generateSectionsForBusiness_(businessCategory, { historia: historia, produtos: produtos });
+
+  L.push("Gere um arquivo **src/elevea.sections.json** com um array de sessões personalizadas para " + businessCategory + ":");
+  L.push(JSON.stringify(sectionsConfig, null, 2));
+
+  /* — Script pós-deploy (Netlify onSuccess) para publicar defs no GAS */
+  L.push("Crie `tools/elevea-sync-sections.mjs` (Node 18+, sem libs externas): lê `src/elevea.sections.json` e POST em ELEVEA_GAS_URL:");
+  L.push(`
+import fs from "node:fs";
+const GAS=process.env.ELEVEA_GAS_URL, SITE=process.env.ELEVEA_SITE_SLUG, ADMIN=process.env.ELEVEA_ADMIN_TOKEN;
+if (GAS && SITE && ADMIN && fs.existsSync("src/elevea.sections.json")) {
+  const defs = JSON.parse(fs.readFileSync("src/elevea.sections.json","utf8"));
+  await fetch(GAS,{ method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ type:"sections_upsert_defs", site:SITE, defs, adminToken:ADMIN })
+  });
+}`.trim());
+
+  /* — netlify.toml hook */
+  L.push("Adicione ao `netlify.toml`:");
+  L.push(`
+[build]
+command = "npm run build"
+publish = "dist"
+[[build.lifecycle.onSuccess]]
+  command = "node tools/elevea-sync-sections.mjs"
+`.trim());
+
+  /* — Carregador de settings (status + settings_kv) */
+  L.push("Implemente `src/lib/elevea.ts` com:");
+  L.push(`
+const GAS = import.meta.env.ELEVEA_STATUS_URL || import.meta.env.ELEVEA_GAS_URL;
+const SLUG = import.meta.env.ELEVEA_SITE_SLUG;
+export async function loadSettings(){
+  try{
+    const r = await fetch(\`\${GAS}?type=get_settings&site=\${encodeURIComponent(SLUG)}\`, { cache:"no-store" });
+    const j = await r.json(); return j?.settings || {};
+  }catch{ return {}; }
+}
+`.trim());
+
+  /* — Construção da página usando o onboarding (placeholders) */
+  L.push("Monte a landing **já preenchida** com placeholders vindos do briefing abaixo:");
+  if (site)     L.push("• Slug: " + site);
+  if (email)    L.push("• Contato: " + email);
+  if (historia) L.push("• História: " + historia);
+  if (produtos) L.push("• Produtos/Serviços: " + produtos);
+  if (fundacao) L.push("• Fundada em: " + fundacao);
+  if (paletaId) L.push("• Paleta: " + paletaId);
+  if (template) L.push("• Template: " + template);
+  if (logoUrl)  L.push("• Logo (ref): " + logoUrl);
+  if (fotosUrl) L.push("• Pasta de fotos (ref): " + fotosUrl);
+
+  L.push("Se houver endereço depois no settings, gere o bloco Mapa com `iframe` do Google Maps usando a query do endereço.");
+  L.push("Cabeçalho fixo (flutuante), menu com âncoras (#sobre, #servicos, #depoimentos, #contato), botão flutuante do WhatsApp.");
+  L.push("Rodapé com endereço (texto), link 'Como chegar' (maps), redes sociais (se preenchidas), e e-mail/WhatsApp.");
+
+  /* — VIP vs Essencial */
+  if (plan === "vip") {
+    L.push("Plano VIP: destaque áreas editáveis (títulos/textos/imagens/cores) e inclua seção 'Depoimentos' com placeholder (será alimentada via back-end).");
+  } else {
+    L.push("Plano Essencial: mantenha a mesma estrutura, porém como conteúdo estático (sem UI de edição).");
+  }
+
+  /* — Render por IDs, nunca por nomes fixos */
+  L.push("Na Home (`src/pages/Index.tsx`), carregue `defs` de `src/elevea.sections.json` e os valores via `loadSettings()`.");
+  L.push("Para cada `sec` em `defs`, renderize a seção por ID; use valores `settings.sections.data[sec.id]` se existirem, senão placeholders do briefing.");
+
+  return L.join("\\n");
+}
+
+function handleGeneratePrompt_(site) {
+  site = normalizeSlug_(String(site || ""));
+  if (!site) return jsonOut_({ ok:false, error:"missing_siteSlug" });
+
+  var ss = openSS_();
+
+  // 1) tentar ler o último registro normalizado da aba "settings"
+  var shS = ss.getSheetByName("settings");
+  var found = null, rowIdx = -1, head = [];
+  if (shS && shS.getLastRow() >= 2) {
+    head = shS.getRange(1,1,1,shS.getLastColumn()).getValues()[0].map(String);
+    var iSite = head.indexOf("siteSlug");
+    for (var r = shS.getLastRow(); r >= 2; r--) {
+      var s = String(shS.getRange(r, iSite+1).getValue() || "").trim().toUpperCase();
+      if (s === site) { rowIdx = r; break; }
+    }
+    if (rowIdx !== -1) {
+      function G(name){ var i = head.indexOf(name); return i===-1 ? "" : String(shS.getRange(rowIdx, i+1).getValue() || ""); }
+
+      var palette_id = G("palette_id");
+      var template   = G("template_id");
+      var colors     = []; try { colors = JSON.parse(G("colors_json")||"[]"); } catch(_){}
+      var fotos      = []; try { fotos = JSON.parse(G("fotos_urls_json")||"[]"); } catch(_){}
+
+      found = {
+        plan:       G("plano") || "",
+        email:      G("email"),
+        siteSlug:   site,
+        logoUrl:    G("logo_url"),
+        fotosUrl:   (fotos[0] || ""),
+        historia:   G("historia"),
+        produtos:   G("produtos"),
+        fundacao:   G("fundacao"),
+        paleta:     palette_id,
+        template:   template
+      };
+    }
+  }
+
+  // 2) fallback: tentar "onboarding" bruto (caso settings ainda não exista)
+  if (!found) {
+    var shO = ss.getSheetByName("onboarding");
+    if (shO && shO.getLastRow() >= 2) {
+      var hO = shO.getRange(1,1,1,shO.getLastColumn()).getValues()[0].map(String);
+      var iSiteO = hO.indexOf("siteSlug");
+      var rO = -1;
+      for (var rr = shO.getLastRow(); rr >= 2; rr--) {
+        var sO = String(shO.getRange(rr, iSiteO+1).getValue() || "").trim().toUpperCase();
+        if (sO === site) { rO = rr; break; }
+      }
+      if (rO !== -1) {
+        function GO(name){ var i = hO.indexOf(name); return i===-1 ? "" : String(shO.getRange(rO, i+1).getValue() || ""); }
+        found = {
+          plan:       GO("plan") || "",
+          email:      GO("email"),
+          siteSlug:   site,
+          logoUrl:    GO("logoUrl"),
+          fotosUrl:   GO("fotosUrl"),
+          historia:   GO("historia"),
+          produtos:   GO("produtos"),
+          fundacao:   GO("fundacao"),
+          paleta:     GO("paleta"),
+          template:   GO("template")
+        };
+      }
+    }
+  }
+
+  if (!found) return jsonOut_({ ok:false, error:"no_data_for_site" });
+
+  // 3) gerar o prompt e salvar de volta
+  var prompt = buildLovablePrompt_(found);
+
+  // 3a) atualiza/insere em "settings" a coluna lovable_prompt
+  var sh = ss.getSheetByName("settings");
+  if (!sh) {
+    sh = ss.insertSheet("settings");
+    sh.appendRow(["timestamp","siteSlug","email","whatsapp","empresa","endereco","historia","produtos","fundacao","palette_id","palette_name","colors_json","template_id","template_name","logo_url","fotos_urls_json","drive_folder_url","plano","lovable_prompt"]);
+  }
+  var last = sh.getLastRow();
+  var hdr  = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+  var iSiteS = hdr.indexOf("siteSlug");
+  var rowFound = 0;
+  if (iSiteS !== -1 && last >= 2) {
+    var vals = sh.getRange(2, iSiteS+1, last-1, 1).getValues();
+    for (var i=0;i<vals.length;i++){ if (String(vals[i][0]||"").trim().toUpperCase() === site) { rowFound = i+2; break; } }
+  }
+  var iPrompt = hdr.indexOf("lovable_prompt");
+  if (iPrompt === -1) {
+    sh.getRange(1, sh.getLastColumn()+1).setValue("lovable_prompt");
+    // refresh header depois de inserir a coluna:
+    hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
+    iPrompt = hdr.indexOf("lovable_prompt");
+  }
+  var rowToWrite = rowFound;
+  if (!rowFound) {
+    sh.insertRowsAfter(last || 1, 1);
+    rowToWrite = (last || 1) + 1;
+  }
+  // garante siteSlug e timestamp
+  if (iSiteS !== -1) sh.getRange(rowToWrite, iSiteS+1).setValue(site);
+  sh.getRange(rowToWrite, 1).setValue(new Date()); // timestamp na 1ª coluna
+  // grava prompt
+  sh.getRange(rowToWrite, iPrompt+1).setValue(prompt);
+
+  return jsonOut_({ ok:true, siteSlug: site, lovable_prompt: prompt });
+}

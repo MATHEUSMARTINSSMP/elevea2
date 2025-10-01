@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <title>ELEVEA – Debug Feedbacks</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;margin:24px;line-height:1.4}
+      .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+      input,button{padding:8px;border:1px solid #ddd;border-radius:8px}
+      button{background:#111;color:#fff;cursor:pointer}
+      pre{background:#111;color:#0f0;padding:12px;border-radius:10px;white-space:pre-wrap}
+      .card{border:1px solid #eee;border-radius:10px;padding:12px;margin:8px 0}
+      label{font-size:12px;color:#666}
+    </style>
+  </head>
+  <body>
+    <h1>ELEVEA – Debug Feedbacks (via proxy)</h1>
+
+    <div class="row">
+      <div>
+        <label>Site</label><br/>
+        <input id="site" value="LOUNGERIEAMAPAGARDEN" size="26"/>
+      </div>
+      <div>
+        <label>PIN VIP</label><br/>
+        <input id="pin" value="1234" size="12"/>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Criar feedback</h3>
+      <div class="row">
+        <input id="name" placeholder="Nome" />
+        <input id="email" placeholder="email@exemplo.com" />
+        <input id="phone" placeholder="55999999999" />
+        <input id="rating" type="number" min="0" max="5" value="5" style="width:80px" />
+      </div>
+      <div class="row">
+        <input id="comment" placeholder="Mensagem" style="width:420px" />
+        <button onclick="submitFeedback()">Enviar</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <button onclick="listPublic()">Listar Público</button>
+      <button onclick="listSecure()">Listar Privado (PIN)</button>
+    </div>
+
+    <div class="card">
+      <h3>Aprovar/ocultar (use um ID retornado nas listagens)</h3>
+      <div class="row">
+        <input id="id" placeholder="ID do feedback" style="width:260px" />
+        <button onclick="approve(true)">Aprovar</button>
+        <button onclick="approve(false)">Ocultar</button>
+      </div>
+    </div>
+
+    <h3>Saída</h3>
+    <pre id="out">...</pre>
+
+    <script>
+      const NF = '/.netlify/functions/client-api';
+      const $ = (id)=>document.getElementById(id);
+      const log = (obj)=>{ $('out').textContent = JSON.stringify(obj, null, 2); };
+
+      async function call(action, body){
+        const res = await fetch(NF, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ action, ...body })
+        });
+        return res.json();
+      }
+
+      async function submitFeedback(){
+        const r = await call('submit_feedback', {
+          site: $('site').value,
+          id: `dbg-${Date.now()}`,
+          name: $('name').value || 'Debug',
+          rating: Number($('rating').value || 5),
+          comment: $('comment').value || 'Teste via debug.html',
+          email: $('email').value || '',
+          phone: $('phone').value || ''
+        });
+        log(r);
+      }
+
+      async function listPublic(){
+        const r = await call('list_feedbacks', {
+          site: $('site').value,
+          page: 1, pageSize: 10
+        });
+        log(r);
+      }
+
+      async function listSecure(){
+        const r = await call('list_feedbacks_secure', {
+          site: $('site').value,
+          page: 1, pageSize: 10,
+          pin: $('pin').value
+        });
+        log(r);
+      }
+
+      async function approve(approved){
+        const r = await call('feedback_set_approval', {
+          site: $('site').value,
+          id: $('id').value,
+          approved,
+          pin: $('pin').value
+        });
+        log(r);
+      }
+    </script>
+  </body>
+</html>

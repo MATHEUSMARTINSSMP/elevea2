@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Elevea Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #374151;
+        }
+        
+        .offline-container {
+            text-align: center;
+            max-width: 500px;
+            padding: 2rem;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: #D4AF37;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+        
+        p {
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #6b7280;
+            margin-bottom: 2rem;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        
+        .feature {
+            padding: 1rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            border-left: 4px solid #D4AF37;
+        }
+        
+        .feature h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .feature p {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin: 0;
+        }
+        
+        .retry-btn {
+            background: #D4AF37;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s;
+        }
+        
+        .retry-btn:hover {
+            background: #b8941f;
+        }
+        
+        .status {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+        }
+        
+        .status.online {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        
+        .status.offline {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        
+        .wifi-icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="logo">E</div>
+        
+        <h1>Você está offline</h1>
+        <p>Sem problemas! O Elevea Dashboard funciona offline. Suas alterações serão sincronizadas quando a conexão retornar.</p>
+        
+        <div class="features">
+            <div class="feature">
+                <h3>📱 Funciona Offline</h3>
+                <p>Continue editando seu site mesmo sem internet</p>
+            </div>
+            <div class="feature">
+                <h3>🔄 Sincronização Automática</h3>
+                <p>Mudanças são salvas automaticamente quando online</p>
+            </div>
+        </div>
+        
+        <button class="retry-btn" onclick="checkConnection()">
+            <span class="wifi-icon">📡</span>
+            Tentar Reconectar
+        </button>
+        
+        <div id="status" class="status offline">
+            <span class="wifi-icon">❌</span>
+            Sem conexão com a internet
+        </div>
+    </div>
+
+    <script>
+        // Verifica status da conexão
+        function updateConnectionStatus() {
+            const status = document.getElementById('status');
+            const retryBtn = document.querySelector('.retry-btn');
+            
+            if (navigator.onLine) {
+                status.className = 'status online';
+                status.innerHTML = '<span class="wifi-icon">✅</span> Conectado! Redirecionando...';
+                retryBtn.disabled = true;
+                
+                // Redireciona de volta para o app
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                status.className = 'status offline';
+                status.innerHTML = '<span class="wifi-icon">❌</span> Sem conexão com a internet';
+                retryBtn.disabled = false;
+            }
+        }
+        
+        // Tenta reconectar
+        function checkConnection() {
+            updateConnectionStatus();
+            
+            // Tenta fazer uma requisição para verificar conectividade real
+            fetch('/', { method: 'HEAD', cache: 'no-cache' })
+                .then(() => {
+                    window.location.href = '/';
+                })
+                .catch(() => {
+                    console.log('Ainda offline');
+                });
+        }
+        
+        // Monitora mudanças na conexão
+        window.addEventListener('online', updateConnectionStatus);
+        window.addEventListener('offline', updateConnectionStatus);
+        
+        // Verifica status inicial
+        updateConnectionStatus();
+    </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{
+  "name": "Elevea Dashboard - Negócios Digitais",
+  "short_name": "Elevea",
+  "description": "Dashboard para gerenciar seu negócio digital com a Agência Elevea",
+  "theme_color": "#D4AF37",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/logo-elevea.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-elevea.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard Cliente",
+      "description": "Acesso rápido ao dashboard do cliente",
+      "url": "/client",
+      "icons": [
+        {
+          "src": "/logo-elevea.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Dashboard Admin", 
+      "description": "Acesso rápido ao painel administrativo",
+      "url": "/admin",
+      "icons": [
+        {
+          "src": "/logo-elevea.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "features": [
+    "offline_support",
+    "installable",
+    "background_sync"
+  ]
+}
