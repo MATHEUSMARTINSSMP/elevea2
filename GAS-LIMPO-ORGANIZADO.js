@@ -1698,7 +1698,7 @@ function gmbSaveCredentials_(ss, site, email, tokens) {
 /**
  * Busca reviews do Google My Business
  */
-function gmbGetReviews_(ss, site, email) {
+async function gmbGetReviews_(ss, site, email) {
   try {
     if (!site || !email) {
       return { ok: false, error: "Site e email são obrigatórios" };
@@ -1756,7 +1756,7 @@ function gmbGetReviews_(ss, site, email) {
     
     if (now >= expiresAt) {
       // Token expirado, tentar renovar
-      const refreshed = refreshGoogleToken_(credentials.refresh_token);
+      const refreshed = await refreshGoogleToken_(credentials.refresh_token);
       if (refreshed.ok) {
         // Criptografar novo token
         const salt = credentials.salt || Utilities.base64Encode(site + email + Date.now());
@@ -1785,13 +1785,13 @@ function gmbGetReviews_(ss, site, email) {
     }
 
     // Buscar informações do negócio
-    const businessInfo = getGoogleBusinessInfo_(credentials.access_token);
+    const businessInfo = await getGoogleBusinessInfo_(credentials.access_token);
     if (!businessInfo.ok) {
       return { ok: false, error: businessInfo.error };
     }
 
     // Buscar reviews
-    const reviews = getGoogleReviews_(credentials.access_token, businessInfo.placeId);
+    const reviews = await getGoogleReviews_(credentials.access_token, businessInfo.placeId);
     if (!reviews.ok) {
       return { ok: false, error: reviews.error };
     }
@@ -1824,7 +1824,7 @@ function gmbGetReviews_(ss, site, email) {
 /**
  * Renova token do Google usando refresh_token
  */
-function refreshGoogleToken_(refreshToken) {
+async function refreshGoogleToken_(refreshToken) {
   try {
     // Buscar credenciais do PropertiesService
     const props = PropertiesService.getScriptProperties();
@@ -1835,7 +1835,7 @@ function refreshGoogleToken_(refreshToken) {
       return { ok: false, error: 'Credenciais Google OAuth não configuradas no PropertiesService' };
     }
     
-    const response = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+    const response = await UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       payload: new URLSearchParams({
@@ -1860,10 +1860,10 @@ function refreshGoogleToken_(refreshToken) {
 /**
  * Busca informações do negócio no Google My Business
  */
-function getGoogleBusinessInfo_(accessToken) {
+async function getGoogleBusinessInfo_(accessToken) {
   try {
     // Primeiro, buscar as contas do usuário
-    const accountsResponse = UrlFetchApp.fetch('https://mybusinessbusinessinformation.googleapis.com/v1/accounts', {
+    const accountsResponse = await UrlFetchApp.fetch('https://mybusinessbusinessinformation.googleapis.com/v1/accounts', {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
 
@@ -1878,7 +1878,7 @@ function getGoogleBusinessInfo_(accessToken) {
 
     // Buscar locais da primeira conta
     const accountName = accounts.accounts[0].name;
-    const locationsResponse = UrlFetchApp.fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations`, {
+    const locationsResponse = await UrlFetchApp.fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
 
@@ -1909,10 +1909,10 @@ function getGoogleBusinessInfo_(accessToken) {
 /**
  * Busca reviews do Google My Business
  */
-function getGoogleReviews_(accessToken, placeId) {
+async function getGoogleReviews_(accessToken, placeId) {
   try {
     // Usar Google Places API para buscar reviews
-    const response = UrlFetchApp.fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=reviews,rating,user_ratings_total&key=${accessToken}`, {
+    const response = await UrlFetchApp.fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=reviews,rating,user_ratings_total&key=${accessToken}`, {
       method: 'GET'
     });
 
