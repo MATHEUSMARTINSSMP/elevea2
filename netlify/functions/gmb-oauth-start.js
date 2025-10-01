@@ -46,27 +46,50 @@ export default async (req) => {
       });
     }
 
-    const state = Buffer.from(JSON.stringify({
-      site, email, ts: Date.now(), n: Math.random().toString(36).slice(2)
-    })).toString('base64url');
+           const stateData = {
+             site, email, ts: Date.now(), n: Math.random().toString(36).slice(2)
+           };
+           const state = Buffer.from(JSON.stringify(stateData)).toString('base64url');
 
     // Salvar state no sessionStorage (via JavaScript)
-    const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    auth.searchParams.set('client_id', CLIENT_ID);
-    auth.searchParams.set('redirect_uri', REDIRECT_URI);
-    auth.searchParams.set('response_type', 'code');
-    auth.searchParams.set('scope', SCOPES);
-    auth.searchParams.set('access_type', 'offline');               // refresh_token
-    auth.searchParams.set('include_granted_scopes', 'true');
-    auth.searchParams.set('prompt', 'consent');                    // garante refresh_token
-    auth.searchParams.set('state', state);
+    // Retornar página HTML que salva o state e redireciona
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', SCOPES);
+    authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('include_granted_scopes', 'true');
+    authUrl.searchParams.set('prompt', 'consent');
+    authUrl.searchParams.set('state', state);
 
-    return new Response(null, { 
-      status: 302, 
-      headers: { 
-        Location: auth.toString(),
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Redirecionando para Google...</title>
+    </head>
+    <body>
+      <p>Redirecionando para Google OAuth...</p>
+      <script>
+        // Salvar state no sessionStorage
+        sessionStorage.setItem('gmb_oauth_state', '${state}');
+        sessionStorage.setItem('gmb_oauth_site', '${site}');
+        sessionStorage.setItem('gmb_oauth_email', '${email}');
+        
+        // Redirecionar para Google
+        window.location.href = '${authUrl.toString()}';
+      </script>
+    </body>
+    </html>
+    `;
+
+    return new Response(html, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html',
         ...corsHeaders
-      } 
+      }
     });
   } catch (e) {
     return new Response(JSON.stringify({ ok:false, error:String(e) }), { 

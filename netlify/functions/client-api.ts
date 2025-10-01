@@ -144,6 +144,14 @@ export default async (req) => {
       });
     }
 
+    // Corrigir erro 404 em analytics sem site
+    if (action === "recordEvent" || action === "recordHit") {
+      if (!body.site && !body.siteSlug) {
+        console.warn('⚠️ Analytics chamado sem site - retornando 204');
+        return json(204, { ok: true, message: 'Analytics ignorado - site não fornecido' });
+      }
+    }
+
     // Segurança extra para rotas secure
     if (action === "feedback_set_approval" || action === "list_feedbacks_secure") {
       body.adminToken = body.adminToken || ADMIN_DASH_TOKEN || "";

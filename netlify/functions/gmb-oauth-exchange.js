@@ -54,14 +54,16 @@ export default async (req) => {
     }
     
     if (!code || code.length < 10) {
-      return new Response(JSON.stringify({ ok: false, error: 'Código de autorização inválido' }), { 
+      console.error('❌ Código de autorização inválido:', code);
+      return new Response(JSON.stringify({ ok: false, error: 'missing_code_or_state', detail: 'Código de autorização inválido' }), { 
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
     
     if (!stateStr || stateStr.length < 10) {
-      return new Response(JSON.stringify({ ok: false, error: 'State inválido' }), { 
+      console.error('❌ State inválido:', stateStr);
+      return new Response(JSON.stringify({ ok: false, error: 'missing_code_or_state', detail: 'State inválido' }), { 
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -98,20 +100,25 @@ export default async (req) => {
     const tokens = await tokenRes.json();
 
     if (!tokenRes.ok || !tokens.access_token) {
-      return new Response(JSON.stringify({ ok:false, error:'token_exchange_failed', detail:tokens }), { 
-        status: 400,
+      console.error('❌ Falha na troca de tokens:', tokens);
+      return new Response(JSON.stringify({ ok:false, error:'oauth_exchange_failed', detail:tokens }), { 
+        status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
     // Salva no GAS (planilha settings_kv), por site/email
+    console.log('💾 Salvando credenciais no GAS para:', { site, email });
     const saved = await callGAS('gmb_save_credentials', { site, email, tokens });
     if (saved?.ok !== true) {
-      return new Response(JSON.stringify({ ok:false, error:'gas_save_failed', detail:saved }), { 
+      console.error('❌ Falha ao salvar credenciais no GAS:', saved);
+      return new Response(JSON.stringify({ ok:false, error:'save_credentials_failed', detail:saved }), { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+    
+    console.log('✅ Credenciais salvas com sucesso no GAS');
 
     // Redireciona de volta ao dashboard do cliente
     return new Response(null, {

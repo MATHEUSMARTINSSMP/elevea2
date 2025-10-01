@@ -118,7 +118,10 @@ export default function GoogleReviews({ siteSlug, vipPin, userEmail }: GoogleRev
           setError(null);
           console.log('🔐 Credenciais não encontradas, pedindo conexão');
         } else {
-          throw new Error(result.error || 'Erro desconhecido');
+          // Mostrar erro específico do backend
+          const errorMsg = result.error || 'Erro desconhecido';
+          console.error('❌ Erro específico da API:', errorMsg);
+          throw new Error(errorMsg);
         }
       }
     } catch (err: any) {

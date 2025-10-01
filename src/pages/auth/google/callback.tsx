@@ -22,11 +22,26 @@ export default function GoogleCallback() {
           return; 
         }
 
-        // Validar state (opcional - para segurança extra)
+        // Validar state comparando com sessionStorage (segurança CSRF)
+        const savedState = sessionStorage.getItem('gmb_oauth_state');
+        const savedSite = sessionStorage.getItem('gmb_oauth_site');
+        const savedEmail = sessionStorage.getItem('gmb_oauth_email');
+        
+        if (!savedState || state !== savedState) {
+          setError("State inválido - possível ataque CSRF");
+          return;
+        }
+        
+        if (!savedSite || !savedEmail) {
+          setError("Dados de sessão perdidos - tente novamente");
+          return;
+        }
+        
+        // Validar dados do state
         try {
           const stateData = JSON.parse(atob(state.replace(/-/g, '+').replace(/_/g, '/')));
-          if (!stateData.site || !stateData.email) {
-            setError("State inválido - dados ausentes");
+          if (stateData.site !== savedSite || stateData.email !== savedEmail) {
+            setError("State não confere com dados salvos");
             return;
           }
           
@@ -34,12 +49,6 @@ export default function GoogleCallback() {
           const stateAge = Date.now() - (stateData.ts || 0);
           if (stateAge > 10 * 60 * 1000) {
             setError("State expirado - tente novamente");
-            return;
-          }
-          
-          // Validar formato do email
-          if (!stateData.email.includes('@') || stateData.email.length < 5) {
-            setError("State inválido - email malformado");
             return;
           }
         } catch (e) {
