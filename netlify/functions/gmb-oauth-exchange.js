@@ -126,9 +126,26 @@ export default async (req) => {
       });
     }
 
-    // Salva no GAS (planilha settings_kv), por site/email
+    // Salva no GAS usando save_settings (normalizado)
     console.log('💾 Salvando credenciais no GAS para:', { site, email });
-    const saved = await callGAS('gmb_save_credentials', { site, email, tokens });
+    
+    // Usar save_settings ao invés de gmb_save_credentials para garantir normalização
+    const saved = await callGAS('save_settings', { 
+      site, 
+      data: { 
+        gmb_tokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expires_in: tokens.expires_in,
+          token_type: tokens.token_type || 'Bearer',
+          scope: tokens.scope,
+          email: email,
+          saved_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + (tokens.expires_in * 1000)).toISOString()
+        }
+      }
+    });
+    
     if (saved?.ok !== true) {
       console.error('❌ Falha ao salvar credenciais no GAS:', saved);
       return new Response(JSON.stringify({ ok:false, error:'save_credentials_failed', detail:saved }), { 

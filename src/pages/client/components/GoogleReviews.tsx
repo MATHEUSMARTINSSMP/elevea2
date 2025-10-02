@@ -208,50 +208,62 @@ export default function GoogleReviews({ siteSlug, vipPin, userEmail }: GoogleRev
             <p className="text-slate-400 text-sm mb-4">
               Para visualizar e gerenciar seus reviews do Google, conecte sua conta Google My Business.
             </p>
-            {userEmail && (
-              <Button 
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-                onClick={async () => {
-                  try {
-                    console.log('🔄 Iniciando OAuth para:', { site: siteSlug, email: userEmail });
+              {userEmail && (
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={async () => {
+                    // Confirmar antes de redirecionar
+                    const confirmed = confirm(
+                      '🔗 Conectar Google My Business\n\n' +
+                      'Você será redirecionado para o Google para autorizar o acesso às suas avaliações.\n\n' +
+                      'Deseja continuar?'
+                    );
                     
-                    const response = await fetch('/.netlify/functions/gmb-oauth-start', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        siteSlug: siteSlug,
-                        email: userEmail
-                      })
-                    });
+                    if (!confirmed) return;
                     
-                    const result = await response.json();
-                    console.log('📊 OAuth start result:', result);
-                    
-                    if (result.ok && result.authUrl) {
-                      // Salvar state para validação no callback
-                      const state = JSON.stringify({
-                        site: siteSlug,
-                        email: userEmail,
-                        ts: Date.now(),
-                        n: Math.random().toString(36).slice(2)
-                      });
-                      sessionStorage.setItem('gmb_state', state);
+                    try {
+                      console.log('🔄 Iniciando OAuth para:', { site: siteSlug, email: userEmail });
                       
-                      // Redirecionar para Google OAuth
-                      window.location.href = result.authUrl;
-                    } else {
-                      console.error('❌ Erro no OAuth start:', result.error);
-                      alert(`Erro ao iniciar OAuth: ${result.error}`);
+                      const response = await fetch('/.netlify/functions/gmb-oauth-start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          siteSlug: siteSlug,
+                          email: userEmail
+                        })
+                      });
+                      
+                      const result = await response.json();
+                      console.log('📊 OAuth start result:', result);
+                      
+                      if (result.ok && result.authUrl) {
+                        // Salvar state para validação no callback
+                        const state = JSON.stringify({
+                          site: siteSlug,
+                          email: userEmail,
+                          ts: Date.now(),
+                          n: Math.random().toString(36).slice(2)
+                        });
+                        sessionStorage.setItem('gmb_state', state);
+                        
+                        // Mostrar mensagem antes do redirect
+                        alert('✅ Redirecionando para o Google...\n\nApós autorizar, você será redirecionado de volta para o dashboard.');
+                        
+                        // Redirecionar para Google OAuth
+                        window.location.href = result.authUrl;
+                      } else {
+                        console.error('❌ Erro no OAuth start:', result.error);
+                        alert(`❌ Erro ao iniciar OAuth:\n\n${result.error}`);
+                      }
+                    } catch (error) {
+                      console.error('❌ Erro na requisição OAuth:', error);
+                      alert(`❌ Erro na requisição:\n\n${error.message}`);
                     }
-                  } catch (error) {
-                    console.error('❌ Erro na requisição OAuth:', error);
-                    alert(`Erro na requisição: ${error.message}`);
-                  }
-                }}
-              >
-                Conectar Google
-              </Button>
-            )}
+                  }}
+                >
+                  🔗 Conectar Google My Business
+                </Button>
+              )}
           </div>
         </CardContent>
       </Card>
