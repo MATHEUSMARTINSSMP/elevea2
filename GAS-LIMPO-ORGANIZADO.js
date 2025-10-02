@@ -1668,25 +1668,24 @@ function gmbSaveCredentials_(ss, site, email, tokens) {
       return { ok: false, error: "Site inválido" };
     }
 
-    const key = `gmb_tokens::${site}::${email}`;
-    
     // Criptografia básica dos tokens (ofuscação)
     const salt = Utilities.base64Encode(site + email + Date.now());
     const encryptedAccess = Utilities.base64Encode(tokens.access_token + salt);
     const encryptedRefresh = Utilities.base64Encode(tokens.refresh_token + salt);
     
-    const value = JSON.stringify({
+    const credentialsData = {
       access_token: encryptedAccess,
       refresh_token: encryptedRefresh,
       expires_in: tokens.expires_in,
       token_type: tokens.token_type,
       scope: tokens.scope,
+      email: email,
       saved_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + (tokens.expires_in * 1000)).toISOString(),
       salt: salt // Salvar salt para descriptografar depois
-    });
+    };
 
-    // Salvar no settings_kv
+    // Salvar dentro do settings_json do site (não como chave separada)
     const settingsSheet = ss.getSheetByName('settings_kv');
     if (!settingsSheet) {
       return { ok: false, error: "Planilha settings_kv não encontrada" };
@@ -1695,16 +1694,34 @@ function gmbSaveCredentials_(ss, site, email, tokens) {
     const data = settingsSheet.getDataRange().getValues();
     let found = false;
     
+    // Procurar pelo site
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === key) {
-        settingsSheet.getRange(i + 1, 2).setValue(value);
+      if (data[i][0] === site) {
+        // Pegar settings_json existente
+        let settings = {};
+        try {
+          settings = JSON.parse(data[i][1] || '{}');
+        } catch (e) {
+          settings = {};
+        }
+        
+        // Adicionar tokens ao settings
+        settings.gmb_tokens = credentialsData;
+        
+        // Salvar de volta
+        settingsSheet.getRange(i + 1, 2).setValue(JSON.stringify(settings));
+        settingsSheet.getRange(i + 1, 3).setValue(new Date().toISOString());
         found = true;
         break;
       }
     }
     
+    // Se não encontrou o site, criar nova linha
     if (!found) {
-      settingsSheet.appendRow([key, value]);
+      const settings = {
+        gmb_tokens: credentialsData
+      };
+      settingsSheet.appendRow([site, JSON.stringify(settings), new Date().toISOString()]);
     }
 
     return { ok: true, message: "Credenciais salvas com sucesso" };
@@ -1730,8 +1747,7 @@ async function gmbGetReviews_(ss, site, email) {
       return { ok: true, data: cached };
     }
 
-    // Buscar credenciais
-    const key = `gmb_tokens::${site}::${email}`;
+    // Buscar credenciais dentro do settings_json do site
     const settingsSheet = ss.getSheetByName('settings_kv');
     if (!settingsSheet) {
       return { ok: false, error: "Planilha settings_kv não encontrada" };
@@ -1740,10 +1756,16 @@ async function gmbGetReviews_(ss, site, email) {
     const data = settingsSheet.getDataRange().getValues();
     let credentials = null;
     
+    // Procurar pelo site
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === key) {
-        credentials = JSON.parse(data[i][1] || '{}');
-        break;
+      if (data[i][0] === site) {
+        try {
+          const settings = JSON.parse(data[i][1] || '{}');
+          credentials = settings.gmb_tokens;
+          break;
+        } catch (e) {
+          // Ignorar erro de parsing e continuar
+        }
       }
     }
 
@@ -1982,12 +2004,20 @@ function gmbDisconnect_(ss, site, email) {
     const data = settingsSheet.getDataRange().getValues();
     let removed = false;
     
-    // Remover credenciais
-    const tokenKey = `gmb_tokens::${site}::${email}`;
-    for (let i = data.length - 1; i >= 1; i--) {
-      if (data[i][0] === tokenKey) {
-        settingsSheet.deleteRow(i + 1);
-        removed = true;
+    // Remover credenciais do settings_json do site
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === site) {
+        try {
+          const settings = JSON.parse(data[i][1] || '{}');
+          if (settings.gmb_tokens) {
+            delete settings.gmb_tokens;
+            settingsSheet.getRange(i + 1, 2).setValue(JSON.stringify(settings));
+            settingsSheet.getRange(i + 1, 3).setValue(new Date().toISOString());
+            removed = true;
+          }
+        } catch (e) {
+          // Ignorar erro de parsing
+        }
         break;
       }
     }
