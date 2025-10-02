@@ -66,8 +66,7 @@ export default async (req) => {
     };
     const state = Buffer.from(JSON.stringify(stateData)).toString('base64url');
 
-    // Salvar state no sessionStorage (via JavaScript)
-    // Retornar 302 Redirect direto para Google (sem HTML/JS)
+    // Montar URL de autorização do Google
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', CLIENT_ID);
     authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
@@ -78,12 +77,17 @@ export default async (req) => {
     authUrl.searchParams.set('prompt', 'consent');
     authUrl.searchParams.set('state', state);
 
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: authUrl.toString(),
-        ...corsHeaders
-      }
+    console.log(`✅ gmb-oauth-start: authUrl gerado para ${normalizedSite}`);
+
+    // RETORNAR authUrl para o frontend (não redirect direto)
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      authUrl: authUrl.toString(),
+      site: normalizedSite,
+      email: email
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (e) {
     return new Response(JSON.stringify({ ok:false, error:String(e) }), { 

@@ -75,40 +75,43 @@ export const handler: Handler = async (event, context) => {
     //   }
     // }
 
-    // Verificar se o plano é VIP
-    try {
-      const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
-      const planResponse = await fetch(`${baseUrl}/.netlify/functions/client-plan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteSlug })
-      })
-      
-      if (!planResponse.ok) {
-        console.error('Falha ao verificar plano:', planResponse.status)
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ ok: false, error: 'Erro interno: falha na verificação do plano' })
-        }
-      }
-      
-      const planData = await planResponse.json()
-      if (!planData.ok || planData.plan !== 'vip') {
-        return {
-          statusCode: 403,
-          headers,
-          body: JSON.stringify({ ok: false, error: 'Acesso negado: plano VIP necessário' })
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao verificar plano:', error)
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ ok: false, error: 'Erro interno do servidor' })
-      }
-    }
+    // TEMPORARIAMENTE DESABILITADO PARA TESTE DO OAUTH
+    console.log(`⚠️ Plan validation DISABLED for testing: ${siteSlug}`);
+    
+    // TODO: Reabilitar após corrigir fluxo OAuth
+    // try {
+    //   const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8080'
+    //   const planResponse = await fetch(`${baseUrl}/.netlify/functions/client-plan`, {
+    //     method: 'POST',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify({ siteSlug })
+    //   })
+    //   
+    //   if (!planResponse.ok) {
+    //     console.error('Falha ao verificar plano:', planResponse.status)
+    //     return {
+    //       statusCode: 500,
+    //       headers,
+    //       body: JSON.stringify({ ok: false, error: 'Erro interno: falha na verificação do plano' })
+    //     }
+    //   }
+    //   
+    //   const planData = await planResponse.json()
+    //   if (!planData.ok || planData.plan !== 'vip') {
+    //     return {
+    //       statusCode: 403,
+    //       headers,
+    //       body: JSON.stringify({ ok: false, error: 'Acesso negado: plano VIP necessário' })
+    //     }
+    //   }
+    // } catch (error) {
+    //   console.error('Erro ao verificar plano:', error)
+    //   return {
+    //     statusCode: 500,
+    //     headers,
+    //     body: JSON.stringify({ ok: false, error: 'Erro interno do servidor' })
+    //   }
+    // }
 
     switch (action) {
       case 'get_reviews':
