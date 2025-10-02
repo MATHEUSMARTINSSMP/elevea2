@@ -27,12 +27,23 @@ export default async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const site = String(url.searchParams.get('site') || '').trim();
-    const email = String(url.searchParams.get('email') || '').trim();
+    let site, email;
+    
+    if (req.method === 'POST') {
+      const body = await req.json();
+      site = String(body.siteSlug || body.site || '').trim();
+      email = String(body.email || '').trim();
+    } else {
+      const url = new URL(req.url);
+      site = String(url.searchParams.get('siteSlug') || url.searchParams.get('site') || '').trim();
+      email = String(url.searchParams.get('email') || '').trim();
+    }
+    
+    console.log(`🔍 gmb-oauth-start: site=${site}, email=${email}`);
     
     // Validação mais robusta
     if (!site || site.length < 2) {
+      console.error(`❌ Site inválido: "${site}"`);
       return new Response(JSON.stringify({ ok: false, error: 'Site inválido' }), { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -40,16 +51,20 @@ export default async (req) => {
     }
     
     if (!email || !email.includes('@') || email.length < 5) {
+      console.error(`❌ Email inválido: "${email}"`);
       return new Response(JSON.stringify({ ok: false, error: 'Email inválido' }), { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
+    
+    // Normalizar site para uppercase (padrão da planilha)
+    const normalizedSite = site.toUpperCase();
 
-           const stateData = {
-             site, email, ts: Date.now(), n: Math.random().toString(36).slice(2)
-           };
-           const state = Buffer.from(JSON.stringify(stateData)).toString('base64url');
+    const stateData = {
+      site: normalizedSite, email, ts: Date.now(), n: Math.random().toString(36).slice(2)
+    };
+    const state = Buffer.from(JSON.stringify(stateData)).toString('base64url');
 
     // Salvar state no sessionStorage (via JavaScript)
     // Retornar 302 Redirect direto para Google (sem HTML/JS)

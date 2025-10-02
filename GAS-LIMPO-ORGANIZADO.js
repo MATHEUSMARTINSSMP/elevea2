@@ -1750,6 +1750,29 @@ function kvCleanupLegacyKeys_(ss) {
 }
 
 /**
+ * Rota save_settings - salva configurações do site usando helpers normalizados
+ */
+function saveSettings_(ss, site, data) {
+  try {
+    if (!site) {
+      return { ok: false, error: "Site é obrigatório" };
+    }
+    
+    if (!data || typeof data !== 'object') {
+      return { ok: false, error: "Data deve ser um objeto" };
+    }
+    
+    // Usar helper normalizado para salvar
+    const result = kvSaveSettingsBySite_(ss, site, data);
+    
+    return { ok: true, message: "Settings salvos com sucesso", settings: result.settings };
+  } catch (e) {
+    console.error(`❌ Erro em saveSettings_: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
  * Configura credenciais do Google Cloud no PropertiesService
  * IMPORTANTE: Execute esta função UMA VEZ com suas credenciais reais
  */
@@ -1807,47 +1830,14 @@ function gmbSaveCredentials_(ss, site, email, tokens) {
       salt: salt // Salvar salt para descriptografar depois
     };
 
-    // Salvar dentro do settings_json do site (não como chave separada)
-    const settingsSheet = ss.getSheetByName('settings_kv');
-    if (!settingsSheet) {
-      return { ok: false, error: "Planilha settings_kv não encontrada" };
-    }
-
-    const data = settingsSheet.getDataRange().getValues();
-    let found = false;
+    // Usar helper normalizado para salvar tokens
+    const result = kvSaveSettingsBySite_(ss, site, { gmb_tokens: credentialsData });
     
-    // Procurar pelo site
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === site) {
-        // Pegar settings_json existente
-        let settings = {};
-        try {
-          settings = JSON.parse(data[i][1] || '{}');
-        } catch (e) {
-          settings = {};
-        }
-        
-        // Adicionar tokens ao settings
-        settings.gmb_tokens = credentialsData;
-        
-        // Salvar de volta
-        settingsSheet.getRange(i + 1, 2).setValue(JSON.stringify(settings));
-        settingsSheet.getRange(i + 1, 3).setValue(new Date().toISOString());
-        found = true;
-        break;
-      }
-    }
+    console.log(`✅ gmbSaveCredentials_: Tokens salvos para ${site} (${email})`);
     
-    // Se não encontrou o site, criar nova linha
-    if (!found) {
-      const settings = {
-        gmb_tokens: credentialsData
-      };
-      settingsSheet.appendRow([site, JSON.stringify(settings), new Date().toISOString()]);
-    }
-
     return { ok: true, message: "Credenciais salvas com sucesso" };
   } catch (e) {
+    console.error(`❌ Erro em gmbSaveCredentials_: ${e.message}`);
     return { ok: false, error: String(e) };
   }
 }
@@ -1869,26 +1859,13 @@ async function gmbGetReviews_(ss, site, email) {
       return { ok: true, data: cached };
     }
 
-    // Buscar credenciais dentro do settings_json do site
-    const settingsSheet = ss.getSheetByName('settings_kv');
-    if (!settingsSheet) {
-      return { ok: false, error: "Planilha settings_kv não encontrada" };
-    }
-
-    const data = settingsSheet.getDataRange().getValues();
+    // Buscar credenciais usando helper normalizado
     let credentials = null;
-    
-    // Procurar pelo site
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === site) {
-        try {
-          const settings = JSON.parse(data[i][1] || '{}');
-          credentials = settings.gmb_tokens;
-          break;
-        } catch (e) {
-          // Ignorar erro de parsing e continuar
-        }
-      }
+    try {
+      const { settings } = kvGetSettingsBySite_(ss, site);
+      credentials = settings.gmb_tokens;
+    } catch (e) {
+      return { ok: false, error: `Erro ao buscar configurações: ${e.message}` };
     }
 
     if (!credentials || !credentials.access_token) {
@@ -2240,25 +2217,15 @@ function gmbDisconnect_(ss, site, email) {
       return { ok: false, error: "Planilha settings_kv não encontrada" };
     }
 
-    const data = settingsSheet.getDataRange().getValues();
     let removed = false;
     
-    // Remover credenciais do settings_json do site
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === site) {
-        try {
-          const settings = JSON.parse(data[i][1] || '{}');
-          if (settings.gmb_tokens) {
-            delete settings.gmb_tokens;
-            settingsSheet.getRange(i + 1, 2).setValue(JSON.stringify(settings));
-            settingsSheet.getRange(i + 1, 3).setValue(new Date().toISOString());
-            removed = true;
-          }
-        } catch (e) {
-          // Ignorar erro de parsing
-        }
-        break;
-      }
+    // Remover credenciais usando helper normalizado (gmb_tokens = null remove a chave)
+    try {
+      const result = kvSaveSettingsBySite_(ss, site, { gmb_tokens: null });
+      removed = true;
+      console.log(`✅ gmbDisconnect_: Tokens removidos para ${site} (${email})`);
+    } catch (e) {
+      console.error(`❌ Erro ao remover tokens: ${e.message}`);
     }
     
     // Remover cache
