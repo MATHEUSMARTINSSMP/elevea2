@@ -727,6 +727,7 @@ function doPost(e) {
     if (data.action === 'validate_vip_pin')     { log_(ss,"route_validate_vip_pin",{});   return jsonOut_(validate_vip_pin(data.site, data.pin)); }
     if (data.action === 'gmb_save_credentials') { log_(ss,"route_gmb_save_credentials",{}); return jsonOut_(gmbSaveCredentials_(ss, data.site, data.email, data.tokens)); }
     if (data.action === 'setup_google_credentials') { log_(ss,"route_setup_google_credentials",{}); return jsonOut_(setupGoogleCredentials_()); }
+    if (data.action === 'save_settings') { log_(ss,"route_save_settings",{}); return jsonOut_(saveSettings_(ss, data.site, data.data)); }
     if (data.action === 'gmb_diagnose') { log_(ss,"route_gmb_diagnose",{}); return jsonOut_(gmbDiagnose_(ss, data.site, data.email)); }
     if (data.action === 'gmb_cleanup') { log_(ss,"route_gmb_cleanup",{}); return jsonOut_(gmbCleanup_(ss)); }
     if (data.action === 'gmb_get_reviews')      { log_(ss,"route_gmb_get_reviews",{});    return jsonOut_(gmbGetReviews_(ss, data.site, data.email)); }
@@ -1627,6 +1628,125 @@ function consolidateContacts_(rows) {
   }
   // retorno como array
   return Object.keys(map).map(function (k) { return map[k]; });
+}
+
+/**
+ * HELPERS NORMALIZADOS PARA settings_kv
+ * Garantem que toda configuração do site fica dentro de settings_json
+ */
+
+/**
+ * Busca settings de um site na aba settings_kv
+ * Se não existir, cria a linha com settings_json vazio
+ */
+function kvGetSettingsBySite_(ss, siteSlug) {
+  try {
+    const settingsSheet = ss.getSheetByName('settings_kv');
+    if (!settingsSheet) {
+      throw new Error("Planilha settings_kv não encontrada");
+    }
+
+    const data = settingsSheet.getDataRange().getValues();
+    
+    // Procurar pelo site
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === siteSlug) {
+        let settings = {};
+        try {
+          settings = JSON.parse(data[i][2] || '{}'); // Coluna C (settings_json)
+        } catch (e) {
+          console.warn(`Erro ao parsear settings_json para ${siteSlug}:`, e);
+          settings = {};
+        }
+        
+        return {
+          rowIndex: i + 1,
+          settings: settings
+        };
+      }
+    }
+    
+    // Se não encontrou, criar nova linha
+    const now = new Date().toISOString();
+    settingsSheet.appendRow([siteSlug, now, '{}']);
+    
+    return {
+      rowIndex: settingsSheet.getLastRow(),
+      settings: {}
+    };
+  } catch (e) {
+    throw new Error(`Erro em kvGetSettingsBySite_: ${e.message}`);
+  }
+}
+
+/**
+ * Salva settings de um site fazendo deep-merge
+ * Preserva chaves existentes, sobrescreve apenas as passadas
+ */
+function kvSaveSettingsBySite_(ss, siteSlug, newSettingsObj) {
+  try {
+    const { rowIndex, settings: currentSettings } = kvGetSettingsBySite_(ss, siteSlug);
+    
+    // Deep merge: preservar existentes, sobrescrever novas
+    const mergedSettings = { ...currentSettings };
+    
+    for (const key in newSettingsObj) {
+      if (newSettingsObj[key] === null || newSettingsObj[key] === undefined) {
+        // Remover chave se valor for null/undefined
+        delete mergedSettings[key];
+      } else if (typeof newSettingsObj[key] === 'object' && !Array.isArray(newSettingsObj[key])) {
+        // Merge profundo para objetos
+        mergedSettings[key] = { ...mergedSettings[key], ...newSettingsObj[key] };
+      } else {
+        // Sobrescrever valor direto
+        mergedSettings[key] = newSettingsObj[key];
+      }
+    }
+    
+    const settingsSheet = ss.getSheetByName('settings_kv');
+    const now = new Date().toISOString();
+    
+    // Atualizar linha: siteSlug, updated_at, settings_json
+    settingsSheet.getRange(rowIndex, 2).setValue(now); // Coluna B
+    settingsSheet.getRange(rowIndex, 3).setValue(JSON.stringify(mergedSettings)); // Coluna C
+    
+    // Log para diagnóstico (máx 500 chars)
+    const settingsPreview = JSON.stringify(mergedSettings).substring(0, 500);
+    console.log(`✅ kvSaveSettingsBySite_: ${siteSlug} → ${settingsPreview}${settingsPreview.length >= 500 ? '...' : ''}`);
+    
+    return { ok: true, settings: mergedSettings };
+  } catch (e) {
+    console.error(`❌ Erro em kvSaveSettingsBySite_: ${e.message}`);
+    throw new Error(`Erro em kvSaveSettingsBySite_: ${e.message}`);
+  }
+}
+
+/**
+ * Limpa chaves legadas (gmb_tokens:*, gmb_cache:*, etc)
+ */
+function kvCleanupLegacyKeys_(ss) {
+  try {
+    const settingsSheet = ss.getSheetByName('settings_kv');
+    if (!settingsSheet) return { ok: true, message: "settings_kv não encontrada" };
+
+    const data = settingsSheet.getDataRange().getValues();
+    let removidas = 0;
+    
+    // Remover de trás para frente para não afetar índices
+    for (let i = data.length - 1; i >= 1; i--) {
+      const chave = data[i][0];
+      if (chave && (chave.includes('gmb_tokens:') || chave.includes('gmb_cache:') || chave.includes('CLIENT'))) {
+        settingsSheet.deleteRow(i + 1);
+        removidas++;
+      }
+    }
+    
+    console.log(`🧹 kvCleanupLegacyKeys_: ${removidas} linhas legadas removidas`);
+    return { ok: true, removidas: removidas };
+  } catch (e) {
+    console.error(`❌ Erro em kvCleanupLegacyKeys_: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
 }
 
 /**
