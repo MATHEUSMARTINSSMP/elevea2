@@ -458,38 +458,79 @@ export default function GoogleReviews({ siteSlug, vipPin, userEmail }: GoogleRev
               </a>
             </Button>
 
-            {userEmail && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={async () => {
-                  if (confirm('Tem certeza que deseja desconectar sua conta Google?')) {
-                    try {
-                      const response = await fetch('/.netlify/functions/client-api', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          action: 'gmb_disconnect',
-                          site: siteSlug,
-                          email: userEmail
-                        })
-                      });
-                      
-                      if (response.ok) {
-                        setNeedsConnection(true);
-                        setIsConnected(false);
-                        setReviewsData(null);
-                      }
-                    } catch (e) {
-                      console.error('Erro ao desconectar:', e);
-                    }
+        {userEmail && (
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={async () => {
+                try {
+                  const response = await fetch('/.netlify/functions/client-api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      action: 'gmb_diagnose',
+                      site: siteSlug,
+                      email: userEmail
+                    })
+                  });
+                  
+                  const result = await response.json();
+                  console.log('🔍 Diagnóstico GMB:', result);
+                  
+                  if (result.ok) {
+                    const d = result.diagnosis;
+                    alert(`📊 DIAGNÓSTICO GMB:
+                    
+✅ Site encontrado: ${d.site_encontrado ? 'SIM' : 'NÃO'}
+✅ Settings JSON válido: ${d.settings_json_valido ? 'SIM' : 'NÃO'}  
+✅ Tokens presentes: ${d.gmb_tokens_presente ? 'SIM' : 'NÃO'}
+📋 Linhas problemáticas: ${d.linhas_problematicas.length}
+🔑 PropertiesService: ${d.properties_service.tem_client_id ? 'OK' : 'FALTANDO'}
+
+Veja o console para detalhes completos.`);
                   }
-                }}
-                className="border-red-500 text-red-400 hover:bg-red-500/10"
-              >
-                Desconectar Google
-              </Button>
-            )}
+                } catch (e) {
+                  console.error('Erro no diagnóstico:', e);
+                }
+              }}
+              className="border-blue-500 text-blue-400 hover:bg-blue-500/10"
+            >
+              🔍 Diagnóstico
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={async () => {
+                if (confirm('Tem certeza que deseja desconectar sua conta Google?')) {
+                  try {
+                    const response = await fetch('/.netlify/functions/client-api', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'gmb_disconnect',
+                        site: siteSlug,
+                        email: userEmail
+                      })
+                    });
+                    
+                    if (response.ok) {
+                      setNeedsConnection(true);
+                      setIsConnected(false);
+                      setReviewsData(null);
+                    }
+                  } catch (e) {
+                    console.error('Erro ao desconectar:', e);
+                  }
+                }
+              }}
+              className="border-red-500 text-red-400 hover:bg-red-500/10"
+            >
+              Desconectar Google
+            </Button>
+          </div>
+        )}
           </div>
         </div>
       </CardContent>

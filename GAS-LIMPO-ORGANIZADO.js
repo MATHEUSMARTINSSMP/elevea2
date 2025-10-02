@@ -727,6 +727,8 @@ function doPost(e) {
     if (data.action === 'validate_vip_pin')     { log_(ss,"route_validate_vip_pin",{});   return jsonOut_(validate_vip_pin(data.site, data.pin)); }
     if (data.action === 'gmb_save_credentials') { log_(ss,"route_gmb_save_credentials",{}); return jsonOut_(gmbSaveCredentials_(ss, data.site, data.email, data.tokens)); }
     if (data.action === 'setup_google_credentials') { log_(ss,"route_setup_google_credentials",{}); return jsonOut_(setupGoogleCredentials_()); }
+    if (data.action === 'gmb_diagnose') { log_(ss,"route_gmb_diagnose",{}); return jsonOut_(gmbDiagnose_(ss, data.site, data.email)); }
+    if (data.action === 'gmb_cleanup') { log_(ss,"route_gmb_cleanup",{}); return jsonOut_(gmbCleanup_(ss)); }
     if (data.action === 'gmb_get_reviews')      { log_(ss,"route_gmb_get_reviews",{});    return jsonOut_(gmbGetReviews_(ss, data.site, data.email)); }
     if (data.action === 'gmb_disconnect')       { log_(ss,"route_gmb_disconnect",{});     return jsonOut_(gmbDisconnect_(ss, data.site, data.email)); }
         // Plano do cliente (vip | essential)
@@ -1981,6 +1983,123 @@ async function getGoogleReviews_(accessToken, placeId) {
       reviews: reviews,
       averageRating: result.rating || 0,
       totalReviews: result.user_ratings_total || 0
+    };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/**
+ * Diagnóstico completo do GMB - verifica estrutura da planilha e tokens
+ */
+function gmbDiagnose_(ss, site, email) {
+  try {
+    const settingsSheet = ss.getSheetByName('settings_kv');
+    if (!settingsSheet) {
+      return { ok: false, error: "Planilha settings_kv não encontrada" };
+    }
+
+    const data = settingsSheet.getDataRange().getValues();
+    const diagnosis = {
+      site: site,
+      email: email,
+      planilha_linhas: data.length - 1,
+      site_encontrado: false,
+      settings_json_valido: false,
+      gmb_tokens_presente: false,
+      tokens_estrutura: null,
+      linhas_problematicas: [],
+      todas_linhas: []
+    };
+
+    // Analisar todas as linhas
+    for (let i = 1; i < data.length; i++) {
+      const linha = {
+        linha: i + 1,
+        chave: data[i][0],
+        tem_settings: !!data[i][1],
+        settings_valido: false,
+        conteudo: null
+      };
+
+      // Verificar se é o site procurado
+      if (data[i][0] === site) {
+        diagnosis.site_encontrado = true;
+        
+        try {
+          const settings = JSON.parse(data[i][1] || '{}');
+          linha.settings_valido = true;
+          linha.conteudo = settings;
+          diagnosis.settings_json_valido = true;
+          
+          if (settings.gmb_tokens) {
+            diagnosis.gmb_tokens_presente = true;
+            diagnosis.tokens_estrutura = {
+              tem_access_token: !!settings.gmb_tokens.access_token,
+              tem_refresh_token: !!settings.gmb_tokens.refresh_token,
+              tem_salt: !!settings.gmb_tokens.salt,
+              email_token: settings.gmb_tokens.email,
+              expires_at: settings.gmb_tokens.expires_at,
+              saved_at: settings.gmb_tokens.saved_at
+            };
+          }
+        } catch (e) {
+          linha.erro_parsing = String(e);
+        }
+      }
+
+      // Verificar linhas problemáticas (chaves antigas)
+      if (data[i][0] && data[i][0].includes('gmb_tokens::')) {
+        diagnosis.linhas_problematicas.push({
+          linha: i + 1,
+          chave: data[i][0],
+          tipo: 'chave_antiga_gmb'
+        });
+      }
+
+      diagnosis.todas_linhas.push(linha);
+    }
+
+    // Verificar credenciais do PropertiesService
+    const props = PropertiesService.getScriptProperties();
+    diagnosis.properties_service = {
+      tem_client_id: !!props.getProperty('GMB_CLIENT_ID'),
+      tem_client_secret: !!props.getProperty('GMB_CLIENT_SECRET'),
+      client_id_preview: props.getProperty('GMB_CLIENT_ID') ? props.getProperty('GMB_CLIENT_ID').substring(0, 20) + '...' : null
+    };
+
+    return { ok: true, diagnosis: diagnosis };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/**
+ * Limpa chaves antigas problemáticas do GMB
+ */
+function gmbCleanup_(ss) {
+  try {
+    const settingsSheet = ss.getSheetByName('settings_kv');
+    if (!settingsSheet) {
+      return { ok: false, error: "Planilha settings_kv não encontrada" };
+    }
+
+    const data = settingsSheet.getDataRange().getValues();
+    let removidas = 0;
+    
+    // Remover linhas com chaves antigas (de trás para frente para não afetar índices)
+    for (let i = data.length - 1; i >= 1; i--) {
+      const chave = data[i][0];
+      if (chave && (chave.includes('gmb_tokens::') || chave.includes('gmb_cache::'))) {
+        settingsSheet.deleteRow(i + 1);
+        removidas++;
+      }
+    }
+
+    return { 
+      ok: true, 
+      message: `Limpeza concluída. ${removidas} linhas antigas removidas.`,
+      removidas: removidas
     };
   } catch (e) {
     return { ok: false, error: String(e) };
