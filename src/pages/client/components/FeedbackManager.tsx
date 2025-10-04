@@ -82,15 +82,15 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
     else setLoading(true);
     
     try {
-      const response = await fetch('/.netlify/functions/feedback', {
+      const response = await fetch('/.netlify/functions/client-api', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'list',
-          siteSlug,
-          vipPin,
-          status: statusFilter,
-          limit: 50
+          action: 'list_feedbacks_secure',
+          site: siteSlug,
+          pin: vipPin,
+          page: 1,
+          pageSize: 50
         })
       });
 
@@ -113,14 +113,15 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
   const handleAction = async (action: 'approve' | 'reject', feedbackId: string) => {
     setActionLoading(feedbackId);
     try {
-      const response = await fetch('/.netlify/functions/feedback', {
+      const response = await fetch('/.netlify/functions/client-api', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action,
-          siteSlug,
-          vipPin,
-          feedbackId
+          action: action === 'approve' ? 'feedback_set_approval' : 'feedback_set_approval',
+          site: siteSlug,
+          id: feedbackId,
+          approved: action === 'approve',
+          pin: vipPin
         })
       });
 
@@ -424,7 +425,7 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
                                 `📝 Publicar Feedback no Site\n\n` +
                                 `Cliente: ${feedback.name}\n` +
                                 `Avaliação: ${feedback.rating}/5 estrelas\n\n` +
-                                `Este feedback será publicado no site do cliente. Deseja continuar?`
+                                `Este feedback será exibido no site do cliente (sem dados sensíveis como email/telefone). Deseja continuar?`
                               );
                               
                               if (!confirmed) return;
@@ -443,7 +444,7 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
                               const result = await response.json();
                               
                               if (result.ok) {
-                                alert(`✅ ${result.message}`);
+                                alert(`✅ ${result.message}\n\nOs feedbacks aprovados aparecem automaticamente no site do cliente via API do GAS.`);
                                 // Recarregar feedbacks para atualizar status
                                 fetchFeedbacks();
                               } else {
