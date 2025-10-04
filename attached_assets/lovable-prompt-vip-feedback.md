@@ -1,7 +1,7 @@
 # Prompt Lovable para Clientes VIP - Sistema de Feedbacks
 
 ## Contexto
-Este prompt deve ser usado APENAS para clientes VIP durante o onboarding. Ele garante que o site do cliente tenha nativamente a funcionalidade de exibir feedbacks aprovados.
+Este prompt deve ser usado APENAS para clientes VIP durante o onboarding. Ele garante que o site do cliente tenha nativamente a funcionalidade de exibir feedbacks aprovados via API do GAS.
 
 ## Prompt Completo
 
@@ -18,43 +18,50 @@ REQUISITOS OBRIGATÓRIOS:
 - Footer com contatos
 
 ### 2. Sistema de Feedbacks (OBRIGATÓRIO)
-Crie uma seção de depoimentos que carrega feedbacks dinamicamente de um arquivo JSON.
+Crie uma seção de depoimentos que carrega feedbacks dinamicamente via API do GAS.
 
-**Arquivo de dados**: `public/feedbacks.json`
-**Estrutura esperada**:
+**Endpoint de dados**: `GET {GAS_URL}?type=feedback&action=get_public&site={SITE_SLUG}`
+**Estrutura da resposta**:
 ```json
 {
-  "lastUpdated": "2024-01-01T00:00:00.000Z",
-  "total": 5,
-  "feedbacks": [
-    {
-      "id": "unique-id",
-      "name": "Nome do Cliente",
-      "email": "email@cliente.com",
-      "phone": "+5511999999999",
-      "rating": 5,
-      "message": "Excelente atendimento!",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "publishedAt": "2024-01-01T00:00:00.000Z"
+  "ok": true,
+  "data": {
+    "feedbacks": [
+      {
+        "id": "unique-id",
+        "name": "Nome do Cliente",
+        "rating": 5,
+        "message": "Excelente atendimento!",
+        "createdAt": "2024-01-01T00:00:00.000Z"
+      }
+    ],
+    "total": 5,
+    "pagination": {
+      "limit": 10,
+      "offset": 0,
+      "hasMore": false
     }
-  ]
+  }
 }
 ```
 
 **Componente de Feedback**:
+- Carregar feedbacks via fetch() do endpoint GAS
 - Exibir estrelas de avaliação (1-5)
 - Nome do cliente
 - Mensagem do feedback
-- Data de publicação
+- Data de criação
 - Layout responsivo com grid
 - Animações suaves ao carregar
+- Loading state durante carregamento
 
 ### 3. Funcionalidades Técnicas
-- **Carregamento dinâmico**: Buscar feedbacks de `public/feedbacks.json`
-- **Fallback**: Se arquivo não existir, mostrar mensagem "Em breve nossos clientes compartilharão suas experiências"
+- **Carregamento dinâmico**: Buscar feedbacks via API do GAS
+- **Fallback**: Se API falhar, mostrar mensagem "Em breve nossos clientes compartilharão suas experiências"
 - **Performance**: Implementar lazy loading para feedbacks
 - **SEO**: Meta tags otimizadas para depoimentos
 - **Acessibilidade**: Alt texts e ARIA labels apropriados
+- **Error handling**: Tratamento de falhas de rede
 
 ### 4. Estilo Visual
 - Design moderno e profissional
@@ -106,20 +113,21 @@ Crie um site que impressione e converta visitantes em clientes, com uma seção 
 
 1. **Durante o onboarding VIP**: Use este prompt quando o cliente for VIP
 2. **Substitua placeholders**: [NOME_DO_CLIENTE] e [DESCRIÇÃO_DO_NEGÓCIO]
-3. **Verifique arquivos**: Confirme que `public/feedbacks.json` foi criado
-4. **Teste integração**: Verifique se o componente carrega o JSON corretamente
+3. **Verifique integração**: Confirme que o componente faz fetch() do endpoint GAS
+4. **Teste API**: Verifique se a API retorna feedbacks aprovados corretamente
 
 ## Resultado Esperado
 
 O site gerado terá:
 - ✅ Seção de feedbacks funcional
-- ✅ Arquivo `public/feedbacks.json` criado
+- ✅ Integração com API do GAS para carregar feedbacks
 - ✅ Componentes React para exibir feedbacks
 - ✅ Design responsivo e moderno
 - ✅ Integração pronta com o sistema da agência
 
 ## Manutenção
 
-- O arquivo `feedbacks.json` será atualizado automaticamente pelo GAS
+- Os feedbacks são carregados dinamicamente via API do GAS
 - Não é necessário intervenção manual no site do cliente
-- A seção de feedbacks se atualiza automaticamente quando novos feedbacks são publicados
+- A seção de feedbacks se atualiza automaticamente quando novos feedbacks são aprovados
+- Não há necessidade de arquivos JSON ou configurações GitHub

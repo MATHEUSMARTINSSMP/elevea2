@@ -4311,37 +4311,44 @@ if (GAS && SITE && ADMIN && fs.existsSync("src/elevea.sections.json")) {
   /* — Sistema de Feedbacks (APENAS VIP) */
   if (plan === "vip") {
     L.push("=== SISTEMA DE FEEDBACKS (VIP) ===");
-    L.push("Crie uma seção de depoimentos que carrega feedbacks dinamicamente de um arquivo JSON.");
-    L.push("**Arquivo obrigatório**: `public/feedbacks.json`");
-    L.push("**Estrutura esperada**:");
+    L.push("Crie uma seção de depoimentos que carrega feedbacks dinamicamente via API do GAS.");
+    L.push("**Endpoint obrigatório**: `GET {GAS_URL}?type=feedback&action=get_public&site={SITE_SLUG}`");
+    L.push("**Estrutura da resposta**:");
     L.push(`{
-  "lastUpdated": "2024-01-01T00:00:00.000Z",
-  "total": 5,
-  "feedbacks": [
-    {
-      "id": "unique-id",
-      "name": "Nome do Cliente",
-      "email": "email@cliente.com", 
-      "phone": "+5511999999999",
-      "rating": 5,
-      "message": "Excelente atendimento!",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "publishedAt": "2024-01-01T00:00:00.000Z"
+  "ok": true,
+  "data": {
+    "feedbacks": [
+      {
+        "id": "unique-id",
+        "name": "Nome do Cliente",
+        "rating": 5,
+        "message": "Excelente atendimento!",
+        "createdAt": "2024-01-01T00:00:00.000Z"
+      }
+    ],
+    "total": 5,
+    "pagination": {
+      "limit": 10,
+      "offset": 0,
+      "hasMore": false
     }
-  ]
+  }
 }`);
     
     L.push("**Componente de Feedback obrigatório**:");
+    L.push("- Carregar feedbacks via fetch() do endpoint GAS");
     L.push("- Exibir estrelas de avaliação (1-5)");
     L.push("- Nome do cliente");
     L.push("- Mensagem do feedback");
-    L.push("- Data de publicação");
+    L.push("- Data de criação");
     L.push("- Layout responsivo com grid");
     L.push("- Animações suaves ao carregar");
-    L.push("- Fallback: Se arquivo não existir, mostrar 'Em breve nossos clientes compartilharão suas experiências'");
+    L.push("- Loading state durante carregamento");
+    L.push("- Fallback: Se API falhar, mostrar 'Em breve nossos clientes compartilharão suas experiências'");
+    L.push("- Error handling para falhas de rede");
     
     L.push("**IMPORTANTE**: NÃO criar formulário de feedback no site. Apenas EXIBIR feedbacks já aprovados via dashboard da agência.");
-    L.push("O arquivo feedbacks.json será gerenciado externamente pelo sistema da agência.");
+    L.push("Os feedbacks são carregados dinamicamente do GAS e atualizados automaticamente quando aprovados.");
   }
 
   /* — netlify.toml hook */
@@ -8694,7 +8701,7 @@ function feedbackSetApproval_(ss, siteSlug, feedbackId, approved, pin) {
 }
 
 /**
- * Publica feedback aprovado no site do cliente via GitHub
+ * Marca feedback como publicado (os feedbacks já são carregados dinamicamente via GAS)
  */
 function publishFeedbackToSite_(ss, siteSlug, feedbackId, pin) {
   try {
@@ -8716,86 +8723,37 @@ function publishFeedbackToSite_(ss, siteSlug, feedbackId, pin) {
     const values = dataRange.getValues();
     
     // Encontrar o feedback específico
-    const feedbackRow = values.find(row => 
+    const rowIndex = values.findIndex(row => 
       row[0] === feedbackId && 
       row[1] === siteSlug && 
       row[8] === 'approved' && 
       row[9] === true
     );
     
-    if (!feedbackRow) {
+    if (rowIndex === -1) {
       return { ok: false, error: 'Feedback aprovado não encontrado' };
     }
     
-    // Buscar todos os feedbacks aprovados do site para gerar arquivo completo
-    const approvedFeedbacks = values.filter(row => 
-      row[1] === siteSlug && 
-      row[8] === 'approved' && 
-      row[9] === true
-    );
-    
-    // Converter para formato do site
-    const feedbacksData = approvedFeedbacks.map(row => ({
-      id: row[0],
-      name: row[2],
-      email: row[3],
-      phone: row[4],
-      rating: row[5],
-      message: row[6],
-      createdAt: row[10],
-      publishedAt: new Date().toISOString()
-    }));
-    
-    // Buscar configurações do site para GitHub
-    const siteSettings = kvGetSettingsBySite_(ss, siteSlug);
-    const settings = siteSettings.settings;
-    
-    if (!settings.github_repo || !settings.github_token) {
-      return { 
-        ok: false, 
-        error: 'Repositório GitHub não configurado. Configure no dashboard antes de publicar.' 
-      };
-    }
-    
-    // Gerar arquivo JSON para o site
-    const feedbacksJson = {
-      lastUpdated: new Date().toISOString(),
-      total: feedbacksData.length,
-      feedbacks: feedbacksData
-    };
-    
-    // Publicar no GitHub
-    const publishResult = publishToGitHub_(
-      settings.github_repo,
-      settings.github_token,
-      'public/feedbacks.json',
-      JSON.stringify(feedbacksJson, null, 2),
-      `Atualizar feedbacks aprovados - ${new Date().toLocaleString('pt-BR')}`
-    );
-    
-    if (!publishResult.ok) {
-      return { ok: false, error: `Erro ao publicar no GitHub: ${publishResult.error}` };
-    }
-    
     // Marcar feedback como publicado
-    const rowIndex = values.findIndex(row => row[0] === feedbackId && row[1] === siteSlug);
-    if (rowIndex !== -1) {
-      sh.getRange(rowIndex + 1, 13, 1, 1).setValue(new Date().toISOString()); // publishedAt
-    }
+    sh.getRange(rowIndex + 1, 13, 1, 1).setValue(new Date().toISOString()); // publishedAt
+    
+    // Buscar total de feedbacks aprovados
+    const publicFeedbacksResult = getPublicFeedbacks_(ss, siteSlug, { limit: 1000, offset: 0 });
+    const totalApproved = publicFeedbacksResult.ok ? publicFeedbacksResult.data.total : 0;
     
     log_(ss, 'feedback_published_to_site', { 
       site: siteSlug, 
       feedbackId, 
-      totalPublished: feedbacksData.length 
+      totalPublished: totalApproved 
     });
     
     return { 
       ok: true, 
-      message: `Feedback publicado com sucesso! Total de ${feedbacksData.length} feedbacks aprovados no site.`,
+      message: `Feedback marcado como publicado! Total de ${totalApproved} feedbacks aprovados disponíveis no site.`,
       data: {
         feedbackId,
-        totalPublished: feedbacksData.length,
-        githubCommit: publishResult.commitSha
+        totalPublished: totalApproved,
+        note: "Feedbacks são carregados dinamicamente via API do GAS"
       }
     };
     
@@ -8805,75 +8763,6 @@ function publishFeedbackToSite_(ss, siteSlug, feedbackId, pin) {
   }
 }
 
-/**
- * Publica arquivo no GitHub via API
- */
-function publishToGitHub_(repoFullName, token, filePath, content, commitMessage) {
-  try {
-    const [owner, repo] = repoFullName.split('/');
-    
-    // 1. Buscar conteúdo atual do arquivo (para obter SHA)
-    const getFileUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
-    const getResponse = UrlFetchApp.fetch(getFileUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'EleveaAgency/1.0'
-      }
-    });
-    
-    let sha = null;
-    if (getResponse.getResponseCode() === 200) {
-      const fileData = JSON.parse(getResponse.getContentText());
-      sha = fileData.sha;
-    }
-    
-    // 2. Criar/atualizar arquivo
-    const putFileUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
-    const putPayload = {
-      message: commitMessage,
-      content: Utilities.base64Encode(content),
-      branch: 'main'
-    };
-    
-    if (sha) {
-      putPayload.sha = sha; // Para atualizar arquivo existente
-    }
-    
-    const putResponse = UrlFetchApp.fetch(putFileUrl, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json',
-        'User-Agent': 'EleveaAgency/1.0'
-      },
-      payload: JSON.stringify(putPayload)
-    });
-    
-    if (putResponse.getResponseCode() === 200 || putResponse.getResponseCode() === 201) {
-      const result = JSON.parse(putResponse.getContentText());
-      return { 
-        ok: true, 
-        commitSha: result.commit.sha,
-        message: 'Arquivo publicado com sucesso no GitHub'
-      };
-    } else {
-      const error = putResponse.getContentText();
-      return { 
-        ok: false, 
-        error: `GitHub API error: ${putResponse.getResponseCode()} - ${error}` 
-      };
-    }
-    
-  } catch (err) {
-    return { 
-      ok: false, 
-      error: `Erro ao publicar no GitHub: ${err.message}` 
-    };
-  }
-}
 
 /**
  * Garante que a planilha de feedbacks existe
