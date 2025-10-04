@@ -82,17 +82,16 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
     else setLoading(true);
     
     try {
-      const response = await fetch('/.netlify/functions/client-api', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'list_feedbacks_secure',
-          site: siteSlug,
-          pin: vipPin,
-          page: 1,
-          pageSize: 50
-        })
+      // Usar GET direto para o GAS (contornar CORS)
+      const params = new URLSearchParams({
+        action: 'list_feedbacks_secure',
+        site: siteSlug,
+        pin: vipPin,
+        page: '1',
+        pageSize: '50'
       });
+      
+      const response = await fetch(`https://script.google.com/macros/s/AKfycbyd3JdxPkWM2xhAUikFOXi0jVGwN1H4sqNg5fnc4iABGDAsSkFtpjOPY40EBLssYc_z/exec?${params.toString()}`);
 
       if (!response.ok) throw new Error('Falha ao carregar feedbacks');
 
@@ -113,17 +112,16 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
   const handleAction = async (action: 'approve' | 'reject', feedbackId: string) => {
     setActionLoading(feedbackId);
     try {
-      const response = await fetch('/.netlify/functions/client-api', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: action === 'approve' ? 'feedback_set_approval' : 'feedback_set_approval',
-          site: siteSlug,
-          id: feedbackId,
-          approved: action === 'approve',
-          pin: vipPin
-        })
+      // Usar GET direto para o GAS (contornar CORS)
+      const params = new URLSearchParams({
+        action: 'feedback_set_approval',
+        site: siteSlug,
+        id: feedbackId,
+        approved: action === 'approve' ? 'true' : 'false',
+        pin: vipPin
       });
+      
+      const response = await fetch(`https://script.google.com/macros/s/AKfycbyd3JdxPkWM2xhAUikFOXi0jVGwN1H4sqNg5fnc4iABGDAsSkFtpjOPY40EBLssYc_z/exec?${params.toString()}`);
 
       if (!response.ok) throw new Error('Falha ao processar ação');
 
@@ -430,16 +428,15 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
                               
                               if (!confirmed) return;
                               
-                              const response = await fetch('/.netlify/functions/client-api', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  action: 'publish_feedback_to_site',
-                                  site: siteSlug,
-                                  feedbackId: feedback.id,
-                                  pin: vipPin
-                                })
+                              // Usar GET direto para o GAS (contornar CORS)
+                              const params = new URLSearchParams({
+                                action: 'publish_feedback_to_site',
+                                site: siteSlug,
+                                feedbackId: feedback.id,
+                                pin: vipPin
                               });
+                              
+                              const response = await fetch(`https://script.google.com/macros/s/AKfycbyd3JdxPkWM2xhAUikFOXi0jVGwN1H4sqNg5fnc4iABGDAsSkFtpjOPY40EBLssYc_z/exec?${params.toString()}`);
                               
                               const result = await response.json();
                               

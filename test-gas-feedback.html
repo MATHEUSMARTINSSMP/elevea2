@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste GAS Feedback - LOUNGERIEAMAPAGARDEN</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        .warning { background: #fff3cd; border-color: #ffeaa7; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        .loading { color: #007bff; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste Completo do Sistema de Feedback</h1>
+    
+    <div class="test-section">
+        <h3>1. Teste de Conectividade GAS</h3>
+        <button onclick="testGASConnection()">🔗 Testar Conexão GAS</button>
+        <div id="connectionResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. Teste de Listar Feedbacks</h3>
+        <button onclick="testListFeedbacks()">📋 Listar Feedbacks Existentes</button>
+        <div id="listResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>3. Teste de Enviar Feedback</h3>
+        <button onclick="testSubmitFeedback()">📝 Enviar Feedback de Teste</button>
+        <div id="submitResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>4. Teste de Aprovação (VIP)</h3>
+        <input type="text" id="feedbackId" placeholder="ID do feedback para aprovar" style="width: 300px; padding: 8px;">
+        <br><br>
+        <button onclick="testApproveFeedback()">✅ Aprovar Feedback</button>
+        <div id="approveResult"></div>
+    </div>
+
+    <script>
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbyd3JdxPkWM2xhAUikFOXi0jVGwN1H4sqNg5fnc4iABGDAsSkFtpjOPY40EBLssYc_z/exec';
+        const SITE_SLUG = 'LOUNGERIEAMAPAGARDEN';
+        const VIP_PIN = '1234'; // Use seu PIN real
+
+        async function testGASConnection() {
+            const resultDiv = document.getElementById('connectionResult');
+            resultDiv.innerHTML = '<p class="loading">⏳ Testando conexão...</p>';
+            
+            try {
+                const response = await fetch(`${GAS_URL}?type=status&site=${SITE_SLUG}`);
+                const result = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="${result.ok ? 'success' : 'error'}">
+                        <h4>${result.ok ? '✅ Conexão OK' : '❌ Erro de Conexão'}</h4>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Erro de Rede</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function testListFeedbacks() {
+            const resultDiv = document.getElementById('listResult');
+            resultDiv.innerHTML = '<p class="loading">⏳ Buscando feedbacks...</p>';
+            
+            try {
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'list_feedbacks_secure',
+                        site: SITE_SLUG,
+                        pin: VIP_PIN,
+                        page: 1,
+                        pageSize: 10
+                    })
+                });
+                
+                const result = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="${result.ok ? 'success' : 'error'}">
+                        <h4>${result.ok ? '✅ Feedbacks Encontrados' : '❌ Erro ao Buscar'}</h4>
+                        <p><strong>Total:</strong> ${result.data?.total || 0} feedbacks</p>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Erro de Rede</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function testSubmitFeedback() {
+            const resultDiv = document.getElementById('submitResult');
+            resultDiv.innerHTML = '<p class="loading">⏳ Enviando feedback...</p>';
+            
+            try {
+                const feedbackData = {
+                    name: 'Teste Automático',
+                    email: 'teste@automatico.com',
+                    phone: '11999999999',
+                    rating: 5,
+                    message: `Feedback de teste automático - ${new Date().toLocaleString('pt-BR')}`
+                };
+
+                const response = await fetch(`${GAS_URL}?type=feedback&action=submit&site=${SITE_SLUG}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(feedbackData)
+                });
+                
+                const result = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="${result.ok ? 'success' : 'error'}">
+                        <h4>${result.ok ? '✅ Feedback Enviado' : '❌ Erro ao Enviar'}</h4>
+                        <p><strong>ID:</strong> ${result.data?.id || 'N/A'}</p>
+                        <p><strong>Status:</strong> ${result.data?.status || 'N/A'}</p>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Erro de Rede</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function testApproveFeedback() {
+            const feedbackId = document.getElementById('feedbackId').value;
+            if (!feedbackId) {
+                document.getElementById('approveResult').innerHTML = `
+                    <div class="warning">
+                        <h4>⚠️ ID do Feedback Obrigatório</h4>
+                        <p>Digite o ID do feedback que deseja aprovar.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const resultDiv = document.getElementById('approveResult');
+            resultDiv.innerHTML = '<p class="loading">⏳ Aprovando feedback...</p>';
+            
+            try {
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'feedback_set_approval',
+                        site: SITE_SLUG,
+                        id: feedbackId,
+                        approved: true,
+                        pin: VIP_PIN
+                    })
+                });
+                
+                const result = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="${result.ok ? 'success' : 'error'}">
+                        <h4>${result.ok ? '✅ Feedback Aprovado' : '❌ Erro ao Aprovar'}</h4>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Erro de Rede</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Teste automático ao carregar
+        window.onload = function() {
+            console.log('🧪 Página de teste carregada');
+            console.log('📡 GAS URL:', GAS_URL);
+            console.log('🏢 Site Slug:', SITE_SLUG);
+        };
+    </script>
+</body>
+</html>

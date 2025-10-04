@@ -313,6 +313,46 @@ function doGet(e) {
     return jsonOut_({ ok: true, message: "CORS preflight" });
   }
 
+  // ===== FEEDBACK SYSTEM (VIA GET) - CONTORNAR CORS =====
+  // Aceitar feedbacks via GET para contornar problema CORS do navegador
+  if (type === "feedback" && p.action) {
+    // Simular doPost para feedbacks via GET
+    const mockPost = {
+      parameter: p,
+      postData: {
+        contents: JSON.stringify(p),
+        type: 'application/json'
+      }
+    };
+    
+    // Processar como se fosse POST
+    return doPost(mockPost);
+  }
+
+  // ===== CLIENT API (VIA GET) - CONTORNAR CORS =====
+  // Aceitar ações do client-api via GET para contornar problema CORS
+  const clientApiActions = [
+    'list_feedbacks_secure',
+    'feedback_set_approval', 
+    'publish_feedback_to_site',
+    'save_settings',
+    'get_settings'
+  ];
+  
+  if (clientApiActions.includes(p.action)) {
+    // Simular doPost para client-api via GET
+    const mockPost = {
+      parameter: p,
+      postData: {
+        contents: JSON.stringify(p),
+        type: 'application/json'
+      }
+    };
+    
+    // Processar como se fosse POST
+    return doPost(mockPost);
+  }
+
   // log de entrada
   try {
     ensureLogSheet_(ss).appendRow([
