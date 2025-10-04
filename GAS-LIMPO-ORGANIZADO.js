@@ -728,6 +728,9 @@ function doPost(e) {
     if (data.action === 'gmb_save_credentials') { log_(ss,"route_gmb_save_credentials",{}); return jsonOut_(gmbSaveCredentials_(ss, data.site, data.email, data.tokens)); }
     if (data.action === 'setup_google_credentials') { log_(ss,"route_setup_google_credentials",{}); return jsonOut_(setupGoogleCredentials_()); }
     if (data.action === 'save_settings') { log_(ss,"route_save_settings",{}); return jsonOut_(saveSettings_(ss, data.site, data.data)); }
+    if (data.action === 'publish_feedback_to_site') { log_(ss,"route_publish_feedback_to_site",{}); return jsonOut_(publishFeedbackToSite_(ss, data.site, data.feedbackId, data.pin)); }
+    if (data.action === 'feedback_set_approval') { log_(ss,"route_feedback_set_approval",{}); return jsonOut_(feedbackSetApproval_(ss, data.site, data.id, data.approved, data.pin)); }
+    if (data.action === 'list_feedbacks_secure') { log_(ss,"route_list_feedbacks_secure",{}); return jsonOut_(listFeedbacksSecure_(ss, data.site, data.pin, data.page, data.pageSize)); }
     if (data.action === 'gmb_diagnose') { log_(ss,"route_gmb_diagnose",{}); return jsonOut_(gmbDiagnose_(ss, data.site, data.email)); }
     if (data.action === 'gmb_cleanup') { log_(ss,"route_gmb_cleanup",{}); return jsonOut_(gmbCleanup_(ss)); }
     if (data.action === 'gmb_get_reviews')      { log_(ss,"route_gmb_get_reviews",{});    return jsonOut_(gmbGetReviews_(ss, data.site, data.email)); }
@@ -4304,6 +4307,42 @@ if (GAS && SITE && ADMIN && fs.existsSync("src/elevea.sections.json")) {
     body: JSON.stringify({ type:"sections_upsert_defs", site:SITE, defs, adminToken:ADMIN })
   });
 }`.trim());
+
+  /* — Sistema de Feedbacks (APENAS VIP) */
+  if (plan === "vip") {
+    L.push("=== SISTEMA DE FEEDBACKS (VIP) ===");
+    L.push("Crie uma seção de depoimentos que carrega feedbacks dinamicamente de um arquivo JSON.");
+    L.push("**Arquivo obrigatório**: `public/feedbacks.json`");
+    L.push("**Estrutura esperada**:");
+    L.push(`{
+  "lastUpdated": "2024-01-01T00:00:00.000Z",
+  "total": 5,
+  "feedbacks": [
+    {
+      "id": "unique-id",
+      "name": "Nome do Cliente",
+      "email": "email@cliente.com", 
+      "phone": "+5511999999999",
+      "rating": 5,
+      "message": "Excelente atendimento!",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "publishedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}`);
+    
+    L.push("**Componente de Feedback obrigatório**:");
+    L.push("- Exibir estrelas de avaliação (1-5)");
+    L.push("- Nome do cliente");
+    L.push("- Mensagem do feedback");
+    L.push("- Data de publicação");
+    L.push("- Layout responsivo com grid");
+    L.push("- Animações suaves ao carregar");
+    L.push("- Fallback: Se arquivo não existir, mostrar 'Em breve nossos clientes compartilharão suas experiências'");
+    
+    L.push("**IMPORTANTE**: NÃO criar formulário de feedback no site. Apenas EXIBIR feedbacks já aprovados via dashboard da agência.");
+    L.push("O arquivo feedbacks.json será gerenciado externamente pelo sistema da agência.");
+  }
 
   /* — netlify.toml hook */
   L.push("Adicione ao `netlify.toml`:");
@@ -8508,6 +8547,331 @@ function getPublicFeedbacks_(ss, siteSlug, data) {
   } catch (err) {
     log_(ss, 'feedback_public_error', { site: siteSlug, error: String(err) });
     return { ok: false, error: String(err) };
+  }
+}
+
+/**
+ * Lista feedbacks com segurança (apenas para VIP)
+ */
+function listFeedbacksSecure_(ss, siteSlug, pin, page = 1, pageSize = 50) {
+  try {
+    // Validar PIN VIP
+    if (!pin || pin.length < 4) {
+      return { ok: false, error: 'PIN VIP é obrigatório' };
+    }
+    
+    // Validar PIN
+    const pinValidation = validateVipPin_(ss, siteSlug, pin);
+    if (!pinValidation.ok) {
+      return { ok: false, error: pinValidation.error };
+    }
+    
+    ensureFeedbackSheet_(ss);
+    const sh = ss.getSheetByName('feedbacks');
+    const dataRange = sh.getDataRange();
+    const values = dataRange.getValues();
+    
+    if (values.length <= 1) {
+      return { 
+        ok: true, 
+        items: [], 
+        total: 0, 
+        page: page, 
+        pageSize: pageSize 
+      };
+    }
+    
+    const rows = values.slice(1);
+    
+    // Filtrar apenas feedbacks do site
+    const siteRows = rows.filter(row => row[1] === siteSlug);
+    
+    // Ordenar por data de criação (mais recentes primeiro)
+    siteRows.sort((a, b) => new Date(b[10]) - new Date(a[10]));
+    
+    // Aplicar paginação
+    const total = siteRows.length;
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedRows = siteRows.slice(startIndex, endIndex);
+    
+    // Converter para objetos (com dados sensíveis para admin)
+    const items = paginatedRows.map(row => ({
+      id: row[0],
+      siteSlug: row[1],
+      name: row[2],
+      email: row[3],
+      phone: row[4],
+      rating: row[5],
+      message: row[6],
+      status: row[7] || 'pending',
+      approved: row[8] || false,
+      createdAt: row[10],
+      updatedAt: row[11],
+      publishedAt: row[12] || null
+    }));
+    
+    log_(ss, 'feedbacks_secure_listed', { 
+      site: siteSlug, 
+      count: items.length, 
+      total: total,
+      page: page 
+    });
+    
+    return { 
+      ok: true, 
+      items: items, 
+      total: total,
+      page: page,
+      pageSize: pageSize,
+      hasMore: endIndex < total
+    };
+    
+  } catch (err) {
+    log_(ss, 'feedbacks_secure_error', { site: siteSlug, error: String(err) });
+    return { ok: false, error: String(err) };
+  }
+}
+
+/**
+ * Define aprovação de um feedback (aprove/reprove)
+ */
+function feedbackSetApproval_(ss, siteSlug, feedbackId, approved, pin) {
+  try {
+    // Validar PIN VIP
+    if (!pin || pin.length < 4) {
+      return { ok: false, error: 'PIN VIP é obrigatório' };
+    }
+    
+    // Validar PIN
+    const pinValidation = validateVipPin_(ss, siteSlug, pin);
+    if (!pinValidation.ok) {
+      return { ok: false, error: pinValidation.error };
+    }
+    
+    ensureFeedbackSheet_(ss);
+    const sh = ss.getSheetByName('feedbacks');
+    const dataRange = sh.getDataRange();
+    const values = dataRange.getValues();
+    
+    // Encontrar o feedback
+    const rowIndex = values.findIndex(row => row[0] === feedbackId && row[1] === siteSlug);
+    
+    if (rowIndex === -1) {
+      return { ok: false, error: 'Feedback não encontrado' };
+    }
+    
+    // Atualizar status
+    const now = new Date().toISOString();
+    const status = approved ? 'approved' : 'rejected';
+    
+    sh.getRange(rowIndex + 1, 8, 1, 1).setValue(status); // status
+    sh.getRange(rowIndex + 1, 9, 1, 1).setValue(approved); // approved
+    sh.getRange(rowIndex + 1, 12, 1, 1).setValue(now); // updatedAt
+    
+    log_(ss, 'feedback_approval_set', { 
+      site: siteSlug, 
+      id: feedbackId, 
+      approved: approved,
+      status: status
+    });
+    
+    return { 
+      ok: true, 
+      message: `Feedback ${approved ? 'aprovado' : 'rejeitado'} com sucesso!`,
+      data: { 
+        feedbackId,
+        approved: approved,
+        status: status,
+        updatedAt: now
+      }
+    };
+    
+  } catch (err) {
+    log_(ss, 'feedback_approval_error', { site: siteSlug, error: String(err) });
+    return { ok: false, error: String(err) };
+  }
+}
+
+/**
+ * Publica feedback aprovado no site do cliente via GitHub
+ */
+function publishFeedbackToSite_(ss, siteSlug, feedbackId, pin) {
+  try {
+    // Validar PIN VIP
+    if (!pin || pin.length < 4) {
+      return { ok: false, error: 'PIN VIP é obrigatório' };
+    }
+    
+    // Validar PIN
+    const pinValidation = validateVipPin_(ss, siteSlug, pin);
+    if (!pinValidation.ok) {
+      return { ok: false, error: pinValidation.error };
+    }
+    
+    // Buscar feedback aprovado
+    ensureFeedbackSheet_(ss);
+    const sh = ss.getSheetByName('feedbacks');
+    const dataRange = sh.getDataRange();
+    const values = dataRange.getValues();
+    
+    // Encontrar o feedback específico
+    const feedbackRow = values.find(row => 
+      row[0] === feedbackId && 
+      row[1] === siteSlug && 
+      row[8] === 'approved' && 
+      row[9] === true
+    );
+    
+    if (!feedbackRow) {
+      return { ok: false, error: 'Feedback aprovado não encontrado' };
+    }
+    
+    // Buscar todos os feedbacks aprovados do site para gerar arquivo completo
+    const approvedFeedbacks = values.filter(row => 
+      row[1] === siteSlug && 
+      row[8] === 'approved' && 
+      row[9] === true
+    );
+    
+    // Converter para formato do site
+    const feedbacksData = approvedFeedbacks.map(row => ({
+      id: row[0],
+      name: row[2],
+      email: row[3],
+      phone: row[4],
+      rating: row[5],
+      message: row[6],
+      createdAt: row[10],
+      publishedAt: new Date().toISOString()
+    }));
+    
+    // Buscar configurações do site para GitHub
+    const siteSettings = kvGetSettingsBySite_(ss, siteSlug);
+    const settings = siteSettings.settings;
+    
+    if (!settings.github_repo || !settings.github_token) {
+      return { 
+        ok: false, 
+        error: 'Repositório GitHub não configurado. Configure no dashboard antes de publicar.' 
+      };
+    }
+    
+    // Gerar arquivo JSON para o site
+    const feedbacksJson = {
+      lastUpdated: new Date().toISOString(),
+      total: feedbacksData.length,
+      feedbacks: feedbacksData
+    };
+    
+    // Publicar no GitHub
+    const publishResult = publishToGitHub_(
+      settings.github_repo,
+      settings.github_token,
+      'public/feedbacks.json',
+      JSON.stringify(feedbacksJson, null, 2),
+      `Atualizar feedbacks aprovados - ${new Date().toLocaleString('pt-BR')}`
+    );
+    
+    if (!publishResult.ok) {
+      return { ok: false, error: `Erro ao publicar no GitHub: ${publishResult.error}` };
+    }
+    
+    // Marcar feedback como publicado
+    const rowIndex = values.findIndex(row => row[0] === feedbackId && row[1] === siteSlug);
+    if (rowIndex !== -1) {
+      sh.getRange(rowIndex + 1, 13, 1, 1).setValue(new Date().toISOString()); // publishedAt
+    }
+    
+    log_(ss, 'feedback_published_to_site', { 
+      site: siteSlug, 
+      feedbackId, 
+      totalPublished: feedbacksData.length 
+    });
+    
+    return { 
+      ok: true, 
+      message: `Feedback publicado com sucesso! Total de ${feedbacksData.length} feedbacks aprovados no site.`,
+      data: {
+        feedbackId,
+        totalPublished: feedbacksData.length,
+        githubCommit: publishResult.commitSha
+      }
+    };
+    
+  } catch (err) {
+    log_(ss, 'feedback_publish_error', { site: siteSlug, error: String(err) });
+    return { ok: false, error: String(err) };
+  }
+}
+
+/**
+ * Publica arquivo no GitHub via API
+ */
+function publishToGitHub_(repoFullName, token, filePath, content, commitMessage) {
+  try {
+    const [owner, repo] = repoFullName.split('/');
+    
+    // 1. Buscar conteúdo atual do arquivo (para obter SHA)
+    const getFileUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+    const getResponse = UrlFetchApp.fetch(getFileUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'EleveaAgency/1.0'
+      }
+    });
+    
+    let sha = null;
+    if (getResponse.getResponseCode() === 200) {
+      const fileData = JSON.parse(getResponse.getContentText());
+      sha = fileData.sha;
+    }
+    
+    // 2. Criar/atualizar arquivo
+    const putFileUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+    const putPayload = {
+      message: commitMessage,
+      content: Utilities.base64Encode(content),
+      branch: 'main'
+    };
+    
+    if (sha) {
+      putPayload.sha = sha; // Para atualizar arquivo existente
+    }
+    
+    const putResponse = UrlFetchApp.fetch(putFileUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'EleveaAgency/1.0'
+      },
+      payload: JSON.stringify(putPayload)
+    });
+    
+    if (putResponse.getResponseCode() === 200 || putResponse.getResponseCode() === 201) {
+      const result = JSON.parse(putResponse.getContentText());
+      return { 
+        ok: true, 
+        commitSha: result.commit.sha,
+        message: 'Arquivo publicado com sucesso no GitHub'
+      };
+    } else {
+      const error = putResponse.getContentText();
+      return { 
+        ok: false, 
+        error: `GitHub API error: ${putResponse.getResponseCode()} - ${error}` 
+      };
+    }
+    
+  } catch (err) {
+    return { 
+      ok: false, 
+      error: `Erro ao publicar no GitHub: ${err.message}` 
+    };
   }
 }
 

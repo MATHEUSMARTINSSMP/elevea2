@@ -20,6 +20,7 @@ import { EcommerceDashboard } from "./components/EcommerceDashboard";
 import TemplateMarketplace from "./components/TemplateMarketplace";
 import AuditLogs from "./components/AuditLogs";
 import SiteEditor from "./components/SiteEditor";
+import GitHubConfig from "./components/GitHubConfig";
 
 // === Extras / UI ===
 import { AICopywriter } from "@/components/ui/ai-copywriter";
@@ -959,6 +960,7 @@ useEffect(() => {
             {isFeatureEnabled("feedback-system") && (
               <section className="space-y-6">
                 <FeedbackManager siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} />
+                <GitHubConfig siteSlug={user.siteSlug || ""} vipPin={vipPin || "FORCED"} userEmail={user.email} />
               </section>
             )}
 

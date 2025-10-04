@@ -418,8 +418,41 @@ export default function FeedbackManager({ siteSlug, vipPin }: FeedbackManagerPro
                         <Button 
                           size="sm" 
                           className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                          onClick={() => {
-                            console.log('Enviando feedback para o site:', feedback);
+                          onClick={async () => {
+                            try {
+                              const confirmed = confirm(
+                                `📝 Publicar Feedback no Site\n\n` +
+                                `Cliente: ${feedback.name}\n` +
+                                `Avaliação: ${feedback.rating}/5 estrelas\n\n` +
+                                `Este feedback será publicado no site do cliente. Deseja continuar?`
+                              );
+                              
+                              if (!confirmed) return;
+                              
+                              const response = await fetch('/.netlify/functions/client-api', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'publish_feedback_to_site',
+                                  site: siteSlug,
+                                  feedbackId: feedback.id,
+                                  pin: vipPin
+                                })
+                              });
+                              
+                              const result = await response.json();
+                              
+                              if (result.ok) {
+                                alert(`✅ ${result.message}`);
+                                // Recarregar feedbacks para atualizar status
+                                fetchFeedbacks();
+                              } else {
+                                alert(`❌ Erro ao publicar: ${result.error}`);
+                              }
+                            } catch (error) {
+                              console.error('Erro ao publicar feedback:', error);
+                              alert(`❌ Erro na requisição: ${error.message}`);
+                            }
                           }}
                         >
                           Publicar no Site

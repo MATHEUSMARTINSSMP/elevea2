@@ -256,6 +256,18 @@ export default async (req) => {
       return json(200, gas?.ok === false ? { ok: false, error: gas?.error || "gas_failed" } : { ok: true });
     }
 
+    if (action === "publish_feedback_to_site") {
+      const site = String(body.site || body.siteSlug || "");
+      const feedbackId = String(body.feedbackId || "");
+      const pin = String(body.pin || body.vipPin || "");
+      const gas = await callGAS(
+        "publish_feedback_to_site",
+        { site, feedbackId, pin },
+        "POST"
+      );
+      return json(200, gas?.ok === false ? { ok: false, error: gas?.error || "gas_failed" } : gas);
+    }
+
     /* ======== WHATSAPP (POST) ======== */
     if (action === "wa_list_messages") {
       const site = String(body.site || body.siteSlug || "");
